@@ -83,6 +83,12 @@ class CalendarViewModel : ViewModel() {
     private val _eventParticipations = MutableStateFlow<List<EventParticipant>>(emptyList())
     val eventParticipations: StateFlow<List<EventParticipant>> = _eventParticipations.asStateFlow()
 
+    private val _classSeatCounts = MutableStateFlow<Map<String, Int>>(emptyMap())
+    val classSeatCounts: StateFlow<Map<String, Int>> = _classSeatCounts.asStateFlow()
+
+    private val _eventSeatCounts = MutableStateFlow<Map<String, Int>>(emptyMap())
+    val eventSeatCounts: StateFlow<Map<String, Int>> = _eventSeatCounts.asStateFlow()
+
     private val _goalsForDate = MutableStateFlow<List<UserGoal>>(emptyList())
     val goalsForDate: StateFlow<List<UserGoal>> = _goalsForDate.asStateFlow()
 
@@ -140,6 +146,14 @@ class CalendarViewModel : ViewModel() {
                 } else {
                     emptyList()
                 }
+                _classSeatCounts.value = if (showGymContent && _availableGroupClasses.value.isNotEmpty()) {
+                    GroupClassService.countActiveSeatsForClasses(
+                        _availableGroupClasses.value.map { it.id },
+                        date.toString()
+                    )
+                } else {
+                    emptyMap()
+                }
                 _gymEvents.value = if (showGymContent && showAllEvents) {
                     GymEventService.fetchEventsForDate(date)
                 } else {
@@ -149,6 +163,11 @@ class CalendarViewModel : ViewModel() {
                     GymEventService.fetchParticipationsForDate(userId, date)
                 } else {
                     emptyList()
+                }
+                _eventSeatCounts.value = if (showGymContent && _gymEvents.value.isNotEmpty()) {
+                    GymEventService.countRegisteredForEvents(_gymEvents.value.map { it.id })
+                } else {
+                    emptyMap()
                 }
                 _goalsForDate.value = if (showAllEvents) {
                     GoalService.fetchGoalsForDate(userId, date)
@@ -161,8 +180,10 @@ class CalendarViewModel : ViewModel() {
                 _scheduledPrograms.value = emptyList()
                 _availableGroupClasses.value = emptyList()
                 _bookingsForDate.value = emptyList()
+                _classSeatCounts.value = emptyMap()
                 _gymEvents.value = emptyList()
                 _eventParticipations.value = emptyList()
+                _eventSeatCounts.value = emptyMap()
                 _goalsForDate.value = emptyList()
             }
             _isLoading.value = false
@@ -267,10 +288,14 @@ class CalendarViewModel : ViewModel() {
     ) {
         viewModelScope.launch {
             try {
-                GroupClassService.joinClass(userId, classId, date.toString())
+                val result = GroupClassService.joinClass(userId, classId, date.toString())
                 loadDayContent(userId, date, showAllEvents, showGymContent)
                 loadEventDays(userId, YearMonth.from(date), showAllEvents, showGymContent)
-                _snackbarMessage.value = "Derse katıldınız."
+                _snackbarMessage.value = when (result) {
+                    GroupClassService.JoinResult.WAITING -> "Bekleme listesine eklendiniz."
+                    GroupClassService.JoinResult.ALREADY_JOINED -> "Zaten kayıtlısınız."
+                    GroupClassService.JoinResult.CONFIRMED -> "Derse katıldınız."
+                }
             } catch (e: CancellationException) {
                 throw e
             } catch (_: Exception) {
@@ -284,14 +309,15 @@ class CalendarViewModel : ViewModel() {
         bookingId: String,
         date: LocalDate,
         showAllEvents: Boolean,
-        showGymContent: Boolean
+        showGymContent: Boolean,
+        wasWaiting: Boolean = false
     ) {
         viewModelScope.launch {
             try {
                 GroupClassService.leaveClass(bookingId, userId)
                 loadDayContent(userId, date, showAllEvents, showGymContent)
                 loadEventDays(userId, YearMonth.from(date), showAllEvents, showGymContent)
-                _snackbarMessage.value = "Dersten ayrıldınız."
+                _snackbarMessage.value = if (wasWaiting) "Bekleme listesinden çıktınız." else "Dersten ayrıldınız."
             } catch (e: CancellationException) {
                 throw e
             } catch (_: Exception) {
@@ -309,10 +335,14 @@ class CalendarViewModel : ViewModel() {
     ) {
         viewModelScope.launch {
             try {
-                GymEventService.joinEvent(userId, eventId)
+                val result = GymEventService.joinEvent(userId, eventId)
                 loadDayContent(userId, date, showAllEvents, showGymContent)
                 loadEventDays(userId, YearMonth.from(date), showAllEvents, showGymContent)
-                _snackbarMessage.value = "Etkinliğe katıldınız."
+                _snackbarMessage.value = when (result) {
+                    GymEventService.JoinResult.WAITING -> "Bekleme listesine eklendiniz."
+                    GymEventService.JoinResult.ALREADY_JOINED -> "Zaten kayıtlısınız."
+                    GymEventService.JoinResult.CONFIRMED -> "Etkinliğe katıldınız."
+                }
             } catch (e: CancellationException) {
                 throw e
             } catch (_: Exception) {
@@ -326,14 +356,15 @@ class CalendarViewModel : ViewModel() {
         participantId: String,
         date: LocalDate,
         showAllEvents: Boolean,
-        showGymContent: Boolean
+        showGymContent: Boolean,
+        wasWaiting: Boolean = false
     ) {
         viewModelScope.launch {
             try {
                 GymEventService.leaveEvent(participantId, userId)
                 loadDayContent(userId, date, showAllEvents, showGymContent)
                 loadEventDays(userId, YearMonth.from(date), showAllEvents, showGymContent)
-                _snackbarMessage.value = "Etkinlikten ayrıldınız."
+                _snackbarMessage.value = if (wasWaiting) "Bekleme listesinden çıktınız." else "Etkinlikten ayrıldınız."
             } catch (e: CancellationException) {
                 throw e
             } catch (_: Exception) {
@@ -374,8 +405,10 @@ fun CalendarScreen(
     val scheduledPrograms: List<UiProgram> by vm.scheduledPrograms.collectAsState()
     val availableGroupClasses by vm.availableGroupClasses.collectAsState()
     val bookingsForDate by vm.bookingsForDate.collectAsState()
+    val classSeatCounts by vm.classSeatCounts.collectAsState()
     val gymEvents by vm.gymEvents.collectAsState()
     val eventParticipations by vm.eventParticipations.collectAsState()
+    val eventSeatCounts by vm.eventSeatCounts.collectAsState()
     val goalsForDate by vm.goalsForDate.collectAsState()
     val userEvents: List<UserEvent> by vm.userEvents.collectAsState()
     val eventDays by vm.eventDays.collectAsState()
@@ -606,13 +639,19 @@ fun CalendarScreen(
                             }
                         }
                         items(availableGroupClasses, key = { it.id }) { groupClass ->
-                            val booking = bookingsForDate.find { it.classId == groupClass.id }
+                            val booking = bookingsForDate.find {
+                                it.classId == groupClass.id && GroupClassService.isJoinedStatus(it.status)
+                            }
                             val isPast = isGroupClassPast(selectedDate, groupClass)
+                            val currentSeats = classSeatCounts[groupClass.id] ?: groupClass.currentParticipants
+                            val isWaiting = booking != null && GroupClassService.isWaitingStatus(booking.status)
                             GroupClassCalendarCard(
                                 groupClass = groupClass,
+                                currentSeats = currentSeats,
                                 showJoinAction = effectiveShowAllEvents,
                                 isPast = isPast,
                                 isBooked = booking != null,
+                                isWaiting = isWaiting,
                                 onJoin = {
                                     val uid = userId?.id ?: return@GroupClassCalendarCard
                                     vm.joinGroupClass(
@@ -631,7 +670,8 @@ fun CalendarScreen(
                                         bookingId,
                                         selectedDate,
                                         effectiveShowAllEvents,
-                                        effectiveShowGymContent
+                                        effectiveShowGymContent,
+                                        wasWaiting = isWaiting
                                     )
                                 },
                                 modifier = Modifier.padding(horizontal = Spacing.xl, vertical = 6.dp)
@@ -655,10 +695,16 @@ fun CalendarScreen(
                             }
                         }
                         items(gymEvents, key = { it.id }) { gymEvent ->
-                            val participation = eventParticipations.find { it.eventId == gymEvent.id }
+                            val participation = eventParticipations.find {
+                                it.eventId == gymEvent.id && GymEventService.isJoinedStatus(it.status)
+                            }
+                            val isWaiting = participation != null && GymEventService.isWaitingStatus(participation.status)
+                            val currentSeats = eventSeatCounts[gymEvent.id] ?: 0
                             GymEventCalendarCard(
                                 gymEvent = gymEvent,
+                                currentSeats = currentSeats,
                                 isRegistered = participation != null,
+                                isWaiting = isWaiting,
                                 onJoin = {
                                     val uid = userId?.id ?: return@GymEventCalendarCard
                                     vm.joinGymEvent(uid, gymEvent.id, selectedDate, effectiveShowAllEvents, effectiveShowGymContent)
@@ -666,7 +712,14 @@ fun CalendarScreen(
                                 onLeave = {
                                     val uid = userId?.id ?: return@GymEventCalendarCard
                                     val participantId = participation?.id ?: return@GymEventCalendarCard
-                                    vm.leaveGymEvent(uid, participantId, selectedDate, effectiveShowAllEvents, effectiveShowGymContent)
+                                    vm.leaveGymEvent(
+                                        uid,
+                                        participantId,
+                                        selectedDate,
+                                        effectiveShowAllEvents,
+                                        effectiveShowGymContent,
+                                        wasWaiting = isWaiting
+                                    )
                                 },
                                 modifier = Modifier.padding(horizontal = Spacing.xl, vertical = 6.dp)
                             )
@@ -960,13 +1013,16 @@ private fun ScheduledProgramCard(
 @Composable
 private fun GroupClassCalendarCard(
     groupClass: GroupClass,
+    currentSeats: Int = 0,
     showJoinAction: Boolean = true,
     isPast: Boolean = false,
     isBooked: Boolean = false,
+    isWaiting: Boolean = false,
     onJoin: () -> Unit = {},
     onLeave: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
+    val isFull = currentSeats >= groupClass.capacity
     Row(
         modifier = modifier
             .fillMaxWidth()
@@ -989,6 +1045,20 @@ private fun GroupClassCalendarCard(
                 fontSize = 13.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = "$currentSeats/${groupClass.capacity}",
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = if (isFull) Color(0xFFE53935) else MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                if (isFull) {
+                    Text("Dolu", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFFE53935))
+                }
+                if (isWaiting) {
+                    Text("Yedekte", fontSize = 11.sp, fontWeight = FontWeight.Medium, color = Color(0xFFFF9800))
+                }
+            }
         }
         when {
             isPast -> Text(
@@ -997,12 +1067,25 @@ private fun GroupClassCalendarCard(
                 fontWeight = FontWeight.Medium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
-            isBooked -> Text(
-                "Katıldın",
+            isBooked && showJoinAction -> Text(
+                "Ayrıl",
                 fontSize = 12.sp,
                 fontWeight = FontWeight.SemiBold,
-                color = Color(0xFF4CAF50),
-                modifier = if (showJoinAction) Modifier.clickable { onLeave() } else Modifier
+                color = Color(0xFFE53935),
+                modifier = Modifier.clickable { onLeave() }
+            )
+            isBooked -> Text(
+                if (isWaiting) "Yedekte" else "Katıldın",
+                fontSize = 12.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = if (isWaiting) Color(0xFFFF9800) else Color(0xFF4CAF50)
+            )
+            showJoinAction && isFull -> Text(
+                "Bekleme Listesi",
+                fontSize = 11.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = Color(0xFFFF9800),
+                modifier = Modifier.clickable { onJoin() }
             )
             showJoinAction -> Text(
                 "Katıl",
@@ -1018,11 +1101,15 @@ private fun GroupClassCalendarCard(
 @Composable
 private fun GymEventCalendarCard(
     gymEvent: GymEvent,
+    currentSeats: Int = 0,
     isRegistered: Boolean = false,
+    isWaiting: Boolean = false,
     onJoin: () -> Unit = {},
     onLeave: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
+    val capacity = gymEvent.capacity
+    val isFull = capacity != null && currentSeats >= capacity
     Row(
         modifier = modifier
             .fillMaxWidth()
@@ -1046,17 +1133,39 @@ private fun GymEventCalendarCard(
             gymEvent.location?.takeIf { it.isNotBlank() }?.let { location ->
                 Text(location, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
+            if (capacity != null) {
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = "$currentSeats/$capacity",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = if (isFull) Color(0xFFE53935) else MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    if (isFull) {
+                        Text("Dolu", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFFE53935))
+                    }
+                    if (isWaiting) {
+                        Text("Yedekte", fontSize = 11.sp, fontWeight = FontWeight.Medium, color = Color(0xFFFF9800))
+                    }
+                }
+            }
         }
-        if (isRegistered) {
-            Text(
-                "Katıldın",
+        when {
+            isRegistered -> Text(
+                "Ayrıl",
                 fontSize = 12.sp,
                 fontWeight = FontWeight.SemiBold,
-                color = Color(0xFF4CAF50),
+                color = Color(0xFFE53935),
                 modifier = Modifier.clickable { onLeave() }
             )
-        } else {
-            Text(
+            isFull -> Text(
+                "Bekleme Listesi",
+                fontSize = 11.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = Color(0xFFFF9800),
+                modifier = Modifier.clickable { onJoin() }
+            )
+            else -> Text(
                 "Katıl",
                 fontSize = 12.sp,
                 fontWeight = FontWeight.SemiBold,

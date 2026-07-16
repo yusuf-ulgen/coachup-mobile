@@ -602,8 +602,8 @@ data class NutritionPlan(
     @SerialName("gym_id")           val gymId: String? = null,
     @SerialName("name")             val name: String,
     @SerialName("description")      val description: String? = null,
-    @SerialName("target_calories")  val targetCalories: Int,
-    @SerialName("meal_count")       val mealCount: Int,
+    @SerialName("target_calories")  val targetCalories: Int = 0,
+    @SerialName("meal_count")       val mealCount: Int = 0,
     @SerialName("category")         val category: String? = null,
     @SerialName("created_at")       val createdAt: String = "",
     @SerialName("updated_at")       val updatedAt: String = ""
@@ -615,16 +615,34 @@ data class NutritionPlan(
 @Serializable
 data class NutritionMeal(
     @SerialName("id")          val id: String,
-    @SerialName("plan_id")     val planId: String,
+    @SerialName("plan_id")     val planId: String? = null,
     @SerialName("name")        val name: String,
-    /** kahvalti | ogle | aksam | ara_ogun */
-    @SerialName("meal_type")   val mealType: String,
-    @SerialName("calories")    val calories: Int,
-    @SerialName("protein")     val protein: Double,
-    @SerialName("carbs")       val carbs: Double,
-    @SerialName("fat")         val fat: Double,
+    /** kahvalti | ogle | aksam | ara_ogun | breakfast | lunch | dinner | snack | ... */
+    @SerialName("meal_type")   val mealType: String? = null,
+    /** Optional clock time from salon panel (HH:mm) */
+    @SerialName("time")        val time: String? = null,
+    @SerialName("calories")    val calories: Int = 0,
+    @SerialName("protein")     val protein: Double = 0.0,
+    @SerialName("carbs")       val carbs: Double = 0.0,
+    @SerialName("fat")         val fat: Double = 0.0,
     @SerialName("description") val description: String? = null,
-    @SerialName("order_index") val orderIndex: Int
+    @SerialName("order_index") val orderIndex: Int = 0
+)
+
+// ---------------------------------------------------------------------------
+// NutritionFood — maps to "nutrition_foods" table (per-meal items)
+// ---------------------------------------------------------------------------
+@Serializable
+data class NutritionFood(
+    @SerialName("id")        val id: String,
+    @SerialName("meal_id")   val mealId: String? = null,
+    @SerialName("name")      val name: String,
+    @SerialName("portion")   val portion: String? = null,
+    @SerialName("calories")  val calories: Int = 0,
+    @SerialName("protein")   val protein: Double = 0.0,
+    @SerialName("carbs")     val carbs: Double = 0.0,
+    @SerialName("fat")       val fat: Double = 0.0,
+    @SerialName("emoji")     val emoji: String? = null
 )
 
 // ---------------------------------------------------------------------------

@@ -44,6 +44,7 @@ enum class AdminTab(val label: String, val icon: ImageVector) {
     COACHES("Koçlar", Icons.Default.SportsHandball),
     PROGRAMS("Programlar", Icons.Default.FitnessCenter),
     MEMBERSHIPS("Üyelikler", Icons.Default.CardMembership),
+    COMMUNITY("Topluluk", Icons.Default.Groups),
     QR_ENTRIES("QR Girişler", Icons.Default.QrCode),
     AUDIT_LOGS("Loglar", Icons.Default.History),
     REPORTS("Raporlar", Icons.Default.BarChart)
@@ -164,6 +165,7 @@ private fun AdminDashboardContent(
             AdminTab.COACHES -> AdminCoachesContent()
             AdminTab.PROGRAMS -> AdminProgramsContent()
             AdminTab.MEMBERSHIPS -> AdminMembershipsContent()
+            AdminTab.COMMUNITY -> AdminCommunityContent()
             AdminTab.QR_ENTRIES -> AdminQREntriesContent()
             AdminTab.AUDIT_LOGS -> AdminAuditLogsContent()
             AdminTab.REPORTS -> AdminReportsContent()
@@ -741,5 +743,332 @@ private fun ReportSection(title: String, data: List<Pair<String, Float>>, color:
                 }
             }
         }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Community settings + subgroups
+// ---------------------------------------------------------------------------
+
+@Composable
+private fun AdminCommunityContent() {
+    val scope = rememberCoroutineScope()
+    var generalEnabled by remember { mutableStateOf(true) }
+    var gymFeedEnabled by remember { mutableStateOf(true) }
+    var generalGroups by remember { mutableStateOf<List<CommunityGroup>>(emptyList()) }
+    var gymGroups by remember { mutableStateOf<List<CommunityGroup>>(emptyList()) }
+    var isLoading by remember { mutableStateOf(true) }
+    var message by remember { mutableStateOf<String?>(null) }
+    var newGroupName by remember { mutableStateOf("") }
+    var newGroupScope by remember { mutableStateOf("general") }
+    var memberUserId by remember { mutableStateOf("") }
+    var selectedGroupForMember by remember { mutableStateOf<CommunityGroup?>(null) }
+
+    suspend fun reload() {
+        isLoading = true
+        try {
+            val settings = com.app.coachup.app.services.CommunityService.fetchGlobalSettings()
+            generalEnabled = settings.generalEnabled
+            gymFeedEnabled = settings.gymFeedEnabled
+            generalGroups = com.app.coachup.app.services.CommunityService.fetchGroups("general")
+            val gymId = com.app.coachup.app.services.UserService.resolveActiveGymIdForContent()
+            gymGroups = if (gymId != null) {
+                com.app.coachup.app.services.CommunityService.fetchGroups("gym", gymId)
+            } else emptyList()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            message = e.message ?: "Topluluk ayarları yüklenemedi"
+        } finally {
+            isLoading = false
+        }
+    }
+
+    LaunchedEffect(Unit) { reload() }
+
+    if (isLoading) {
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            CircularProgressIndicator(color = Primary)
+        }
+        return
+    }
+
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(horizontal = Spacing.xl, vertical = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        item {
+            Text("Topluluk Ayarları", fontSize = 18.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onBackground)
+            Text(
+                "Genel topluluğu kapatabilir, salon feed’ini devre dışı bırakabilir ve alt grup açabilirsiniz.",
+                fontSize = 13.sp,
+                color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.55f),
+                modifier = Modifier.padding(top = 4.dp)
+            )
+        }
+
+        item {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(Radius.card))
+                    .background(MaterialTheme.colorScheme.surface)
+                    .padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Genel Topluluk", fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onBackground)
+                        Text("Tüm uygulama kullanıcıları", fontSize = 12.sp, color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.5f))
+                    }
+                    Switch(
+                        checked = generalEnabled,
+                        onCheckedChange = { checked ->
+                            generalEnabled = checked
+                            scope.launch {
+                                try {
+                                    com.app.coachup.app.services.CommunityService.upsertGlobalSettings(checked, gymFeedEnabled)
+                                    message = "Genel topluluk güncellendi"
+                                } catch (e: CancellationException) {
+                                    throw e
+                                } catch (e: Exception) {
+                                    generalEnabled = !checked
+                                    message = e.message
+                                }
+                            }
+                        },
+                        colors = SwitchDefaults.colors(checkedTrackColor = Primary)
+                    )
+                }
+                HorizontalDivider(color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.06f))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Salon Toplulukları", fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onBackground)
+                        Text("Salon üye feed’leri (global anahtar)", fontSize = 12.sp, color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.5f))
+                    }
+                    Switch(
+                        checked = gymFeedEnabled,
+                        onCheckedChange = { checked ->
+                            gymFeedEnabled = checked
+                            scope.launch {
+                                try {
+                                    com.app.coachup.app.services.CommunityService.upsertGlobalSettings(generalEnabled, checked)
+                                    message = "Salon toplulukları güncellendi"
+                                } catch (e: CancellationException) {
+                                    throw e
+                                } catch (e: Exception) {
+                                    gymFeedEnabled = !checked
+                                    message = e.message
+                                }
+                            }
+                        },
+                        colors = SwitchDefaults.colors(checkedTrackColor = Primary)
+                    )
+                }
+            }
+        }
+
+        item {
+            Text("Alt Grup Oluştur", fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onBackground)
+        }
+
+        item {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(Radius.card))
+                    .background(MaterialTheme.colorScheme.surface)
+                    .padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FilterChip(
+                        selected = newGroupScope == "general",
+                        onClick = { newGroupScope = "general" },
+                        label = { Text("Genel") }
+                    )
+                    FilterChip(
+                        selected = newGroupScope == "gym",
+                        onClick = { newGroupScope = "gym" },
+                        label = { Text("Salon") }
+                    )
+                }
+                OutlinedTextField(
+                    value = newGroupName,
+                    onValueChange = { newGroupName = it },
+                    label = { Text("Grup adı") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = Primary)
+                )
+                Button(
+                    onClick = {
+                        if (newGroupName.isBlank()) return@Button
+                        scope.launch {
+                            try {
+                                val userId = AuthService.getCurrentUserId() ?: return@launch
+                                val gymId = com.app.coachup.app.services.UserService.resolveActiveGymIdForContent()
+                                if (newGroupScope == "gym" && gymId.isNullOrBlank()) {
+                                    message = "Salon grubu için aktif salon gerekli"
+                                    return@launch
+                                }
+                                com.app.coachup.app.services.CommunityService.createGroup(
+                                    scope = newGroupScope,
+                                    name = newGroupName,
+                                    description = null,
+                                    gymId = gymId,
+                                    createdBy = userId
+                                )
+                                newGroupName = ""
+                                reload()
+                                message = "Grup oluşturuldu"
+                            } catch (e: CancellationException) {
+                                throw e
+                            } catch (e: Exception) {
+                                message = e.message
+                            }
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Primary),
+                    enabled = newGroupName.isNotBlank()
+                ) {
+                    Text("Grup Ekle")
+                }
+            }
+        }
+
+        item {
+            Text("Genel Alt Gruplar", fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onBackground)
+        }
+        if (generalGroups.isEmpty()) {
+            item {
+                Text("Henüz genel alt grup yok", fontSize = 13.sp, color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.5f))
+            }
+        } else {
+            items(generalGroups, key = { it.id }) { group ->
+                AdminGroupRow(
+                    group = group,
+                    onAddMember = { selectedGroupForMember = group },
+                    onDeactivate = {
+                        scope.launch {
+                            try {
+                                com.app.coachup.app.services.CommunityService.deactivateGroup(group.id)
+                                reload()
+                            } catch (e: CancellationException) {
+                                throw e
+                            } catch (e: Exception) {
+                                message = e.message
+                            }
+                        }
+                    }
+                )
+            }
+        }
+
+        item {
+            Text("Salon Alt Grupları", fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onBackground)
+        }
+        if (gymGroups.isEmpty()) {
+            item {
+                Text("Henüz salon alt grubu yok", fontSize = 13.sp, color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.5f))
+            }
+        } else {
+            items(gymGroups, key = { it.id }) { group ->
+                AdminGroupRow(
+                    group = group,
+                    onAddMember = { selectedGroupForMember = group },
+                    onDeactivate = {
+                        scope.launch {
+                            try {
+                                com.app.coachup.app.services.CommunityService.deactivateGroup(group.id)
+                                reload()
+                            } catch (e: CancellationException) {
+                                throw e
+                            } catch (e: Exception) {
+                                message = e.message
+                            }
+                        }
+                    }
+                )
+            }
+        }
+
+        message?.let { msg ->
+            item {
+                Text(msg, fontSize = 13.sp, color = Primary)
+            }
+        }
+
+        item { Spacer(Modifier.height(80.dp)) }
+    }
+
+    selectedGroupForMember?.let { group ->
+        AlertDialog(
+            onDismissRequest = { selectedGroupForMember = null; memberUserId = "" },
+            title = { Text("Üye Ekle — ${group.name}") },
+            text = {
+                OutlinedTextField(
+                    value = memberUserId,
+                    onValueChange = { memberUserId = it },
+                    label = { Text("Kullanıcı ID (UUID)") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = Primary)
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    if (memberUserId.isBlank()) return@TextButton
+                    scope.launch {
+                        try {
+                            com.app.coachup.app.services.CommunityService.addGroupMember(group.id, memberUserId.trim())
+                            message = "Üye eklendi"
+                            selectedGroupForMember = null
+                            memberUserId = ""
+                        } catch (e: CancellationException) {
+                            throw e
+                        } catch (e: Exception) {
+                            message = e.message
+                        }
+                    }
+                }) { Text("Ekle", color = Primary) }
+            },
+            dismissButton = {
+                TextButton(onClick = { selectedGroupForMember = null; memberUserId = "" }) { Text("İptal") }
+            }
+        )
+    }
+}
+
+@Composable
+private fun AdminGroupRow(
+    group: CommunityGroup,
+    onAddMember: () -> Unit,
+    onDeactivate: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(Radius.card))
+            .background(MaterialTheme.colorScheme.surface)
+            .padding(12.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(group.name, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onBackground)
+            Text(group.scope, fontSize = 12.sp, color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.5f))
+        }
+        TextButton(onClick = onAddMember) { Text("Üye", color = Primary) }
+        TextButton(onClick = onDeactivate) { Text("Kapat", color = Color(0xFFE53935)) }
     }
 }

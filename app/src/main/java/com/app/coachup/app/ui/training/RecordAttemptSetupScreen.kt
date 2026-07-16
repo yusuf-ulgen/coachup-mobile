@@ -29,10 +29,12 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.app.coachup.app.models.Exercise
+import com.app.coachup.app.models.PersonalRecord
 import com.app.coachup.app.models.RecordAttemptCategories
 import com.app.coachup.app.models.RecordCategory
 import com.app.coachup.app.models.RecordExercise
 import com.app.coachup.app.models.RecordMeasureType
+// RecordAttemptCategories used for AMRAP hints
 import com.app.coachup.app.services.PlannedSet
 import com.app.coachup.app.services.PlateCalculator
 import com.app.coachup.app.services.RecordAttempt
@@ -46,7 +48,7 @@ import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
 // ─── Navigation steps ────────────────────────────────────────────────────────
-private enum class SetupStep { CATEGORY, EXERCISE, CONFIG }
+private enum class SetupStep { CATEGORY, EXERCISE, DETAIL, CONFIG }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Screen
@@ -60,7 +62,9 @@ fun RecordAttemptSetupScreen(
         RecordAttempt,
         List<RecordAttemptSet>,
         Exercise,
-        RecordMeasureType
+        RecordMeasureType,
+        catalogId: String,
+        categoryId: String?
     ) -> Unit
 ) {
     var step by remember { mutableStateOf(SetupStep.CATEGORY) }
@@ -75,6 +79,11 @@ fun RecordAttemptSetupScreen(
 
     var isStarting by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
+    var historyAttempts by remember { mutableStateOf<List<RecordAttempt>>(emptyList()) }
+    var historySets by remember { mutableStateOf<Map<String, RecordAttemptSet>>(emptyMap()) }
+    var historyPRs by remember { mutableStateOf<List<PersonalRecord>>(emptyList()) }
+    var historyLoading by remember { mutableStateOf(false) }
+    var resolvedExercise by remember { mutableStateOf<Exercise?>(null) }
     val scope = rememberCoroutineScope()
 
     val measureType = selectedCatalogExercise?.measureType ?: RecordMeasureType.WEIGHT
@@ -103,13 +112,41 @@ fun RecordAttemptSetupScreen(
         regeneratePlan()
     }
 
+    suspend fun loadHistoryForCatalog(catalog: RecordExercise) {
+        if (userId.isBlank()) return
+        historyLoading = true
+        try {
+            val resolved = RecordAttemptService.resolveOrCreateExercise(
+                catalog = catalog,
+                categoryId = selectedCategory?.id,
+                knownExercises = dbExercises
+            )
+            resolvedExercise = resolved
+            if (dbExercises.none { it.id == resolved.id }) {
+                dbExercises = dbExercises + resolved
+            }
+            val attempts = RecordAttemptService.fetchAttemptsForExercise(userId, resolved.id)
+            historyAttempts = attempts
+            historySets = RecordAttemptService.fetchMainSetsForAttempts(attempts.map { it.id })
+            historyPRs = RecordAttemptService.fetchPersonalRecordsForExercise(userId, resolved.id)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            historyAttempts = emptyList()
+            historySets = emptyMap()
+            historyPRs = emptyList()
+        } finally {
+            historyLoading = false
+        }
+    }
+
     fun launchSession() {
         val catalogExercise = selectedCatalogExercise ?: return
-        if (isStarting) return
+        if (isStarting || userId.isBlank()) return
         isStarting = true
         scope.launch {
             try {
-                val resolved = RecordAttemptService.resolveOrCreateExercise(
+                val resolved = resolvedExercise ?: RecordAttemptService.resolveOrCreateExercise(
                     catalog = catalogExercise,
                     categoryId = selectedCategory?.id,
                     knownExercises = dbExercises
@@ -128,7 +165,14 @@ fun RecordAttemptSetupScreen(
                     userId = userId,
                     plan = plan
                 )
-                onNavigateToSession(attempt, sets, resolved, catalogExercise.measureType)
+                onNavigateToSession(
+                    attempt,
+                    sets,
+                    resolved,
+                    catalogExercise.measureType,
+                    catalogExercise.id,
+                    selectedCategory?.id
+                )
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -176,10 +220,23 @@ fun RecordAttemptSetupScreen(
                 selectedCategory = null
                 step = SetupStep.CATEGORY
             }
-            SetupStep.CONFIG -> {
+            SetupStep.DETAIL -> {
                 selectedCatalogExercise = null
+                resolvedExercise = null
+                historyAttempts = emptyList()
                 step = SetupStep.EXERCISE
             }
+            SetupStep.CONFIG -> {
+                // Strength: back to detail with history
+                step = SetupStep.DETAIL
+            }
+        }
+    }
+
+    LaunchedEffect(selectedCatalogExercise?.id, userId, step) {
+        val catalog = selectedCatalogExercise
+        if (catalog != null && (step == SetupStep.DETAIL || step == SetupStep.CONFIG) && userId.isNotBlank()) {
+            loadHistoryForCatalog(catalog)
         }
     }
 
@@ -194,12 +251,14 @@ fun RecordAttemptSetupScreen(
                 title = when (step) {
                     SetupStep.CATEGORY -> "Rekor Denemesi"
                     SetupStep.EXERCISE -> selectedCategory?.name ?: "Hareket Seç"
+                    SetupStep.DETAIL -> selectedCatalogExercise?.name ?: "Hareket"
                     SetupStep.CONFIG -> selectedCatalogExercise?.name ?: "Hazırlık"
                 },
                 subtitle = when (step) {
                     SetupStep.CATEGORY -> "Kategori seçin"
                     SetupStep.EXERCISE -> "${selectedCategory?.exerciseCount ?: 0} hareket"
-                    SetupStep.CONFIG -> measureLabel(measureType)
+                    SetupStep.DETAIL -> "Geçmiş ve başlat"
+                    SetupStep.CONFIG -> measureLabel(measureType, selectedCatalogExercise?.id)
                 },
                 onBack = { handleBack() }
             )
@@ -236,26 +295,65 @@ fun RecordAttemptSetupScreen(
                                 onClick = {
                                     selectedCatalogExercise = exercise
                                     applyDefaults(exercise)
-                                    if (exercise.measureType == RecordMeasureType.WEIGHT) {
-                                        step = SetupStep.CONFIG
-                                    } else {
-                                        launchSession()
-                                    }
+                                    step = SetupStep.DETAIL
                                 }
                             )
                         }
                     }
 
-                    // ── Step 3: Config ────────────────────────────────────────
+                    // ── Step 3: Detail + history (all categories) ─────────────
+                    SetupStep.DETAIL -> {
+                        val catalog = selectedCatalogExercise
+                        if (catalog != null) {
+                            item {
+                                SelectedExerciseBanner(
+                                    exercise = catalog,
+                                    categoryName = selectedCategory?.name.orEmpty(),
+                                    onChangeTap = {
+                                        selectedCatalogExercise = null
+                                        step = SetupStep.EXERCISE
+                                    }
+                                )
+                            }
+                            item {
+                                HistorySection(
+                                    loading = historyLoading,
+                                    attempts = historyAttempts,
+                                    setsByAttempt = historySets,
+                                    prs = historyPRs,
+                                    measureType = catalog.measureType
+                                )
+                            }
+                            item {
+                                Text(
+                                    text = detailModeHint(selectedCategory?.id, catalog.measureType, catalog.id),
+                                    fontSize = 13.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    lineHeight = 18.sp
+                                )
+                            }
+                            item { Spacer(Modifier.height(100.dp)) }
+                        }
+                    }
+
+                    // ── Step 4: Strength config ───────────────────────────────
                     SetupStep.CONFIG -> {
                         item {
                             SelectedExerciseBanner(
                                 exercise = selectedCatalogExercise!!,
                                 categoryName = selectedCategory?.name.orEmpty(),
                                 onChangeTap = {
-                                    selectedCatalogExercise = null
-                                    step = SetupStep.EXERCISE
+                                    step = SetupStep.DETAIL
                                 }
+                            )
+                        }
+                        item {
+                            HistorySection(
+                                loading = historyLoading,
+                                attempts = historyAttempts,
+                                setsByAttempt = historySets,
+                                prs = historyPRs,
+                                measureType = measureType
                             )
                         }
                         item {
@@ -327,14 +425,18 @@ fun RecordAttemptSetupScreen(
                     }
                 }
 
-                if (step != SetupStep.CONFIG) {
+                if (step != SetupStep.CONFIG && step != SetupStep.DETAIL) {
                     item { Spacer(Modifier.height(40.dp)) }
                 }
             }
         }
 
-        // ── CTA: only on CONFIG step ──────────────────────────────────────────
-        if (step == SetupStep.CONFIG) {
+        // ── CTA ───────────────────────────────────────────────────────────────
+        if (step == SetupStep.CONFIG || step == SetupStep.DETAIL) {
+            val ctaLabel = when {
+                step == SetupStep.DETAIL && measureType == RecordMeasureType.WEIGHT -> "Hedef Ayarla"
+                else -> "Başla"
+            }
             Box(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
@@ -356,8 +458,14 @@ fun RecordAttemptSetupScreen(
                         )
                 )
                 Button(
-                    onClick = { launchSession() },
-                    enabled = selectedCatalogExercise != null && !isStarting,
+                    onClick = {
+                        if (step == SetupStep.DETAIL && measureType == RecordMeasureType.WEIGHT) {
+                            step = SetupStep.CONFIG
+                        } else {
+                            launchSession()
+                        }
+                    },
+                    enabled = selectedCatalogExercise != null && !isStarting && userId.isNotBlank(),
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(56.dp)
@@ -378,21 +486,10 @@ fun RecordAttemptSetupScreen(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Icon(Icons.Filled.LocalFireDepartment, null, tint = Color.White, modifier = Modifier.size(18.dp))
-                            Text("Başla", fontSize = 17.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                            Text(ctaLabel, fontSize = 17.sp, fontWeight = FontWeight.Bold, color = Color.White)
                         }
                     }
                 }
-            }
-        }
-
-        if (isStarting && step != SetupStep.CONFIG) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(MaterialTheme.colorScheme.background.copy(alpha = 0.65f)),
-                contentAlignment = Alignment.Center
-            ) {
-                CircularProgressIndicator(color = Primary)
             }
         }
     }
@@ -529,7 +626,7 @@ private fun ExerciseCard(exercise: RecordExercise, onClick: () -> Unit) {
                     color = MaterialTheme.colorScheme.onSurface
                 )
                 Text(
-                    text = measureLabel(exercise.measureType),
+                    text = measureLabel(exercise.measureType, exercise.id),
                     fontSize = 11.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -802,12 +899,163 @@ private fun categoryIcon(id: String): ImageVector = when (id) {
     else        -> Icons.Default.Category
 }
 
-private fun measureLabel(type: RecordMeasureType): String = when (type) {
-    RecordMeasureType.WEIGHT   -> "Ağırlık rekoru (kg)"
-    RecordMeasureType.REPS     -> "Maksimum tekrar"
-    RecordMeasureType.TIME     -> "En iyi süre"
-    RecordMeasureType.DISTANCE -> "Mesafe rekoru"
-    RecordMeasureType.CALORIES -> "Kalori hedefi"
+private fun measureLabel(type: RecordMeasureType, catalogId: String? = null): String = when {
+    RecordAttemptCategories.isAmrapCatalog(catalogId) -> "AMRAP 20 dk (tur)"
+    type == RecordMeasureType.WEIGHT -> "Ağırlık rekoru (kg)"
+    type == RecordMeasureType.REPS -> "Maksimum tekrar"
+    type == RecordMeasureType.TIME -> "En iyi süre (For Time)"
+    type == RecordMeasureType.DISTANCE -> "Mesafe rekoru"
+    type == RecordMeasureType.CALORIES -> "Kalori hedefi"
+    else -> "Rekor"
+}
+
+private fun detailModeHint(categoryId: String?, type: RecordMeasureType, catalogId: String? = null): String = when {
+    type == RecordMeasureType.WEIGHT ->
+        "Hedef ağırlığını ayarla, istersen ısınma ekle ve denemeye başla."
+    categoryId == "bodyweight" || type == RecordMeasureType.REPS ->
+        "Başlat → 3-2-1 geri sayım → kronometre çalışır. Bitirince yaptığın tekrarı girersin."
+    categoryId == "running" ->
+        "Başlat → geri sayım → GPS ile koşu ekranı. Hedef mesafeyi tamamlayınca biter; istersen manuel bitir."
+    categoryId == "benchmark" && RecordAttemptCategories.isAmrapCatalog(catalogId) ->
+        "Cindy AMRAP: 3-2-1 → 20:00 geri sayım. Süre bitince tamamladığın tur sayısını girersin."
+    categoryId == "benchmark" ->
+        "For Time: 3-2-1 → kronometre. WOD'u bitirince Bitir'e bas; süre kaydın olur."
+    else ->
+        "Başlat → geri sayım → süre sayacı. İşin bitince süreyi kendin durdurursun."
+}
+
+@Composable
+private fun HistorySection(
+    loading: Boolean,
+    attempts: List<RecordAttempt>,
+    setsByAttempt: Map<String, RecordAttemptSet>,
+    prs: List<PersonalRecord>,
+    measureType: RecordMeasureType
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Text(
+            text = "Geçmiş",
+            fontSize = 15.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.onSurface
+        )
+        when {
+            loading -> {
+                Box(
+                    Modifier.fillMaxWidth().padding(vertical = 16.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    CircularProgressIndicator(color = Primary, modifier = Modifier.size(28.dp), strokeWidth = 2.dp)
+                }
+            }
+            attempts.isEmpty() && prs.isEmpty() -> {
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
+                ) {
+                    Text(
+                        text = "Bu harekette henüz kayıt yok. İlk rekoru sen kır!",
+                        modifier = Modifier.padding(14.dp),
+                        fontSize = 13.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+            else -> {
+                prs.take(1).forEach { pr ->
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = Primary.copy(alpha = 0.1f),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, Primary.copy(alpha = 0.3f))
+                    ) {
+                        Row(
+                            Modifier.fillMaxWidth().padding(14.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column {
+                                Text("Kişisel rekor", fontSize = 11.sp, color = Primary, fontWeight = FontWeight.SemiBold)
+                                Text(
+                                    formatHistoryValue(measureType, pr.weight, pr.reps),
+                                    fontSize = 18.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                            }
+                            Text(
+                                pr.recordDate.take(10),
+                                fontSize = 12.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+                attempts.take(12).forEach { attempt ->
+                    val main = setsByAttempt[attempt.id]
+                    val w = main?.actualWeight ?: attempt.targetWeight
+                    val r = main?.actualReps ?: attempt.targetReps
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = MaterialTheme.colorScheme.surface,
+                        border = androidx.compose.foundation.BorderStroke(
+                            1.dp, MaterialTheme.colorScheme.outlineVariant
+                        )
+                    ) {
+                        Row(
+                            Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(Modifier.weight(1f)) {
+                                Text(
+                                    formatHistoryValue(measureType, w, r),
+                                    fontSize = 15.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                Text(
+                                    (attempt.completedAt ?: attempt.startedAt ?: attempt.createdAt).take(16).replace('T', ' '),
+                                    fontSize = 11.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            StatusChip(attempt)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun StatusChip(attempt: RecordAttempt) {
+    val (label, color) = when {
+        attempt.success || attempt.status == "completed" && attempt.success -> "Başarılı" to Color(0xFF4CAF50)
+        attempt.status == "failed" -> "Başarısız" to Color(0xFFE53935)
+        attempt.status == "abandoned" -> "Bırakıldı" to Color(0xFF9E9E9E)
+        else -> attempt.status to MaterialTheme.colorScheme.onSurfaceVariant
+    }
+    Surface(shape = RoundedCornerShape(20.dp), color = color.copy(alpha = 0.12f)) {
+        Text(
+            label,
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+            fontSize = 11.sp,
+            fontWeight = FontWeight.Medium,
+            color = color
+        )
+    }
+}
+
+private fun formatHistoryValue(type: RecordMeasureType, weight: Double, reps: Int): String = when (type) {
+    RecordMeasureType.WEIGHT -> "${formatWeight(weight)} kg × $reps"
+    RecordMeasureType.REPS -> if (weight >= 600) "$reps tur (AMRAP)" else "$reps tekrar"
+    RecordMeasureType.TIME, RecordMeasureType.DISTANCE -> {
+        // AMRAP kaydı: weight=cap sn, reps=tur
+        if (reps > 1 && weight >= 600) "$reps tur · ${formatDuration(weight.roundToInt())}"
+        else formatDuration(weight.roundToInt())
+    }
+    RecordMeasureType.CALORIES -> "${weight.roundToInt()} cal · ${formatDuration(reps)}"
 }
 
 private fun friendlyRecordAttemptError(e: Exception): String {

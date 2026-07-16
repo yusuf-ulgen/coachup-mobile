@@ -1,6 +1,7 @@
 package com.app.coachup.app.services
 
 import com.app.coachup.app.config.SupabaseConfig.client
+import com.app.coachup.app.models.NutritionFood
 import com.app.coachup.app.models.NutritionLog
 import com.app.coachup.app.models.NutritionLogInsert
 import com.app.coachup.app.models.NutritionMeal
@@ -20,12 +21,19 @@ import java.time.format.DateTimeFormatter
 /**
  * Android equivalent of iOS NutritionService.
  *
- * Mirrors tables: user_nutrition_plans, nutrition_plans, nutrition_meals, nutrition_logs.
+ * Mirrors tables: user_nutrition_plans, nutrition_plans, nutrition_meals,
+ * nutrition_foods, nutrition_logs.
  */
 object NutritionService {
 
     private val _isLoading = MutableStateFlow(false)
     val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
+
+    /** Meal with its food items for rich plan UI. */
+    data class MealWithFoods(
+        val meal: NutritionMeal,
+        val foods: List<NutritionFood> = emptyList()
+    )
 
     // -------------------------------------------------------------------------
     // Plans
@@ -75,8 +83,48 @@ object NutritionService {
                 .decodeList<NutritionMeal>()
         } catch (e: CancellationException) {
             throw e
-        } catch (e: Exception) {
+        } catch (_: Exception) {
+            // Fallback when order_index column is missing
+            try {
+                client.postgrest["nutrition_meals"]
+                    .select {
+                        filter { eq("plan_id", planId) }
+                    }
+                    .decodeList<NutritionMeal>()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                throw e
+            }
+        }
+    }
+
+    suspend fun fetchFoodsForMeals(mealIds: List<String>): Map<String, List<NutritionFood>> {
+        if (mealIds.isEmpty()) return emptyMap()
+        return try {
+            client.postgrest["nutrition_foods"]
+                .select {
+                    filter { isIn("meal_id", mealIds) }
+                }
+                .decodeList<NutritionFood>()
+                .groupBy { it.mealId.orEmpty() }
+                .filterKeys { it.isNotEmpty() }
+        } catch (e: CancellationException) {
             throw e
+        } catch (_: Exception) {
+            emptyMap()
+        }
+    }
+
+    /** Meals + foods for modern plan cards. Foods are optional (empty if table empty/missing). */
+    suspend fun fetchMealsWithFoods(planId: String): List<MealWithFoods> {
+        val meals = fetchMeals(planId)
+        val foodsByMeal = fetchFoodsForMeals(meals.map { it.id })
+        return meals.map { meal ->
+            MealWithFoods(
+                meal = meal,
+                foods = foodsByMeal[meal.id].orEmpty()
+            )
         }
     }
 

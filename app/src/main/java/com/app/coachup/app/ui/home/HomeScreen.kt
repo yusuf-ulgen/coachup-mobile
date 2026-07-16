@@ -33,12 +33,14 @@ import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Flag
 import androidx.compose.material.icons.filled.FitnessCenter
+import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.LocalFireDepartment
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material.icons.outlined.CalendarToday
 import androidx.compose.material.icons.outlined.EventBusy
+import androidx.compose.material.icons.outlined.Groups
 import androidx.compose.material.icons.outlined.Menu
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
@@ -96,6 +98,7 @@ import com.app.coachup.app.theme.coachUpLogoRes
 import com.app.coachup.app.theme.Purple100
 import com.app.coachup.app.utils.CalendarContentFilter
 import com.app.coachup.app.ui.calendar.CalendarScreen
+import com.app.coachup.app.ui.community.CommunityScreen
 import com.app.coachup.app.ui.qr.QREntryScreen
 import com.app.coachup.app.ui.training.TrainingScreen
 import com.app.coachup.app.navigation.NavigationStateHolder
@@ -133,6 +136,11 @@ private enum class MainTab(
         "QR Giriş",
         Icons.Filled.QrCodeScanner,
         Icons.Filled.QrCodeScanner
+    ),
+    COMMUNITY(
+        "Topluluk",
+        Icons.Filled.Groups,
+        Icons.Outlined.Groups
     )
 }
 
@@ -144,6 +152,7 @@ private fun defaultScreenToTab(screen: String): MainTab = when (screen) {
     "calendar" -> MainTab.CALENDAR
     "training" -> MainTab.TRAINING
     "qr" -> MainTab.QR_ENTRY
+    "community" -> MainTab.COMMUNITY
     else -> MainTab.HOME
 }
 
@@ -426,6 +435,8 @@ fun HomeScreen(navController: NavController) {
                             navController.navigate(Routes.ALL_ENTRY_HISTORY)
                         }
                     )
+
+                    MainTab.COMMUNITY -> CommunityScreen()
                 }
             }
 

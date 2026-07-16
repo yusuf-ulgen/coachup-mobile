@@ -50,6 +50,9 @@ object NavigationStateHolder {
     var pendingRecordAttemptExercise: Exercise? = null
     var pendingRecordMeasureType: com.app.coachup.app.models.RecordMeasureType =
         com.app.coachup.app.models.RecordMeasureType.WEIGHT
+    /** Catalog slug e.g. run_5k, pull_up — used for mode-specific session UI. */
+    var pendingRecordCatalogId: String? = null
+    var pendingRecordCategoryId: String? = null
     var pendingSummaryResult: SummaryResult? = null
 
     // ─── Result Detail ────────────────────────────────────────────────────────

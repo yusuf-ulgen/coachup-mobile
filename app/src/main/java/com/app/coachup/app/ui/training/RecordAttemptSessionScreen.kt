@@ -37,7 +37,6 @@ import com.app.coachup.app.services.RecordAttempt
 import com.app.coachup.app.services.RecordAttemptService
 import com.app.coachup.app.services.RecordAttemptSet
 import com.app.coachup.app.services.ResultsService
-import com.app.coachup.app.services.StreakService
 import com.app.coachup.app.services.SummaryResult
 import com.app.coachup.app.theme.Primary
 import com.app.coachup.app.theme.Purple100
@@ -54,9 +53,27 @@ fun RecordAttemptSessionScreen(
     initialSets: List<RecordAttemptSet>,
     exercise: Exercise,
     measureType: RecordMeasureType = RecordMeasureType.WEIGHT,
+    catalogId: String? = null,
+    categoryId: String? = null,
     onNavigateBack: () -> Unit,
     onNavigateToSummary: (SummaryResult, List<RecordAttemptSet>) -> Unit
 ) {
+    // Non-strength modes: bodyweight stopwatch, cardio timer, running GPS
+    val useTimedMode = measureType != RecordMeasureType.WEIGHT
+    if (useTimedMode) {
+        RecordTimedAttemptSession(
+            attempt = attempt,
+            initialSets = initialSets,
+            exercise = exercise,
+            measureType = measureType,
+            catalogId = catalogId,
+            categoryId = categoryId,
+            onNavigateBack = onNavigateBack,
+            onNavigateToSummary = onNavigateToSummary
+        )
+        return
+    }
+
     var sets by remember { mutableStateOf(initialSets.sortedBy { it.setIndex }.toMutableList()) }
     var currentIndex by remember {
         mutableIntStateOf(initialSets.sortedBy { it.setIndex }.indexOfFirst { !it.isCompleted }.coerceAtLeast(0))
@@ -76,6 +93,7 @@ fun RecordAttemptSessionScreen(
     var readyCheckIsMain by remember { mutableStateOf(false) }
     var readyCheckCount by remember { mutableIntStateOf(0) }
     var showAbandonAlert by remember { mutableStateOf(false) }
+    var isFinishingMain by remember { mutableStateOf(false) }
 
     val scope = rememberCoroutineScope()
 
@@ -171,55 +189,61 @@ fun RecordAttemptSessionScreen(
         sets = updated
     }
 
-    fun finishAttempt(explicitSuccess: Boolean?) {
+    fun finishAttempt(explicitSuccess: Boolean?, localSets: List<RecordAttemptSet> = sets) {
         val success = explicitSuccess ?: run {
-            val mains = sets.filter { it.setType == AttemptSetType.MAIN }
+            val mains = localSets.filter { it.setType == AttemptSetType.MAIN }
             mains.isNotEmpty() && mains.all { s -> (s.actualReps ?: 0) >= (s.prescribedReps ?: 1) }
         }
+        val completedMain = localSets.firstOrNull { it.setType == AttemptSetType.MAIN && it.isCompleted }
+        val recordWeight = completedMain?.actualWeight ?: attempt.targetWeight
+        val recordReps = completedMain?.actualReps ?: attempt.targetReps
+
         scope.launch {
+            var newPR = false
             try {
-                RecordAttemptService.completeAttempt(attempt.id, success, null)
-                val completedMain = sets.firstOrNull { it.setType == AttemptSetType.MAIN && it.isCompleted }
-                val recordWeight = completedMain?.actualWeight ?: attempt.targetWeight
-                val recordReps = completedMain?.actualReps ?: attempt.targetReps
-                try {
-                    ResultsService.upsertExerciseResult(
-                        userId = attempt.userId,
-                        exerciseId = attempt.exerciseId,
-                        weight = recordWeight,
-                        reps = recordReps
-                    )
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (_: Exception) {}
-                var newPR = false
+                // Single complete call (includes streak when success + userId)
+                RecordAttemptService.completeAttempt(
+                    attemptId = attempt.id,
+                    success = success,
+                    notes = null,
+                    userId = attempt.userId
+                )
                 if (success) {
+                    // Run result upsert + PR in parallel-ish, don't block UI longer than needed
+                    try {
+                        ResultsService.upsertExerciseResult(
+                            userId = attempt.userId,
+                            exerciseId = attempt.exerciseId,
+                            weight = recordWeight,
+                            reps = recordReps
+                        )
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (_: Exception) {
+                    }
                     newPR = try {
                         RecordAttemptService.updatePersonalRecordIfNeeded(
                             userId = attempt.userId,
                             exerciseId = attempt.exerciseId,
                             weight = recordWeight,
                             reps = recordReps,
-                            notes = null
+                            notes = null,
+                            measureType = measureType
                         )
                     } catch (e: CancellationException) {
                         throw e
-                    } catch (_: Exception) { false }
+                    } catch (_: Exception) {
+                        false
+                    }
                 }
-                try {
-                    StreakService.recordActivityAndSync(
-                        userId = attempt.userId,
-                        activityType = "record_attempt"
-                    )
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (_: Exception) {}
-                onNavigateToSummary(SummaryResult(success = success, newPersonalRecord = newPR), sets)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
                 android.util.Log.e("RecordAttemptSession", "finishAttempt error", e)
+            } finally {
+                isFinishingMain = false
             }
+            onNavigateToSummary(SummaryResult(success = success, newPersonalRecord = newPR), localSets)
         }
     }
 
@@ -284,9 +308,23 @@ fun RecordAttemptSessionScreen(
     }
 
     fun completeMainAttempt(success: Boolean) {
+        if (isFinishingMain) return
         val cs = currentSet ?: return
+        isFinishingMain = true
         val w = cs.prescribedWeight ?: attempt.targetWeight
         val r = if (success) (cs.prescribedReps ?: 1) else 0
+
+        // Optimistic local update so UI feels instant
+        val updated = sets.toMutableList()
+        val idx = updated.indexOfFirst { it.id == cs.id }
+        if (idx >= 0) {
+            updated[idx] = updated[idx].copy(
+                actualWeight = w,
+                actualReps = r,
+                isCompleted = true
+            )
+        }
+        sets = updated
 
         scope.launch {
             try {
@@ -298,22 +336,12 @@ fun RecordAttemptSessionScreen(
                     restSeconds = 0,
                     notes = null
                 )
-                val updated = sets.toMutableList()
-                val idx = updated.indexOfFirst { it.id == cs.id }
-                if (idx >= 0) {
-                    updated[idx] = updated[idx].copy(
-                        actualWeight = w,
-                        actualReps = r,
-                        isCompleted = true
-                    )
-                }
-                sets = updated
-                finishAttempt(success)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                android.util.Log.e("RecordAttemptSession", "completeMainAttempt error", e)
+                android.util.Log.e("RecordAttemptSession", "completeMainAttempt save error", e)
             }
+            finishAttempt(success, updated)
         }
     }
 
@@ -495,23 +523,33 @@ fun RecordAttemptSessionScreen(
                 ) {
                     Button(
                         onClick = { completeMainAttempt(false) },
+                        enabled = !isFinishingMain,
                         modifier = Modifier.weight(1f).height(56.dp),
                         shape = CircleShape,
                         colors = ButtonDefaults.buttonColors(containerColor = Color.Red.copy(alpha = 0.85f))
                     ) {
-                        Icon(Icons.Filled.Close, null, tint = Color.White, modifier = Modifier.size(18.dp))
-                        Spacer(Modifier.width(6.dp))
-                        Text("Yapamadım", fontWeight = FontWeight.Bold, color = Color.White)
+                        if (isFinishingMain) {
+                            CircularProgressIndicator(Modifier.size(18.dp), color = Color.White, strokeWidth = 2.dp)
+                        } else {
+                            Icon(Icons.Filled.Close, null, tint = Color.White, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text("Yapamadım", fontWeight = FontWeight.Bold, color = Color.White)
+                        }
                     }
                     Button(
                         onClick = { completeMainAttempt(true) },
+                        enabled = !isFinishingMain,
                         modifier = Modifier.weight(1f).height(56.dp),
                         shape = CircleShape,
                         colors = ButtonDefaults.buttonColors(containerColor = Primary)
                     ) {
-                        Icon(Icons.Filled.LocalFireDepartment, null, tint = Color.White, modifier = Modifier.size(18.dp))
-                        Spacer(Modifier.width(6.dp))
-                        Text("Yaptım!", fontWeight = FontWeight.Bold, color = Color.White)
+                        if (isFinishingMain) {
+                            CircularProgressIndicator(Modifier.size(18.dp), color = Color.White, strokeWidth = 2.dp)
+                        } else {
+                            Icon(Icons.Filled.LocalFireDepartment, null, tint = Color.White, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text("Yaptım!", fontWeight = FontWeight.Bold, color = Color.White)
+                        }
                     }
                 }
             } else {

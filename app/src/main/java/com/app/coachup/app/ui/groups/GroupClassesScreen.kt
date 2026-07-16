@@ -43,10 +43,31 @@ fun GroupClassesScreen(navController: NavController) {
     var isLoading by remember { mutableStateOf(true) }
     var classes by remember { mutableStateOf<List<GroupClass>>(emptyList()) }
     var myBookings by remember { mutableStateOf<List<ClassBooking>>(emptyList()) }
+    var seatCounts by remember { mutableStateOf<Map<String, Int>>(emptyMap()) }
     var actionMessage by remember { mutableStateOf<String?>(null) }
     val coroutineScope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
     val weekDays = listOf("Pzt", "Sal", "Çar", "Per", "Cm", "Cts", "Paz")
+
+    fun dateForSelectedDay(): LocalDate {
+        val todayDate = LocalDate.now()
+        val todayDow = todayDate.dayOfWeek.value - 1 // Mon=0
+        val diff = selectedDay - todayDow
+        return todayDate.plusDays(diff.toLong())
+    }
+
+    fun isClassPast(groupClass: GroupClass): Boolean {
+        val classDate = dateForSelectedDay()
+        val todayDate = LocalDate.now()
+        if (classDate.isBefore(todayDate)) return true
+        if (classDate.isAfter(todayDate)) return false
+        return try {
+            val start = java.time.LocalTime.parse(groupClass.startTime.take(5))
+            start.isBefore(java.time.LocalTime.now())
+        } catch (_: Exception) {
+            false
+        }
+    }
 
     suspend fun loadData() {
         val userId = AuthService.getCurrentUserId() ?: return
@@ -54,31 +75,13 @@ fun GroupClassesScreen(navController: NavController) {
         try {
             classes = GroupClassService.fetchClassesByDay(selectedDay)
             myBookings = GroupClassService.fetchMyBookings(userId)
+            val bookingDate = dateForSelectedDay().toString()
+            seatCounts = GroupClassService.countActiveSeatsForClasses(classes.map { it.id }, bookingDate)
         } catch (e: CancellationException) {
             throw e
         } catch (_: Exception) {
         } finally {
             isLoading = false
-        }
-    }
-
-    fun dateForSelectedDay(): LocalDate {
-        val today = LocalDate.now()
-        val todayDow = today.dayOfWeek.value - 1 // Mon=0
-        val diff = selectedDay - todayDow
-        return today.plusDays(diff.toLong())
-    }
-
-    fun isClassPast(groupClass: GroupClass): Boolean {
-        val classDate = dateForSelectedDay()
-        val today = LocalDate.now()
-        if (classDate.isBefore(today)) return true
-        if (classDate.isAfter(today)) return false
-        return try {
-            val start = java.time.LocalTime.parse(groupClass.startTime.take(5))
-            start.isBefore(java.time.LocalTime.now())
-        } catch (_: Exception) {
-            false
         }
     }
 
@@ -143,19 +146,37 @@ fun GroupClassesScreen(navController: NavController) {
             ) {
                 items(classes) { groupClass ->
                     val bookingDate = dateForSelectedDay().toString()
-                    val isBooked = myBookings.any { it.classId == groupClass.id && it.bookingDate == bookingDate }
+                    val booking = myBookings.find {
+                        it.classId == groupClass.id &&
+                            it.bookingDate == bookingDate &&
+                            GroupClassService.isJoinedStatus(it.status)
+                    }
+                    val isBooked = booking != null
+                    val isWaiting = booking != null && GroupClassService.isWaitingStatus(booking.status)
                     val isPast = isClassPast(groupClass)
+                    val currentSeats = seatCounts[groupClass.id]
+                        ?: groupClass.currentParticipants
                     GroupClassCard(
                         groupClass = groupClass,
+                        currentSeats = currentSeats,
                         isBooked = isBooked,
+                        isWaiting = isWaiting,
                         isPast = isPast,
                         onJoin = {
                             coroutineScope.launch {
                                 try {
                                     val userId = AuthService.getCurrentUserId() ?: return@launch
-                                    GroupClassService.joinClass(userId = userId, classId = groupClass.id, date = bookingDate)
+                                    val result = GroupClassService.joinClass(
+                                        userId = userId,
+                                        classId = groupClass.id,
+                                        date = bookingDate
+                                    )
                                     loadData()
-                                    actionMessage = "Derse katıldınız."
+                                    actionMessage = when (result) {
+                                        GroupClassService.JoinResult.WAITING -> "Bekleme listesine eklendiniz."
+                                        GroupClassService.JoinResult.ALREADY_JOINED -> "Zaten kayıtlısınız."
+                                        GroupClassService.JoinResult.CONFIRMED -> "Derse katıldınız."
+                                    }
                                 } catch (e: CancellationException) {
                                     throw e
                                 } catch (_: Exception) {
@@ -167,12 +188,10 @@ fun GroupClassesScreen(navController: NavController) {
                             coroutineScope.launch {
                                 try {
                                     val userId = AuthService.getCurrentUserId() ?: return@launch
-                                    val booking = myBookings.find {
-                                        it.classId == groupClass.id && it.bookingDate == bookingDate
-                                    } ?: return@launch
-                                    GroupClassService.leaveClass(bookingId = booking.id, userId = userId)
+                                    val b = booking ?: return@launch
+                                    GroupClassService.leaveClass(bookingId = b.id, userId = userId)
                                     loadData()
-                                    actionMessage = "Dersten ayrıldınız."
+                                    actionMessage = if (isWaiting) "Bekleme listesinden çıktınız." else "Dersten ayrıldınız."
                                 } catch (e: CancellationException) {
                                     throw e
                                 } catch (_: Exception) {
@@ -199,12 +218,14 @@ fun GroupClassesScreen(navController: NavController) {
 @Composable
 private fun GroupClassCard(
     groupClass: GroupClass,
+    currentSeats: Int,
     isBooked: Boolean,
+    isWaiting: Boolean,
     isPast: Boolean,
     onJoin: () -> Unit,
     onLeave: () -> Unit
 ) {
-    val isFull = groupClass.currentParticipants >= groupClass.capacity
+    val isFull = currentSeats >= groupClass.capacity
 
     Column(
         modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(Radius.card)).background(MaterialTheme.colorScheme.surface).padding(16.dp),
@@ -215,10 +236,13 @@ private fun GroupClassCard(
                 Text(text = groupClass.name, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onBackground)
                 groupClass.instructorName?.let { Text(text = it, fontSize = 13.sp, color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.5f)) }
             }
-            if (isBooked) {
-                Box(modifier = Modifier.clip(RoundedCornerShape(Radius.pill)).background(Color(0xFF4CAF50).copy(alpha = 0.15f)).padding(horizontal = 10.dp, vertical = 4.dp)) {
-                    Text(text = "Katıldın", fontSize = 11.sp, fontWeight = FontWeight.Medium, color = Color(0xFF4CAF50))
-                }
+            when {
+                isWaiting -> Box(
+                    modifier = Modifier.clip(RoundedCornerShape(Radius.pill)).background(Color(0xFFFF9800).copy(alpha = 0.15f)).padding(horizontal = 10.dp, vertical = 4.dp)
+                ) { Text(text = "Yedekte", fontSize = 11.sp, fontWeight = FontWeight.Medium, color = Color(0xFFFF9800)) }
+                isBooked -> Box(
+                    modifier = Modifier.clip(RoundedCornerShape(Radius.pill)).background(Color(0xFF4CAF50).copy(alpha = 0.15f)).padding(horizontal = 10.dp, vertical = 4.dp)
+                ) { Text(text = "Katıldın", fontSize = 11.sp, fontWeight = FontWeight.Medium, color = Color(0xFF4CAF50)) }
             }
         }
 
@@ -239,7 +263,7 @@ private fun GroupClassCard(
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                 Icon(Icons.Default.Group, contentDescription = null, tint = if (isFull) Color.Red else Primary, modifier = Modifier.size(14.dp))
                 Text(
-                    text = "${groupClass.currentParticipants}/${groupClass.capacity}",
+                    text = "$currentSeats/${groupClass.capacity}",
                     fontSize = 13.sp,
                     color = if (isFull) Color.Red else MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f)
                 )
@@ -255,9 +279,12 @@ private fun GroupClassCard(
                     border = ButtonDefaults.outlinedButtonBorder.copy(width = 1.dp),
                     contentPadding = PaddingValues(horizontal = 16.dp, vertical = 6.dp)
                 ) { Text("Ayrıl", fontSize = 13.sp) }
-                isFull -> Box(
-                    modifier = Modifier.clip(RoundedCornerShape(Radius.pill)).background(MaterialTheme.colorScheme.onBackground.copy(alpha = 0.08f)).padding(horizontal = 16.dp, vertical = 8.dp)
-                ) { Text("Dolu", fontSize = 13.sp, color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.4f)) }
+                isFull -> Button(
+                    onClick = onJoin,
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF9800)),
+                    shape = RoundedCornerShape(Radius.pill),
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                ) { Text("Bekleme Listesi", fontSize = 12.sp) }
                 else -> Button(
                     onClick = onJoin,
                     colors = ButtonDefaults.buttonColors(containerColor = Primary),

@@ -5,8 +5,11 @@ import com.app.coachup.app.models.Exercise
 import com.app.coachup.app.models.PersonalRecord
 import com.app.coachup.app.models.PersonalRecordInsert
 import com.app.coachup.app.models.RecordExercise
+import com.app.coachup.app.models.RecordMeasureType
 import io.github.jan.supabase.postgrest.from
 import io.github.jan.supabase.postgrest.query.Order
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import java.time.Instant
@@ -207,6 +210,68 @@ object RecordAttemptService {
             }
             .decodeList<RecordAttempt>()
 
+    /** Past attempts for one exercise (history list on setup/detail). */
+    suspend fun fetchAttemptsForExercise(
+        userId: String,
+        exerciseId: String,
+        limit: Int = 20
+    ): List<RecordAttempt> = withContext(Dispatchers.IO) {
+        try {
+            supabase.from("record_attempts")
+                .select {
+                    filter {
+                        eq("user_id", userId)
+                        eq("exercise_id", exerciseId)
+                        neq("status", "in_progress")
+                    }
+                    order("completed_at", Order.DESCENDING)
+                    limit(limit.toLong())
+                }
+                .decodeList<RecordAttempt>()
+        } catch (_: Exception) {
+            emptyList()
+        }
+    }
+
+    suspend fun fetchPersonalRecordsForExercise(
+        userId: String,
+        exerciseId: String,
+        limit: Int = 10
+    ): List<PersonalRecord> = withContext(Dispatchers.IO) {
+        try {
+            supabase.from("personal_records")
+                .select {
+                    filter {
+                        eq("user_id", userId)
+                        eq("exercise_id", exerciseId)
+                    }
+                    order("record_date", Order.DESCENDING)
+                    limit(limit.toLong())
+                }
+                .decodeList()
+        } catch (_: Exception) {
+            emptyList()
+        }
+    }
+
+    suspend fun fetchMainSetsForAttempts(attemptIds: List<String>): Map<String, RecordAttemptSet> {
+        if (attemptIds.isEmpty()) return emptyMap()
+        return try {
+            supabase.from("record_attempt_sets")
+                .select {
+                    filter {
+                        isIn("attempt_id", attemptIds)
+                        eq("set_type", "main")
+                        eq("is_completed", true)
+                    }
+                }
+                .decodeList<RecordAttemptSet>()
+                .associateBy { it.attemptId }
+        } catch (_: Exception) {
+            emptyMap()
+        }
+    }
+
     // -----------------------------------------------------------------------
     // Attempt lifecycle
     // -----------------------------------------------------------------------
@@ -218,7 +283,8 @@ object RecordAttemptService {
         targetReps: Int
     ): RecordAttempt {
         val attemptId = UUID.randomUUID().toString()
-        val estimated = PlateCalculator.epley1RM(targetWeight, targetReps)
+        val estimated = PlateCalculator.epley1RM(targetWeight.coerceAtLeast(0.0), targetReps.coerceAtLeast(1))
+        val started = nowIso()
         val insert = RecordAttemptInsert(
             id = attemptId,
             userId = userId,
@@ -230,12 +296,22 @@ object RecordAttemptService {
             success = false,
             notes = null,
             sourceDevice = null,
-            startedAt = nowIso()
+            startedAt = started
         )
+        // Skip re-select round-trip — return local model immediately
         supabase.from("record_attempts").insert(insert)
-        return supabase.from("record_attempts")
-            .select { filter { eq("id", attemptId) } }
-            .decodeSingle<RecordAttempt>()
+        return RecordAttempt(
+            id = attemptId,
+            userId = userId,
+            exerciseId = exerciseId,
+            targetWeight = targetWeight,
+            targetReps = targetReps,
+            estimated1RM = estimated,
+            status = "in_progress",
+            success = false,
+            startedAt = started,
+            createdAt = started
+        )
     }
 
     suspend fun insertPlannedSets(
@@ -256,9 +332,19 @@ object RecordAttemptService {
             )
         }
         supabase.from("record_attempt_sets").insert(inserts)
-        return supabase.from("record_attempt_sets")
-            .select { filter { eq("attempt_id", attemptId) }; order("set_index", Order.ASCENDING) }
-            .decodeList<RecordAttemptSet>()
+        // Build local list without second fetch
+        return inserts.map { ins ->
+            RecordAttemptSet(
+                id = ins.id,
+                attemptId = ins.attemptId,
+                userId = ins.userId,
+                setIndex = ins.setIndex,
+                setTypeRaw = ins.setType,
+                prescribedWeight = ins.prescribedWeight,
+                prescribedReps = ins.prescribedReps,
+                isCompleted = false
+            )
+        }
     }
 
     suspend fun saveSet(
@@ -283,11 +369,16 @@ object RecordAttemptService {
             ) { filter { eq("id", setId) } }
     }
 
-    suspend fun completeAttempt(attemptId: String, success: Boolean, notes: String?) {
-        val attempt = supabase.from("record_attempts")
-            .select { filter { eq("id", attemptId) } }
-            .decodeSingle<RecordAttempt>()
-
+    /**
+     * Mark attempt done. [userId] optional — when provided, skips extra SELECT.
+     * Streak is best-effort and non-blocking for callers who fire-and-forget.
+     */
+    suspend fun completeAttempt(
+        attemptId: String,
+        success: Boolean,
+        notes: String?,
+        userId: String? = null
+    ) {
         supabase.from("record_attempts")
             .update(
                 RecordAttemptCompleteUpdate(
@@ -298,8 +389,11 @@ object RecordAttemptService {
                 )
             ) { filter { eq("id", attemptId) } }
 
-        if (success) {
-            StreakService.recordActivityAndSync(attempt.userId, activityType = "Rekor Denemesi")
+        if (success && userId != null) {
+            try {
+                StreakService.recordActivityAndSync(userId, activityType = "record_attempt")
+            } catch (_: Exception) {
+            }
         }
     }
 
@@ -315,13 +409,23 @@ object RecordAttemptService {
             ) { filter { eq("id", attemptId) } }
     }
 
-    /** Returns true if a new personal record row was inserted. */
+    /**
+     * Returns true if a new personal record row was inserted.
+     * [measureType] controls comparison (weight 1RM / max reps / min time).
+     *
+     * Storage convention:
+     * - WEIGHT: weight=kg, reps=reps
+     * - REPS: weight=0, reps=rep count
+     * - TIME / running: weight=seconds, reps=1
+     * - CALORIES: weight=calories, reps=seconds taken (or 1)
+     */
     suspend fun updatePersonalRecordIfNeeded(
         userId: String,
         exerciseId: String,
         weight: Double,
         reps: Int,
-        notes: String?
+        notes: String?,
+        measureType: RecordMeasureType = RecordMeasureType.WEIGHT
     ): Boolean {
         val existing = supabase.from("personal_records")
             .select {
@@ -334,11 +438,19 @@ object RecordAttemptService {
             }
             .decodeList<PersonalRecord>()
 
-        val new1RM = PlateCalculator.epley1RM(weight, reps)
-        if (existing.isNotEmpty()) {
-            val latest1RM = PlateCalculator.epley1RM(existing.first().weight, existing.first().reps)
-            if (new1RM <= latest1RM) return false
+        val isBetter = if (existing.isEmpty()) {
+            true
+        } else {
+            val prev = existing.first()
+            isBetterPersonalRecord(
+                measureType = measureType,
+                newWeight = weight,
+                newReps = reps,
+                prevWeight = prev.weight,
+                prevReps = prev.reps
+            )
         }
+        if (!isBetter) return false
 
         supabase.from("personal_records").insert(
             PersonalRecordInsert(
@@ -351,5 +463,64 @@ object RecordAttemptService {
             )
         )
         return true
+    }
+
+    /** Running target distance in km from catalog exercise id. */
+    fun runningTargetKm(catalogId: String): Double = when {
+        catalogId.contains("400") -> 0.4
+        catalogId.contains("800") -> 0.8
+        catalogId.contains("1k") || catalogId.endsWith("_1k") -> 1.0
+        catalogId.contains("3k") -> 3.0
+        catalogId.contains("5k") -> 5.0
+        catalogId.contains("10k") -> 10.0
+        catalogId.contains("half") || catalogId.contains("21") -> 21.0975
+        catalogId.contains("full") || catalogId.contains("42") -> 42.195
+        else -> 1.0
+    }
+
+    /**
+     * Pure PR comparison — unit-tested.
+     *
+     * Storage convention:
+     * - WEIGHT: weight=kg, reps=reps (compare estimated 1RM)
+     * - REPS / AMRAP rounds: higher reps wins
+     * - TIME / DISTANCE: lower weight (seconds) wins
+     * - CALORIES: higher cal wins; same cal → lower time (reps) wins
+     */
+    fun isBetterPersonalRecord(
+        measureType: RecordMeasureType,
+        newWeight: Double,
+        newReps: Int,
+        prevWeight: Double,
+        prevReps: Int
+    ): Boolean = when (measureType) {
+        RecordMeasureType.WEIGHT -> {
+            val new1RM = PlateCalculator.epley1RM(newWeight, newReps.coerceAtLeast(1))
+            val old1RM = PlateCalculator.epley1RM(prevWeight, prevReps.coerceAtLeast(1))
+            new1RM > old1RM
+        }
+        RecordMeasureType.REPS -> newReps > prevReps
+        RecordMeasureType.TIME, RecordMeasureType.DISTANCE ->
+            newWeight > 0 && (prevWeight <= 0 || newWeight < prevWeight)
+        RecordMeasureType.CALORIES -> when {
+            newWeight > prevWeight -> true
+            newWeight == prevWeight ->
+                newReps > 0 && (prevReps <= 0 || newReps < prevReps)
+            else -> false
+        }
+    }
+
+    /**
+     * Join capacity decision for waitlist UX (mirrors class/event join).
+     * @return WAITING if full, CONFIRMED if seat available, ALREADY_JOINED if already in.
+     */
+    fun resolveJoinResult(
+        alreadyJoined: Boolean,
+        currentSeats: Int,
+        capacity: Int?
+    ): GroupClassService.JoinResult = when {
+        alreadyJoined -> GroupClassService.JoinResult.ALREADY_JOINED
+        capacity != null && currentSeats >= capacity -> GroupClassService.JoinResult.WAITING
+        else -> GroupClassService.JoinResult.CONFIRMED
     }
 }

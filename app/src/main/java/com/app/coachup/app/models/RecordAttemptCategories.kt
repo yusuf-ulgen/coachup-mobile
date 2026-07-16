@@ -98,10 +98,12 @@ object RecordAttemptCategories {
             id = "benchmark",
             name = "CrossFit Benchmark WOD'ları",
             exercises = listOf(
+                // For Time — kronometre + Bitir
                 wod("fran",    "Fran"),
                 wod("grace",   "Grace"),
                 wod("helen",   "Helen"),
-                wod("cindy",   "Cindy"),
+                // AMRAP 20 dk — geri sayım, bitince tur gir
+                wodAmrap("cindy", "Cindy", minutes = 20),
                 wod("murph",   "Murph"),
                 wod("annie",   "Annie"),
                 wod("diane",   "Diane"),
@@ -112,6 +114,15 @@ object RecordAttemptCategories {
             )
         )
     )
+
+    /** Cindy vb. AMRAP: defaultTarget = süre limiti (saniye). */
+    fun isAmrapCatalog(catalogId: String?): Boolean =
+        catalogId != null && catalogId.equals("cindy", ignoreCase = true)
+
+    fun amrapCapSeconds(catalogId: String?): Int = when {
+        catalogId.equals("cindy", ignoreCase = true) -> 20 * 60
+        else -> 0
+    }
 
     fun findCategory(id: String): RecordCategory? = all.firstOrNull { it.id == id }
 
@@ -145,5 +156,11 @@ object RecordAttemptCategories {
         id = id, name = name,
         measureType = RecordMeasureType.TIME,
         defaultTarget = 600.0
+    )
+
+    private fun wodAmrap(id: String, name: String, minutes: Int) = RecordExercise(
+        id = id, name = name,
+        measureType = RecordMeasureType.TIME,
+        defaultTarget = (minutes * 60).toDouble()
     )
 }

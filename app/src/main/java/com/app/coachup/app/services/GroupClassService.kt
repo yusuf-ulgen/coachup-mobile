@@ -18,11 +18,21 @@ import kotlinx.coroutines.CancellationException
  * Android equivalent of iOS GroupClassService.
  *
  * Mirrors tables: group_classes, class_bookings.
+ * Status: booked | confirmed | waiting | attended | cancelled | no_show
  */
 object GroupClassService {
 
     private val _isLoading = MutableStateFlow(false)
     val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
+
+    enum class JoinResult { CONFIRMED, WAITING, ALREADY_JOINED }
+
+    private val ACTIVE_SEAT_STATUSES = setOf("booked", "confirmed", "attended")
+    private val JOINED_STATUSES = setOf("booked", "confirmed", "waiting", "attended")
+
+    fun isActiveSeat(status: String): Boolean = status.lowercase() in ACTIVE_SEAT_STATUSES
+    fun isJoinedStatus(status: String): Boolean = status.lowercase() in JOINED_STATUSES
+    fun isWaitingStatus(status: String): Boolean = status.equals("waiting", ignoreCase = true)
 
     // -------------------------------------------------------------------------
     // Fetch Classes
@@ -64,17 +74,30 @@ object GroupClassService {
     // Bookings
     // -------------------------------------------------------------------------
 
-    suspend fun joinClass(userId: String, classId: String, date: String) {
+    /**
+     * Join or waitlist. If capacity full → status=waiting, else booked.
+     */
+    suspend fun joinClass(userId: String, classId: String, date: String): JoinResult {
         _isLoading.value = true
         try {
+            val existing = fetchBookingsForDate(userId, java.time.LocalDate.parse(date))
+                .firstOrNull { it.classId == classId && isJoinedStatus(it.status) }
+            if (existing != null) return JoinResult.ALREADY_JOINED
+
+            val groupClass = fetchClassesByIds(listOf(classId)).firstOrNull()
+            val capacity = groupClass?.capacity ?: Int.MAX_VALUE
+            val current = countActiveSeats(classId, date)
+            val status = if (current >= capacity) "waiting" else "booked"
+
             val insert = ClassBookingInsert(
                 userId = userId,
                 classId = classId,
                 gymId = UserService.resolveActiveGymIdForContent() ?: GymConfig.GYM_ID,
                 bookingDate = date,
-                status = "booked"
+                status = status
             )
             client.postgrest["class_bookings"].insert(insert)
+            return if (status == "waiting") JoinResult.WAITING else JoinResult.CONFIRMED
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -87,6 +110,17 @@ object GroupClassService {
     suspend fun leaveClass(bookingId: String, userId: String) {
         _isLoading.value = true
         try {
+            val booking = client.postgrest["class_bookings"]
+                .select {
+                    filter {
+                        eq("id", bookingId)
+                        eq("user_id", userId)
+                    }
+                    limit(1)
+                }
+                .decodeList<ClassBooking>()
+                .firstOrNull()
+
             client.postgrest["class_bookings"]
                 .delete {
                     filter {
@@ -94,12 +128,83 @@ object GroupClassService {
                         eq("user_id", userId)
                     }
                 }
+
+            // Promote oldest waiting member when a seat frees up
+            if (booking != null && isActiveSeat(booking.status)) {
+                promoteNextWaiting(booking.classId, booking.bookingDate)
+            }
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
             throw e
         } finally {
             _isLoading.value = false
+        }
+    }
+
+    private suspend fun promoteNextWaiting(classId: String, bookingDate: String) {
+        try {
+            val waiting = client.postgrest["class_bookings"]
+                .select {
+                    filter {
+                        eq("class_id", classId)
+                        eq("booking_date", bookingDate)
+                        eq("status", "waiting")
+                    }
+                    order("created_at", Order.ASCENDING)
+                    limit(1)
+                }
+                .decodeList<ClassBooking>()
+                .firstOrNull() ?: return
+
+            client.postgrest["class_bookings"]
+                .update(mapOf("status" to "booked")) {
+                    filter { eq("id", waiting.id) }
+                }
+        } catch (_: Exception) {
+            // Best-effort promote; ignore if RLS/schema blocks
+        }
+    }
+
+    /** Confirmed seats for class+date (excludes waiting). */
+    suspend fun countActiveSeats(classId: String, date: String): Int {
+        return try {
+            client.postgrest["class_bookings"]
+                .select {
+                    filter {
+                        eq("class_id", classId)
+                        eq("booking_date", date)
+                        isIn("status", ACTIVE_SEAT_STATUSES.toList())
+                    }
+                }
+                .decodeList<ClassBooking>()
+                .size
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            0
+        }
+    }
+
+    /** Map classId → active seat count for a date. */
+    suspend fun countActiveSeatsForClasses(classIds: List<String>, date: String): Map<String, Int> {
+        if (classIds.isEmpty()) return emptyMap()
+        return try {
+            client.postgrest["class_bookings"]
+                .select {
+                    filter {
+                        isIn("class_id", classIds)
+                        eq("booking_date", date)
+                        isIn("status", ACTIVE_SEAT_STATUSES.toList())
+                    }
+                }
+                .decodeList<ClassBooking>()
+                .groupingBy { it.classId }
+                .eachCount()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            emptyMap()
         }
     }
 
@@ -110,11 +215,15 @@ object GroupClassService {
         return try {
             client.postgrest["class_bookings"]
                 .select {
-                    filter { eq("user_id", userId) }
+                    filter {
+                        eq("user_id", userId)
+                        neq("status", "cancelled")
+                    }
                     order("booking_date", Order.DESCENDING)
                     limit(limit.toLong())
                 }
                 .decodeList<ClassBooking>()
+                .filter { isJoinedStatus(it.status) }
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -130,9 +239,11 @@ object GroupClassService {
                     filter {
                         eq("user_id", userId)
                         eq("booking_date", dateStr)
+                        neq("status", "cancelled")
                     }
                 }
                 .decodeList<ClassBooking>()
+                .filter { isJoinedStatus(it.status) }
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {

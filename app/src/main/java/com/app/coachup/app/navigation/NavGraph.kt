@@ -423,11 +423,13 @@ fun NavGraph(
             RecordAttemptSetupScreen(
                 userId = userId,
                 onNavigateBack = { navController.popBackStack() },
-                onNavigateToSession = { attempt, sets, exercise, measureType ->
+                onNavigateToSession = { attempt, sets, exercise, measureType, catalogId, categoryId ->
                     NavigationStateHolder.pendingRecordAttempt = attempt
                     NavigationStateHolder.pendingRecordAttemptSets = sets
                     NavigationStateHolder.pendingRecordAttemptExercise = exercise
                     NavigationStateHolder.pendingRecordMeasureType = measureType
+                    NavigationStateHolder.pendingRecordCatalogId = catalogId
+                    NavigationStateHolder.pendingRecordCategoryId = categoryId
                     navController.navigate(Routes.RECORD_ATTEMPT_SESSION)
                 }
             )
@@ -455,12 +457,24 @@ fun NavGraph(
                     com.app.coachup.app.models.RecordMeasureType.WEIGHT
                 m
             }
+            val catalogId = remember {
+                val id = NavigationStateHolder.pendingRecordCatalogId
+                NavigationStateHolder.pendingRecordCatalogId = null
+                id
+            }
+            val categoryId = remember {
+                val id = NavigationStateHolder.pendingRecordCategoryId
+                NavigationStateHolder.pendingRecordCategoryId = null
+                id
+            }
             if (attempt != null && exercise != null) {
                 RecordAttemptSessionScreen(
                     attempt = attempt,
                     initialSets = sets,
                     exercise = exercise,
                     measureType = measureType,
+                    catalogId = catalogId,
+                    categoryId = categoryId,
                     onNavigateBack = { navController.popBackStack() },
                     onNavigateToSummary = { summaryResult, completedSets ->
                         NavigationStateHolder.pendingRecordAttempt = attempt
