@@ -1,0 +1,86 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- Network access required for Supabase API calls -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Camera required for QR-code scanning -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <!-- Optional: vibrate on QR scan success -->
+    <uses-permission android:name="android.permission.VIBRATE" />
+    <!-- Location for GPS workout tracking -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
+    <!-- Notifications (Android 13+) -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Health Connect — heart rate during workouts (Play Console declaration required) -->
+    <uses-permission android:name="android.permission.health.READ_HEART_RATE" />
+
+    <queries>
+        <package android:name="com.google.android.apps.healthdata" />
+    </queries>
+
+    <application
+        android:name=".CoachUpApp"
+        android:allowBackup="true"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:fullBackupContent="@xml/backup_rules"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:supportsRtl="false"
+        android:theme="@style/Theme.CoachUP"
+        tools:targetApi="31">
+
+        <!--
+             MainActivity is the sole Activity.
+             FLAG_ACTIVITY_SINGLE_TOP prevents multiple instances when the
+             app is resumed from the launcher while already running.
+        -->
+        <!-- Google Maps API key — replace YOUR_API_KEY_HERE with the real key from Google Cloud Console -->
+        <meta-data
+            android:name="com.google.android.geo.API_KEY"
+            android:value="AIzaSyBnbHJfEa1GLOSKiVxxix-lrNPgn7di938" />
+
+        <!-- FileProvider for sharing captured images -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.provider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:launchMode="singleTop"
+            android:windowSoftInputMode="adjustResize"
+            android:theme="@style/Theme.CoachUP">
+
+            <!-- Launcher intent filter – makes this the entry-point Activity -->
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!-- Health Connect: permission usage rationale (Google Play requirement) -->
+        <activity-alias
+            android:name="ViewPermissionUsageActivity"
+            android:exported="true"
+            android:targetActivity=".MainActivity"
+            android:permission="android.permission.START_VIEW_PERMISSION_USAGE">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW_PERMISSION_USAGE" />
+                <category android:name="android.intent.category.HEALTH_PERMISSIONS" />
+            </intent-filter>
+        </activity-alias>
+
+    </application>
+
+</manifest>

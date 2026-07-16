@@ -1,0 +1,19 @@
+<resources>
+  <!-- Ana uygulama teması — splash sonrası -->
+  <style name="Theme.CoachUP.Main" parent="Theme.Material3.DayNight.NoActionBar">
+    <item name="colorPrimary">#FF6047</item>
+    <item name="colorOnPrimary">#FFFFFF</item>
+    <item name="colorPrimaryVariant">#FF6047</item>
+    <item name="colorSecondary">#231C33</item>
+    <item name="colorOnSecondary">#FFFFFF</item>
+    <item name="android:statusBarColor">@android:color/transparent</item>
+    <item name="android:navigationBarColor">@android:color/transparent</item>
+    <item name="android:windowLightStatusBar">true</item>
+  </style>
+
+  <!-- Açılış — düz marka rengi (Android 12 dairesel maske yatay logoyu kırpar) -->
+  <style name="Theme.CoachUP" parent="Theme.SplashScreen">
+    <item name="windowSplashScreenBackground">#FFFF6148</item>
+    <item name="postSplashScreenTheme">@style/Theme.CoachUP.Main</item>
+  </style>
+</resources>

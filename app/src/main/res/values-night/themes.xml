@@ -1,0 +1,13 @@
+<resources>
+  <!-- Gece modu: yalnızca ana temayı override et; splash teması values/themes.xml'den gelir -->
+  <style name="Theme.CoachUP.Main" parent="Theme.Material3.DayNight.NoActionBar">
+    <item name="colorPrimary">#FF6047</item>
+    <item name="colorOnPrimary">#FFFFFF</item>
+    <item name="colorPrimaryVariant">#FF6047</item>
+    <item name="colorSecondary">#352C4C</item>
+    <item name="colorOnSecondary">#FFFFFF</item>
+    <item name="android:statusBarColor">@android:color/transparent</item>
+    <item name="android:navigationBarColor">@android:color/transparent</item>
+    <item name="android:windowLightStatusBar">false</item>
+  </style>
+</resources>

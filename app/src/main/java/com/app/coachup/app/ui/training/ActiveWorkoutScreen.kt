@@ -1,0 +1,2833 @@
+package com.app.coachup.app.ui.training
+
+import android.Manifest
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.health.connect.client.PermissionController
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
+
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.*
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import androidx.lifecycle.viewmodel.compose.viewModel
+import coil.compose.AsyncImage
+import com.google.accompanist.permissions.ExperimentalPermissionsApi
+import com.google.accompanist.permissions.isGranted
+import com.google.accompanist.permissions.rememberPermissionState
+import com.google.android.gms.maps.CameraUpdateFactory
+import com.google.android.gms.maps.model.CameraPosition
+import com.google.android.gms.maps.model.LatLng
+import com.google.maps.android.compose.Circle
+import com.google.maps.android.compose.GoogleMap
+import com.google.maps.android.compose.MapProperties
+import com.google.maps.android.compose.MapUiSettings
+import com.google.maps.android.compose.Marker
+import com.google.maps.android.compose.MarkerState
+import com.google.maps.android.compose.Polyline
+import com.google.maps.android.compose.rememberCameraPositionState
+import com.app.coachup.app.models.*
+import com.app.coachup.app.services.AuthService
+import com.app.coachup.app.services.HealthConnectService
+import com.app.coachup.app.services.LocationTrackingService
+import com.app.coachup.app.services.StreakService
+import com.app.coachup.app.services.WorkoutService
+import com.app.coachup.app.theme.*
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
+
+// ---------------------------------------------------------------------------
+// Summary data — replaces the old Triple so GPS fields can be passed through
+// ---------------------------------------------------------------------------
+
+data class WorkoutCompletionData(
+    val durationSeconds: Int,
+    val completedSets: Int,
+    val totalSets: Int,
+    val distanceKm: Double = 0.0,
+    val avgPaceMinPerKm: Double = 0.0,
+    val avgSpeedKmh: Double = 0.0,
+    val altitudeGainM: Double = 0.0,
+    val splits: List<KmSplit> = emptyList(),
+    val routePoints: List<Pair<Double, Double>> = emptyList()
+)
+
+// ---------------------------------------------------------------------------
+// ViewModel
+// ---------------------------------------------------------------------------
+
+class ActiveWorkoutViewModel : ViewModel() {
+
+    private val _programExercises = MutableStateFlow<List<ProgramExercise>>(emptyList())
+    val programExercises: StateFlow<List<ProgramExercise>> = _programExercises.asStateFlow()
+
+    private val _workoutSets = MutableStateFlow<List<WorkoutSet>>(emptyList())
+    val workoutSets: StateFlow<List<WorkoutSet>> = _workoutSets.asStateFlow()
+
+    private val _isLoading = MutableStateFlow(true)
+    val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
+
+    private val _elapsedSeconds = MutableStateFlow(0)
+    val elapsedSeconds: StateFlow<Int> = _elapsedSeconds.asStateFlow()
+
+    private val _showRestTimer = MutableStateFlow(false)
+    val showRestTimer: StateFlow<Boolean> = _showRestTimer.asStateFlow()
+
+    private val _restSecondsRemaining = MutableStateFlow(0)
+    val restSecondsRemaining: StateFlow<Int> = _restSecondsRemaining.asStateFlow()
+
+    private val _currentExerciseIndex = MutableStateFlow(0)
+    val currentExerciseIndex: StateFlow<Int> = _currentExerciseIndex.asStateFlow()
+
+    private val _editingSetId = MutableStateFlow<String?>(null)
+    val editingSetId: StateFlow<String?> = _editingSetId.asStateFlow()
+
+    val editReps = MutableStateFlow("")
+    val editWeight = MutableStateFlow("")
+
+    private val _error = MutableStateFlow<String?>(null)
+    val error: StateFlow<String?> = _error.asStateFlow()
+
+    private val _completed = MutableStateFlow(false)
+    val completed: StateFlow<Boolean> = _completed.asStateFlow()
+
+    private var timerJob: Job? = null
+    private var restTimerJob: Job? = null
+
+    val completedSetsCount get() = _workoutSets.value.count { it.isCompleted }
+    val totalSetsCount get() = _workoutSets.value.size
+
+    val overallProgress: Double
+        get() = if (totalSetsCount == 0) 0.0 else completedSetsCount.toDouble() / totalSetsCount
+
+    fun currentSets(): List<WorkoutSet> {
+        val exercises = _programExercises.value
+        val idx = _currentExerciseIndex.value
+        if (idx >= exercises.size) return emptyList()
+        val exerciseId = exercises[idx].exerciseId
+        return _workoutSets.value
+            .filter { it.exerciseId == exerciseId }
+            .sortedBy { it.setNumber }
+    }
+
+    fun currentExercise(): ProgramExercise? {
+        val exercises = _programExercises.value
+        val idx = _currentExerciseIndex.value
+        return if (idx < exercises.size) exercises[idx] else null
+    }
+
+    fun loadWorkout(sessionId: String, programId: String, userId: String) {
+        viewModelScope.launch {
+            _isLoading.value = true
+            try {
+                if (programId.startsWith("builtin_")) {
+                    _programExercises.value = emptyList()
+                    _workoutSets.value = emptyList()
+                    _isLoading.value = false
+                    return@launch
+                }
+
+                val exercises = WorkoutService.fetchExercises(programId)
+                _programExercises.value = exercises
+                if (exercises.isEmpty()) { _isLoading.value = false; return@launch }
+
+                val existing = WorkoutService.fetchWorkoutSets(sessionId)
+                if (existing.isEmpty()) {
+                    WorkoutService.createWorkoutSet(sessionId, userId, exercises)
+                    _workoutSets.value = WorkoutService.fetchWorkoutSets(sessionId)
+                } else {
+                    _workoutSets.value = existing
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _error.value = "Antrenman yüklenemedi"
+            }
+            _isLoading.value = false
+        }
+    }
+
+    fun startTimer() {
+        timerJob?.cancel()
+        timerJob = viewModelScope.launch {
+            while (true) {
+                delay(1000)
+                _elapsedSeconds.value++
+            }
+        }
+    }
+
+    fun stopTimer() {
+        timerJob?.cancel()
+    }
+
+    private val _isPaused = MutableStateFlow(false)
+    val isPaused: StateFlow<Boolean> = _isPaused.asStateFlow()
+
+    fun pauseTimer() {
+        if (!_isPaused.value) {
+            _isPaused.value = true
+            timerJob?.cancel()
+        }
+    }
+
+    fun resumeTimer() {
+        if (_isPaused.value) {
+            _isPaused.value = false
+            startTimer()
+        }
+    }
+
+    /** Mirrors iOS togglePause(): pauses the elapsed timer. */
+    fun togglePause() {
+        if (_isPaused.value) resumeTimer() else pauseTimer()
+    }
+
+    /** Mirrors iOS "Set Tamamla" → triggerRestTimer() for the HR-only strength view. */
+    fun triggerRest(seconds: Int = 60) {
+        startRestTimer(seconds)
+    }
+
+    fun beginEditing(set: WorkoutSet) {
+        _editingSetId.value = set.id
+        editReps.value = set.reps.toString()
+        editWeight.value = set.weight?.let { String.format("%.1f", it) } ?: ""
+    }
+
+    fun completeSet(set: WorkoutSet, sessionId: String) {
+        val reps = editReps.value.toIntOrNull() ?: set.reps
+        val weight = editWeight.value.toDoubleOrNull()
+        _editingSetId.value = null
+
+        viewModelScope.launch {
+            try {
+                WorkoutService.completeWorkoutSet(set.id, reps, weight)
+                _workoutSets.value = _workoutSets.value.map { s ->
+                    if (s.id == set.id) s.copy(reps = reps, weight = weight, isCompleted = true)
+                    else s
+                }
+                // Trigger rest timer if more sets remain in this exercise
+                val remaining = currentSets().filter { !it.isCompleted && it.id != set.id }
+                if (remaining.isNotEmpty()) {
+                    val restSecs = currentExercise()?.restSeconds ?: 60
+                    startRestTimer(restSecs)
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _error.value = "Set tamamlanamadı"
+            }
+        }
+    }
+
+    fun completeWorkout(
+        sessionId: String,
+        userId: String,
+        activityType: String = "workout",
+        durationMinutes: Int? = null,
+        completionNotes: String? = null,
+        onDone: (durationSeconds: Int, completedSets: Int, totalSets: Int) -> Unit
+    ) {
+        onDone(_elapsedSeconds.value, completedSetsCount, totalSetsCount)
+        viewModelScope.launch {
+            try {
+                WorkoutService.completeSession(sessionId, completionNotes)
+                try {
+                    StreakService.recordActivityAndSync(
+                        userId = userId,
+                        activityType = activityType,
+                        durationMinutes = durationMinutes
+                    )
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (_: Exception) {}
+                _completed.value = true
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _error.value = "Antrenman tamamlanamadı"
+            }
+        }
+    }
+
+    fun setCurrentExerciseIndex(index: Int) {
+        _currentExerciseIndex.value = index
+        _editingSetId.value = null
+    }
+
+    fun dismissRestTimer() {
+        restTimerJob?.cancel()
+        _showRestTimer.value = false
+    }
+
+    private fun startRestTimer(seconds: Int) {
+        restTimerJob?.cancel()
+        _restSecondsRemaining.value = seconds
+        _showRestTimer.value = true
+        restTimerJob = viewModelScope.launch {
+            while (_restSecondsRemaining.value > 0) {
+                delay(1000)
+                _restSecondsRemaining.value--
+            }
+            _showRestTimer.value = false
+        }
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        timerJob?.cancel()
+        restTimerJob?.cancel()
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Helper extensions
+// ---------------------------------------------------------------------------
+
+private fun WorkoutSet.copy(
+    reps: Int = this.reps,
+    weight: Double? = this.weight,
+    isCompleted: Boolean = this.isCompleted
+) = WorkoutSet(
+    id = this.id,
+    sessionId = this.sessionId,
+    exerciseId = this.exerciseId,
+    userId = this.userId,
+    setNumber = this.setNumber,
+    reps = reps,
+    weight = weight,
+    isCompleted = isCompleted,
+    restSeconds = this.restSeconds,
+    notes = this.notes,
+    completedAt = this.completedAt,
+    createdAt = this.createdAt
+)
+
+// ---------------------------------------------------------------------------
+// Screen
+// ---------------------------------------------------------------------------
+
+@OptIn(ExperimentalPermissionsApi::class)
+@Composable
+fun ActiveWorkoutScreen(
+    training: Training,
+    sessionId: String,
+    onNavigateBack: () -> Unit,
+    vm: ActiveWorkoutViewModel = viewModel()
+) {
+    val isOutdoor = training.category.isOutdoor
+
+    // ── Workout goal sheet (outdoor only) ─────────────────────────────────────
+    var showGoalSheet by remember { mutableStateOf(isOutdoor) }
+    var workoutSessionStarted by remember { mutableStateOf(!isOutdoor) }
+
+    // ── Salon / AI program önizlemesi — sayaç başlamadan hareket listesi ───────
+    val needsProgramPreview = !training.isBuiltIn
+    var showProgramPreview by remember { mutableStateOf(needsProgramPreview) }
+    var timerStarted by remember { mutableStateOf(false) }
+    var workoutGoal by remember { mutableStateOf<WorkoutGoal>(WorkoutGoal.None) }
+
+    // ── Summary data — includes GPS fields ────────────────────────────────────
+    var summaryData by remember { mutableStateOf<WorkoutCompletionData?>(null) }
+
+    // ── Location permission ────────────────────────────────────────────────────
+    val locationPermission = rememberPermissionState(Manifest.permission.ACCESS_FINE_LOCATION)
+
+    // ── GPS state (always collected — safe to read even when not tracking) ────
+    val gpsDistance by LocationTrackingService.distanceKm.collectAsState()
+    val gpsPace by LocationTrackingService.paceMinPerKm.collectAsState()
+    val gpsSpeed by LocationTrackingService.averageSpeedKmh.collectAsState()
+    val gpsAltitude by LocationTrackingService.altitudeGainM.collectAsState()
+    val gpsSignalWeak by LocationTrackingService.isGPSSignalWeak.collectAsState()
+    val gpsIsPaused by LocationTrackingService.isPaused.collectAsState()
+    val gpsIsAutoPaused by LocationTrackingService.isAutoPaused.collectAsState()
+    val gpsRoutePoints by LocationTrackingService.routePoints.collectAsState()
+    val gpsCurrentSpeed by LocationTrackingService.currentSpeedKmh.collectAsState()
+    val gpsSplits by LocationTrackingService.splits.collectAsState()
+    var showGoalSheetDuringWorkout by remember { mutableStateOf(false) }
+    var showFinishCelebration by remember { mutableStateOf(false) }
+    var pendingSummaryData by remember { mutableStateOf<WorkoutCompletionData?>(null) }
+
+    // ── Show summary when complete ─────────────────────────────────────────────
+    summaryData?.let { data ->
+        WorkoutSummaryScreen(
+            training = training,
+            durationSeconds = data.durationSeconds,
+            totalCalories = (data.durationSeconds / 60) * 8,
+            distanceKm = data.distanceKm,
+            avgPaceMinPerKm = data.avgPaceMinPerKm,
+            avgSpeedKmh = data.avgSpeedKmh,
+            altitudeGainM = data.altitudeGainM,
+            splits = data.splits,
+            routePoints = data.routePoints,
+            completedSets = data.completedSets,
+            totalSets = data.totalSets,
+            progressiveSuggestion = null,
+            onDismiss = {
+                summaryData = null
+                onNavigateBack()
+            }
+        )
+        return
+    }
+
+    val isAvailable by HealthConnectService.isAvailable.collectAsState()
+    val hcPermissionLauncher = rememberLauncherForActivityResult(
+        contract = PermissionController.createRequestPermissionResultContract()
+    ) { /* İzin verilmezse nabız 0 kalır */ }
+
+    LaunchedEffect(isAvailable) {
+        if (!isAvailable) return@LaunchedEffect
+        if (!HealthConnectService.hasAllPermissions()) {
+            hcPermissionLauncher.launch(HealthConnectService.permissions)
+        }
+    }
+
+    LaunchedEffect(isAvailable) {
+        if (!isAvailable) return@LaunchedEffect
+        while (true) {
+            HealthConnectService.refreshHeartRate()
+            delay(12_000)
+        }
+    }
+
+    val userId by AuthService.currentUser.collectAsState(initial = null)
+    val programExercises by vm.programExercises.collectAsState()
+    val isLoading by vm.isLoading.collectAsState()
+    val elapsedSeconds by vm.elapsedSeconds.collectAsState()
+    val isPaused by vm.isPaused.collectAsState()
+    val showRestTimer by vm.showRestTimer.collectAsState()
+    val restSecondsRemaining by vm.restSecondsRemaining.collectAsState()
+    val currentIndex by vm.currentExerciseIndex.collectAsState()
+    val editingSetId by vm.editingSetId.collectAsState()
+    val editReps by vm.editReps.collectAsState()
+    val editWeight by vm.editWeight.collectAsState()
+
+    var showCompleteDialog by remember { mutableStateOf(false) }
+
+    fun confirmFinishWorkout() {
+        showCompleteDialog = false
+        val completionNotes = SessionWorkoutMeta.encodeCompletionNotes(
+            categoryDbValue = if (training.isBuiltIn) training.category.dbValue else null,
+            durationSeconds = elapsedSeconds,
+            distanceKm = if (isOutdoor) LocationTrackingService.distanceKm.value else 0.0
+        )
+        pendingSummaryData = WorkoutCompletionData(
+            durationSeconds = elapsedSeconds,
+            completedSets = vm.completedSetsCount,
+            totalSets = vm.totalSetsCount,
+            distanceKm = if (isOutdoor) LocationTrackingService.distanceKm.value else 0.0,
+            avgPaceMinPerKm = if (isOutdoor) LocationTrackingService.paceMinPerKm.value else 0.0,
+            avgSpeedKmh = if (isOutdoor) LocationTrackingService.averageSpeedKmh.value else 0.0,
+            altitudeGainM = if (isOutdoor) LocationTrackingService.altitudeGainM.value else 0.0,
+            splits = if (isOutdoor) LocationTrackingService.splits.value else emptyList(),
+            routePoints = if (isOutdoor) LocationTrackingService.routePoints.value else emptyList()
+        )
+        showFinishCelebration = true
+        if (isOutdoor) LocationTrackingService.stopTracking()
+        val uid = userId?.id ?: return
+        vm.completeWorkout(
+            sessionId = sessionId,
+            userId = uid,
+            activityType = training.category.dbValue,
+            durationMinutes = (elapsedSeconds / 60).coerceAtLeast(1),
+            completionNotes = completionNotes
+        ) { _, _, _ -> }
+    }
+
+    if (showFinishCelebration) {
+        WorkoutFinishCelebration(
+            title = training.title,
+            durationSeconds = pendingSummaryData?.durationSeconds ?: elapsedSeconds,
+            onFinished = {
+                summaryData = pendingSummaryData
+                pendingSummaryData = null
+                showFinishCelebration = false
+            }
+        )
+        return
+    }
+
+    val progress by animateFloatAsState(
+        targetValue = vm.overallProgress.toFloat(),
+        animationSpec = tween(300),
+        label = "progress"
+    )
+
+    // ── Preload program exercises while preview is open ───────────────────────
+    LaunchedEffect(showProgramPreview, userId?.id) {
+        if (!showProgramPreview || !needsProgramPreview) return@LaunchedEffect
+        val uid = userId?.id ?: return@LaunchedEffect
+        vm.loadWorkout(sessionId, training.id, uid)
+    }
+
+    // ── Start timer after goal / preview sheets are dismissed ─────────────────
+    LaunchedEffect(showGoalSheet, showProgramPreview, workoutSessionStarted) {
+        if (showGoalSheet || showProgramPreview) return@LaunchedEffect
+        val uid = userId?.id ?: return@LaunchedEffect
+        if (!needsProgramPreview) {
+            vm.loadWorkout(sessionId, training.id, uid)
+        }
+        if (!workoutSessionStarted) return@LaunchedEffect
+        if (!timerStarted) {
+            vm.startTimer()
+            timerStarted = true
+
+            if (isOutdoor) {
+                if (locationPermission.status.isGranted) {
+                    LocationTrackingService.startTracking(enableAutoPause = true)
+                } else {
+                    locationPermission.launchPermissionRequest()
+                }
+            }
+        }
+    }
+
+    // Konum izni verildikten sonra — yalnızca kullanıcı Başlat dediyse
+    LaunchedEffect(locationPermission.status.isGranted, workoutSessionStarted) {
+        if (!isOutdoor || !workoutSessionStarted || showGoalSheet) return@LaunchedEffect
+        if (locationPermission.status.isGranted && !LocationTrackingService.isTracking.value) {
+            LocationTrackingService.startTracking(enableAutoPause = true)
+        }
+    }
+
+    DisposableEffect(isOutdoor, showFinishCelebration) {
+        onDispose {
+            if (!showFinishCelebration) {
+                vm.stopTimer()
+                if (isOutdoor) LocationTrackingService.stopTracking()
+            }
+        }
+    }
+
+    // ── Goal progress (derived) ────────────────────────────────────────────────
+    val goalProgress = remember(workoutGoal, gpsDistance, elapsedSeconds) {
+        workoutGoal.progress(gpsDistance, elapsedSeconds)
+    }
+
+    // ── Program preview (salon / AI) — sayaç başlamadan önce ───────────────────
+    if (showProgramPreview) {
+        ProgramPreviewOverlay(
+            training = training,
+            exercises = programExercises,
+            fallbackNames = training.exerciseNames,
+            isLoading = isLoading,
+            onStart = { showProgramPreview = false },
+            onBack = onNavigateBack
+        )
+        return
+    }
+
+    // ── Main UI — GPS (outdoor) öncelikli, sonra minimal, sonra salon programı ──
+    val useMinimalLayout = training.isBuiltIn || programExercises.isEmpty()
+
+    if (isOutdoor && !showGoalSheet) {
+        Box(modifier = Modifier.fillMaxSize()) {
+            GPSWorkoutLayout(
+                training = training,
+                elapsedSeconds = elapsedSeconds,
+                gpsDistance = gpsDistance,
+                gpsPace = gpsPace,
+                gpsSpeed = gpsSpeed,
+                gpsCurrentSpeed = gpsCurrentSpeed,
+                gpsAltitude = gpsAltitude,
+                gpsSignalWeak = gpsSignalWeak,
+                gpsIsPaused = gpsIsPaused,
+                gpsIsAutoPaused = gpsIsAutoPaused,
+                awaitingStart = !workoutSessionStarted,
+                routePoints = gpsRoutePoints,
+                gpsSplits = gpsSplits,
+                goal = workoutGoal,
+                goalProgress = goalProgress,
+                onClose = {
+                    if (gpsDistance > 0 || elapsedSeconds > 5) showCompleteDialog = true else onNavigateBack()
+                },
+                onGoalTap = { showGoalSheetDuringWorkout = true },
+                onStartWorkout = {
+                    workoutSessionStarted = true
+                    if (locationPermission.status.isGranted) {
+                        LocationTrackingService.startTracking(enableAutoPause = true)
+                        if (!timerStarted) {
+                            vm.startTimer()
+                            timerStarted = true
+                        }
+                    } else {
+                        locationPermission.launchPermissionRequest()
+                    }
+                },
+                onPauseToggle = {
+                    if (gpsIsPaused) {
+                        LocationTrackingService.resumeTracking()
+                        vm.resumeTimer()
+                    } else {
+                        LocationTrackingService.pauseTracking(manual = true)
+                        vm.pauseTimer()
+                    }
+                },
+                onFinishWorkout = { confirmFinishWorkout() }
+            )
+        }
+    } else if (useMinimalLayout && !showGoalSheet) {
+        val primaryMetric = when {
+            (elapsedSeconds / 60) > 0 -> "${(elapsedSeconds / 60) * 8}"
+            else -> "--"
+        }
+        val secondaryMetric = "--"
+
+        Box(modifier = Modifier.fillMaxSize()) {
+            MinimalWorkoutLayout(
+                elapsedSeconds = elapsedSeconds,
+                primaryMetric = primaryMetric,
+                secondaryMetric = secondaryMetric,
+                isPaused = isPaused,
+                onClose = {
+                    if (vm.completedSetsCount > 0 || elapsedSeconds > 5) {
+                        showCompleteDialog = true
+                    } else {
+                        onNavigateBack()
+                    }
+                },
+                onPauseToggle = { vm.togglePause() }
+            )
+
+            if (showRestTimer) {
+                RestTimerOverlay(
+                    secondsRemaining = restSecondsRemaining,
+                    totalSeconds = vm.currentExercise()?.restSeconds ?: 60,
+                    onSkip = { vm.dismissRestTimer() }
+                )
+            }
+
+            if (isPaused) {
+                WorkoutPausedOverlay(
+                    onResume = { vm.resumeTimer() },
+                    onFinish = { confirmFinishWorkout() }
+                )
+            }
+        }
+    } else {
+        // Strength / non-outdoor layout
+        Box(modifier = Modifier.fillMaxSize().statusBarsPadding()) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(
+                        Brush.verticalGradient(
+                            colors = listOf(Purple100.copy(alpha = 0.05f), MaterialTheme.colorScheme.background),
+                            startY = 0f,
+                            endY = 800f
+                        )
+                    )
+            ) {
+                // Header
+                WorkoutHeader(
+                    title = training.title,
+                    completedSets = vm.completedSetsCount,
+                    totalSets = vm.totalSetsCount,
+                    elapsedSeconds = elapsedSeconds,
+                    isOutdoor = false,
+                    onClose = {
+                        if (vm.completedSetsCount > 0) showCompleteDialog = true else onNavigateBack()
+                    }
+                )
+
+                when {
+                    isLoading -> {
+                        Column(
+                            modifier = Modifier.fillMaxSize(),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.Center
+                        ) {
+                            CircularProgressIndicator(color = Primary)
+                            Spacer(Modifier.height(12.dp))
+                            Text(
+                                text = "Antrenman hazırlanıyor...",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+
+                    programExercises.isEmpty() -> {
+                        Column(modifier = Modifier.fillMaxSize()) {
+                            Spacer(Modifier.weight(1f))
+                            StrengthCenter(
+                                bpm = training.category.estimatedBPM,
+                                isLive = false,
+                                estimatedCalories = (elapsedSeconds / 60) * 8,
+                                exerciseProgress = "—",
+                                avgBpm = 0
+                            )
+                            Spacer(Modifier.weight(1f))
+                            StravaStyleWorkoutControls(
+                                isPaused = isPaused,
+                                onPauseToggle = { vm.togglePause() }
+                            )
+                        }
+                    }
+
+                    else -> {
+                        if (programExercises.isNotEmpty()) {
+                            ExerciseDots(
+                                exercises = programExercises,
+                                currentIndex = currentIndex,
+                                workoutSets = vm.workoutSets.collectAsState().value,
+                                onDotClick = { vm.setCurrentExerciseIndex(it) },
+                                modifier = Modifier.padding(bottom = 12.dp)
+                            )
+                        }
+
+                        val currentExercise = vm.currentExercise()
+                        val currentSets = vm.currentSets()
+
+                        LazyColumn(
+                            contentPadding = PaddingValues(
+                                start = Spacing.xl,
+                                end = Spacing.xl,
+                                top = 0.dp,
+                                bottom = 120.dp
+                            ),
+                            verticalArrangement = Arrangement.spacedBy(14.dp),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            if (programExercises.isNotEmpty()) {
+                                item {
+                                    currentExercise?.let {
+                                        ExerciseMediaCard(
+                                            exercise = it,
+                                            exerciseNumber = currentIndex + 1,
+                                            totalExercises = programExercises.size
+                                        )
+                                    }
+                                }
+                                item {
+                                    currentExercise?.let {
+                                        ExerciseInfoCard(exercise = it)
+                                    }
+                                }
+                                item {
+                                    SetsCard(
+                                        sets = currentSets,
+                                        editingSetId = editingSetId,
+                                        editReps = editReps,
+                                        editWeight = editWeight,
+                                        onEditRepsChange = { vm.editReps.value = it },
+                                        onEditWeightChange = { vm.editWeight.value = it },
+                                        onBeginEdit = { vm.beginEditing(it) },
+                                        onCompleteSet = { vm.completeSet(it, sessionId) }
+                                    )
+                                }
+                            }
+                        }
+
+                        StravaStyleWorkoutControls(
+                            isPaused = isPaused,
+                            onPauseToggle = { vm.togglePause() }
+                        )
+
+                        BottomNavigationBar(
+                            currentIndex = currentIndex,
+                            totalExercises = programExercises.size,
+                            completedSets = vm.completedSetsCount,
+                            totalSets = vm.totalSetsCount,
+                            isOutdoor = false,
+                            onPrevious = { vm.setCurrentExerciseIndex(currentIndex - 1) },
+                            onNext = { vm.setCurrentExerciseIndex(currentIndex + 1) },
+                            onComplete = { showCompleteDialog = true }
+                        )
+                    }
+                }
+            }
+
+            if (showRestTimer) {
+                RestTimerOverlay(
+                    secondsRemaining = restSecondsRemaining,
+                    totalSeconds = vm.currentExercise()?.restSeconds ?: 60,
+                    onSkip = { vm.dismissRestTimer() }
+                )
+            }
+
+            if (isPaused) {
+                WorkoutPausedOverlay(
+                    onResume = { vm.togglePause() },
+                    onFinish = { confirmFinishWorkout() }
+                )
+            }
+        }
+    }
+
+    // ── Goal sheet overlays ────────────────────────────────────────────────────
+    if (showGoalSheet) {
+        WorkoutGoalSheet(
+            onGoalSelected = { goal -> workoutGoal = goal },
+            onDismiss = { showGoalSheet = false }
+        )
+    }
+
+    if (showGoalSheetDuringWorkout) {
+        WorkoutGoalSheet(
+            onGoalSelected = { goal -> workoutGoal = goal },
+            onDismiss = { showGoalSheetDuringWorkout = false }
+        )
+    }
+
+    // ── Complete dialog ────────────────────────────────────────────────────────
+    if (showCompleteDialog) {
+        AlertDialog(
+            onDismissRequest = { showCompleteDialog = false },
+            title = { Text("Antrenman Tamamla") },
+            text = {
+                if (isOutdoor && gpsDistance > 0.01) {
+                    Text("%.2f km tamamlandı. Antrenmanı bitirmek istiyor musunuz?".format(gpsDistance))
+                } else {
+                    Text("Antrenmanı bitirmek istiyor musunuz?")
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { confirmFinishWorkout() }) { Text("Tamamla", color = Primary) }
+            },
+            dismissButton = {
+                TextButton(onClick = { showCompleteDialog = false }) {
+                    Text("İptal", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+        )
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Header — iOS style: [←]  BIG TIMER  [🏁]
+// ---------------------------------------------------------------------------
+
+@Composable
+private fun WorkoutHeader(
+    title: String,
+    completedSets: Int,
+    totalSets: Int,
+    elapsedSeconds: Int,
+    isOutdoor: Boolean,
+    onClose: () -> Unit
+) {
+    // iOS topBar: plain chevron · big monospaced timer · checkered finish flag.
+    // No subtitle, no progress bar, no circular button backgrounds (birebir iOS).
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 24.dp)
+            .padding(top = Spacing.sm, bottom = 4.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(
+            imageVector = Icons.Default.KeyboardArrowDown,
+            contentDescription = "Kapat",
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier
+                .size(28.dp)
+                .clickable { onClose() }
+        )
+
+        Text(
+            text = formatTime(elapsedSeconds),
+            fontSize = 36.sp,
+            fontWeight = FontWeight.Bold,
+            fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+            color = MaterialTheme.colorScheme.onSurface,
+            modifier = Modifier.weight(1f),
+            textAlign = TextAlign.Center
+        )
+
+        Spacer(modifier = Modifier.width(28.dp))
+    }
+}
+
+// ---------------------------------------------------------------------------
+// GPS stats panel — shows during outdoor workouts
+// ---------------------------------------------------------------------------
+
+@Composable
+private fun GPSStatsPanel(
+    distanceKm: Double,
+    paceMinPerKm: Double,
+    speedKmh: Double,
+    altitudeGainM: Double,
+    signalWeak: Boolean,
+    autoPaused: Boolean,
+    goal: WorkoutGoal,
+    goalProgress: Float
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = Spacing.xl)
+            .padding(bottom = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        // Signal / auto-pause banners
+        if (signalWeak) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(Color(0xFFFFF3CD))
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(Icons.Default.GpsNotFixed, contentDescription = null, tint = Color(0xFFB8860B), modifier = Modifier.size(14.dp))
+                Text("GPS sinyali zayıf", fontSize = 12.sp, color = Color(0xFFB8860B), fontWeight = FontWeight.Medium)
+            }
+        }
+        if (autoPaused) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(Primary.copy(alpha = 0.08f))
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(Icons.Default.Pause, contentDescription = null, tint = Primary, modifier = Modifier.size(14.dp))
+                Text("Otomatik duraklama", fontSize = 12.sp, color = Primary, fontWeight = FontWeight.Medium)
+            }
+        }
+
+        // Primary stats row
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .shadow(2.dp, RoundedCornerShape(16.dp))
+                .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(16.dp))
+                .padding(16.dp),
+            horizontalArrangement = Arrangement.SpaceEvenly
+        ) {
+            GPSStat(
+                value = "%.2f".format(distanceKm),
+                unit = "km",
+                label = "Mesafe"
+            )
+            GPSStatDivider()
+            GPSStat(
+                value = formatPace(paceMinPerKm),
+                unit = "/km",
+                label = "Tempo"
+            )
+            GPSStatDivider()
+            GPSStat(
+                value = "%.1f".format(speedKmh),
+                unit = "km/s",
+                label = "Hız"
+            )
+            GPSStatDivider()
+            GPSStat(
+                value = "%.0f".format(altitudeGainM),
+                unit = "m",
+                label = "Yükseklik"
+            )
+        }
+
+        // Goal progress bar
+        if (goal !is WorkoutGoal.None) {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(goal.label(), fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("%d%%".format((goalProgress * 100).toInt()), fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Primary)
+                }
+                LinearProgressIndicator(
+                    progress = { goalProgress },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(6.dp)
+                        .clip(RoundedCornerShape(3.dp)),
+                    color = if (goalProgress >= 1f) Color(0xFF4CAF50) else Primary,
+                    trackColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun GPSStat(value: String, unit: String, label: String) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(value, fontSize = 22.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
+            Text(unit, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(bottom = 3.dp))
+        }
+        Text(label, fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+@Composable
+private fun GPSStatDivider() {
+    Box(
+        modifier = Modifier
+            .width(1.dp)
+            .height(32.dp)
+            .background(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
+    )
+}
+
+// ---------------------------------------------------------------------------
+// Outdoor focus card — shown when outdoor workout has no program exercises
+// ---------------------------------------------------------------------------
+
+@Composable
+private fun OutdoorFocusCard(distanceKm: Double, elapsedSeconds: Int) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .shadow(2.dp, RoundedCornerShape(20.dp))
+            .background(
+                Brush.verticalGradient(listOf(Primary.copy(alpha = 0.08f), MaterialTheme.colorScheme.surface)),
+                RoundedCornerShape(20.dp)
+            )
+            .padding(24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        Icon(
+            imageVector = Icons.Default.DirectionsRun,
+            contentDescription = null,
+            tint = Primary,
+            modifier = Modifier.size(48.dp)
+        )
+        Text(
+            text = "Aktif Seans",
+            fontSize = 18.sp,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.onSurface
+        )
+        Text(
+            text = "GPS takip aktif. Antrenmanı tamamlamak için\naşağıdaki butonu kullanın.",
+            fontSize = 13.sp,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+        )
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Exercise dots
+// ---------------------------------------------------------------------------
+
+@Composable
+private fun ExerciseDots(
+    exercises: List<ProgramExercise>,
+    currentIndex: Int,
+    workoutSets: List<WorkoutSet>,
+    onDotClick: (Int) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        modifier = modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        exercises.forEachIndexed { index, pe ->
+            val exerciseSets = workoutSets.filter { it.exerciseId == pe.exerciseId }
+            val allDone = exerciseSets.isNotEmpty() && exerciseSets.all { it.isCompleted }
+
+            Box(
+                modifier = Modifier
+                    .padding(horizontal = 3.dp)
+                    .then(
+                        if (index == currentIndex) {
+                            Modifier
+                                .width(24.dp)
+                                .height(8.dp)
+                                .background(Primary, RoundedCornerShape(4.dp))
+                        } else {
+                            Modifier
+                                .size(8.dp)
+                                .background(
+                                    if (allDone) Color(0xFF4CAF50) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
+                                    CircleShape
+                                )
+                        }
+                    )
+                    .clickable { onDotClick(index) }
+            )
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Exercise media card
+// ---------------------------------------------------------------------------
+
+@Composable
+private fun ExerciseMediaCard(
+    exercise: ProgramExercise,
+    exerciseNumber: Int,
+    totalExercises: Int
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(180.dp)
+            .clip(RoundedCornerShape(Radius.card))
+    ) {
+        val imageUrl = exercise.exercise?.imageUrl
+        if (imageUrl != null) {
+            AsyncImage(
+                model = imageUrl,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize()
+            )
+        } else {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(
+                        Brush.linearGradient(colors = listOf(Purple100, Purple100.copy(alpha = 0.8f)))
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.FitnessCenter,
+                        contentDescription = null,
+                        tint = Color.White.copy(alpha = 0.5f),
+                        modifier = Modifier.size(52.dp)
+                    )
+                    Text(
+                        text = exercise.exercise?.name ?: "Egzersiz",
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White
+                    )
+                    exercise.exercise?.equipment?.let { equip ->
+                        if (equip.isNotEmpty()) {
+                            Row(
+                                modifier = Modifier
+                                    .background(Color.White.copy(alpha = 0.15f), RoundedCornerShape(Radius.pill))
+                                    .padding(horizontal = 12.dp, vertical = 5.dp),
+                                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Build,
+                                    contentDescription = null,
+                                    tint = Color.White.copy(alpha = 0.7f),
+                                    modifier = Modifier.size(11.dp)
+                                )
+                                Text(
+                                    text = equip,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    color = Color.White.copy(alpha = 0.7f)
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        Box(
+            modifier = Modifier
+                .align(Alignment.BottomStart)
+                .padding(12.dp)
+                .background(
+                    Color.Black.copy(alpha = 0.4f),
+                    RoundedCornerShape(8.dp)
+                )
+                .padding(horizontal = 10.dp, vertical = 5.dp)
+        ) {
+            Text(
+                text = "$exerciseNumber/$totalExercises",
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold,
+                color = Color.White
+            )
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Exercise info card
+// ---------------------------------------------------------------------------
+
+@Composable
+private fun ExerciseInfoCard(exercise: ProgramExercise) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .shadow(2.dp, RoundedCornerShape(16.dp))
+            .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(16.dp))
+            .padding(14.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = exercise.exercise?.name ?: "Egzersiz",
+                fontSize = 20.sp,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.weight(1f)
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(
+                    modifier = Modifier
+                        .background(Purple100.copy(alpha = 0.08f), RoundedCornerShape(6.dp))
+                        .padding(horizontal = 8.dp, vertical = 4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(3.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Repeat,
+                        contentDescription = null,
+                        tint = Purple100,
+                        modifier = Modifier.size(10.dp)
+                    )
+                    Text(
+                        text = "${exercise.sets}x${exercise.reps}",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Purple100
+                    )
+                }
+                Row(
+                    modifier = Modifier
+                        .background(Primary.copy(alpha = 0.08f), RoundedCornerShape(6.dp))
+                        .padding(horizontal = 8.dp, vertical = 4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(3.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Schedule,
+                        contentDescription = null,
+                        tint = Primary,
+                        modifier = Modifier.size(10.dp)
+                    )
+                    Text(
+                        text = "${exercise.restSeconds}s",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Primary
+                    )
+                }
+            }
+        }
+
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            exercise.exercise?.equipment?.let { equip ->
+                if (equip.isNotEmpty()) {
+                    item {
+                        Row(
+                            modifier = Modifier
+                                .background(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f), RoundedCornerShape(6.dp))
+                                .padding(horizontal = 8.dp, vertical = 4.dp),
+                            horizontalArrangement = Arrangement.spacedBy(3.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Build,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(9.dp)
+                            )
+                            Text(equip, fontSize = 11.sp, fontWeight = FontWeight.Medium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                }
+            }
+            items(exercise.exercise?.muscleGroups ?: emptyList()) { muscle ->
+                Text(
+                    text = muscle.replaceFirstChar { it.uppercase() },
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = Primary,
+                    modifier = Modifier
+                        .background(Primary.copy(alpha = 0.06f), RoundedCornerShape(6.dp))
+                        .padding(horizontal = 8.dp, vertical = 4.dp)
+                )
+            }
+        }
+
+        exercise.exercise?.instructions?.let { instructions ->
+            if (instructions.isNotEmpty()) {
+                Text(
+                    text = instructions,
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Sets card
+// ---------------------------------------------------------------------------
+
+@Composable
+private fun SetsCard(
+    sets: List<WorkoutSet>,
+    editingSetId: String?,
+    editReps: String,
+    editWeight: String,
+    onEditRepsChange: (String) -> Unit,
+    onEditWeightChange: (String) -> Unit,
+    onBeginEdit: (WorkoutSet) -> Unit,
+    onCompleteSet: (WorkoutSet) -> Unit
+) {
+    val doneCount = sets.count { it.isCompleted }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .shadow(3.dp, RoundedCornerShape(Radius.card))
+            .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(Radius.card))
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(imageVector = Icons.Default.FormatListNumbered, contentDescription = null, tint = Primary, modifier = Modifier.size(18.dp))
+                Text("Setler", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
+            }
+            Text(
+                text = "$doneCount/${sets.size}",
+                fontSize = 13.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = if (doneCount == sets.size && sets.isNotEmpty()) Color(0xFF4CAF50) else MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+
+        Row(
+            modifier = Modifier.padding(horizontal = 4.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text("SET", fontSize = 10.sp, fontWeight = FontWeight.ExtraBold, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f), modifier = Modifier.width(36.dp))
+            Text("TEKRAR", fontSize = 10.sp, fontWeight = FontWeight.ExtraBold, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f), modifier = Modifier.weight(1f), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+            Text("KG", fontSize = 10.sp, fontWeight = FontWeight.ExtraBold, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f), modifier = Modifier.weight(1f), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+            Spacer(modifier = Modifier.width(40.dp))
+        }
+
+        sets.forEach { set ->
+            SetRow(
+                set = set,
+                isEditing = editingSetId == set.id,
+                editReps = if (editingSetId == set.id) editReps else "",
+                editWeight = if (editingSetId == set.id) editWeight else "",
+                onEditRepsChange = onEditRepsChange,
+                onEditWeightChange = onEditWeightChange,
+                onBeginEdit = { onBeginEdit(set) },
+                onComplete = { onCompleteSet(set) }
+            )
+        }
+    }
+}
+
+@Composable
+private fun SetRow(
+    set: WorkoutSet,
+    isEditing: Boolean,
+    editReps: String,
+    editWeight: String,
+    onEditRepsChange: (String) -> Unit,
+    onEditWeightChange: (String) -> Unit,
+    onBeginEdit: () -> Unit,
+    onComplete: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 2.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            modifier = Modifier
+                .size(36.dp)
+                .background(
+                    if (set.isCompleted) Color(0xFF4CAF50) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f),
+                    CircleShape
+                ),
+            contentAlignment = Alignment.Center
+        ) {
+            if (set.isCompleted) {
+                Icon(imageVector = Icons.Default.Check, contentDescription = null, tint = Color.White, modifier = Modifier.size(13.dp))
+            } else {
+                Text(text = "${set.setNumber}", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
+            }
+        }
+
+        if (isEditing) {
+            BasicTextField(
+                value = editReps,
+                onValueChange = onEditRepsChange,
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                textStyle = MaterialTheme.typography.bodyLarge.copy(
+                    color = MaterialTheme.colorScheme.onSurface,
+                    fontWeight = FontWeight.SemiBold,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                ),
+                modifier = Modifier
+                    .weight(1f)
+                    .background(Primary.copy(alpha = 0.06f), RoundedCornerShape(10.dp))
+                    .border(1.5.dp, Primary, RoundedCornerShape(10.dp))
+                    .padding(vertical = 10.dp, horizontal = 8.dp)
+            )
+        } else {
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .background(
+                        if (set.isCompleted) Color(0xFF4CAF50).copy(alpha = 0.06f) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.1f),
+                        RoundedCornerShape(10.dp)
+                    )
+                    .clickable(enabled = !set.isCompleted) { onBeginEdit() }
+                    .padding(vertical = 10.dp, horizontal = 8.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = "${set.reps}",
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = if (set.isCompleted) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface
+                )
+            }
+        }
+
+        if (isEditing) {
+            BasicTextField(
+                value = editWeight,
+                onValueChange = onEditWeightChange,
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                textStyle = MaterialTheme.typography.bodyLarge.copy(
+                    color = MaterialTheme.colorScheme.onSurface,
+                    fontWeight = FontWeight.SemiBold,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                ),
+                modifier = Modifier
+                    .weight(1f)
+                    .background(Primary.copy(alpha = 0.06f), RoundedCornerShape(10.dp))
+                    .border(1.5.dp, Primary, RoundedCornerShape(10.dp))
+                    .padding(vertical = 10.dp, horizontal = 8.dp)
+            )
+        } else {
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .background(
+                        if (set.isCompleted) Color(0xFF4CAF50).copy(alpha = 0.06f) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.1f),
+                        RoundedCornerShape(10.dp)
+                    )
+                    .clickable(enabled = !set.isCompleted) { onBeginEdit() }
+                    .padding(vertical = 10.dp, horizontal = 8.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = set.weight?.let { String.format("%.1f", it) } ?: "-",
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = if (set.isCompleted) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface
+                )
+            }
+        }
+
+        Box(
+            modifier = Modifier
+                .size(40.dp)
+                .background(
+                    when {
+                        set.isCompleted -> Color(0xFF4CAF50)
+                        isEditing -> Primary
+                        else -> MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f)
+                    },
+                    CircleShape
+                )
+                .clickable(enabled = !set.isCompleted) {
+                    if (isEditing) onComplete() else onBeginEdit()
+                },
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = when {
+                    set.isCompleted -> Icons.Default.Check
+                    isEditing -> Icons.Default.Check
+                    else -> Icons.Default.Edit
+                },
+                contentDescription = null,
+                tint = when {
+                    set.isCompleted || isEditing -> Color.White
+                    else -> MaterialTheme.colorScheme.onSurfaceVariant
+                },
+                modifier = Modifier.size(14.dp)
+            )
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Bottom navigation bar
+// ---------------------------------------------------------------------------
+
+@Composable
+private fun BottomNavigationBar(
+    currentIndex: Int,
+    totalExercises: Int,
+    completedSets: Int,
+    totalSets: Int,
+    isOutdoor: Boolean,
+    onPrevious: () -> Unit,
+    onNext: () -> Unit,
+    onComplete: () -> Unit
+) {
+    val allCompleted = completedSets == totalSets && totalSets > 0
+    val showNext = !isOutdoor && currentIndex < totalExercises - 1
+    val showPrevious = !isOutdoor && currentIndex > 0
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .shadow(elevation = 4.dp)
+            .background(MaterialTheme.colorScheme.surface)
+            .padding(horizontal = Spacing.xl, vertical = 12.dp),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        if (showPrevious) {
+            Box(
+                modifier = Modifier
+                    .size(48.dp)
+                    .shadow(2.dp, CircleShape)
+                    .background(MaterialTheme.colorScheme.surface, CircleShape)
+                    .clickable { onPrevious() },
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(imageVector = Icons.Default.ChevronLeft, contentDescription = "Önceki", tint = MaterialTheme.colorScheme.onSurface)
+            }
+        }
+
+        if (showNext) {
+            Row(
+                modifier = Modifier
+                    .weight(1f)
+                    .background(Primary, RoundedCornerShape(16.dp))
+                    .clickable { onNext() }
+                    .padding(vertical = 15.dp),
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "Sonraki Egzersiz",
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = Color.White
+                )
+                Spacer(Modifier.width(8.dp))
+                Icon(imageVector = Icons.Default.ArrowForward, contentDescription = null, tint = Color.White, modifier = Modifier.size(14.dp))
+            }
+        } else {
+            Row(
+                modifier = Modifier
+                    .weight(1f)
+                    .background(
+                        if (allCompleted || isOutdoor)
+                            Brush.horizontalGradient(listOf(Color(0xFF4CAF50), Color(0xFF388E3C)))
+                        else
+                            Brush.horizontalGradient(listOf(Primary, Primary.copy(alpha = 0.8f))),
+                        RoundedCornerShape(16.dp)
+                    )
+                    .clickable { onComplete() }
+                    .padding(vertical = 15.dp),
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(imageVector = Icons.Default.Flag, contentDescription = null, tint = Color.White, modifier = Modifier.size(14.dp))
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    text = "Antrenmanı Tamamla",
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = Color.White
+                )
+            }
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Rest timer overlay
+// ---------------------------------------------------------------------------
+
+@Composable
+private fun RestTimerOverlay(
+    secondsRemaining: Int,
+    totalSeconds: Int,
+    onSkip: () -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black.copy(alpha = 0.7f)),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(24.dp)
+        ) {
+            Text(
+                text = "Dinlenme",
+                fontSize = 24.sp,
+                fontWeight = FontWeight.Bold,
+                color = Color.White
+            )
+
+            Box(contentAlignment = Alignment.Center) {
+                val sweep = if (totalSeconds > 0) (secondsRemaining.toFloat() / totalSeconds) * 360f else 0f
+                androidx.compose.foundation.Canvas(
+                    modifier = Modifier.size(160.dp)
+                ) {
+                    drawArc(
+                        color = Color.White.copy(alpha = 0.15f),
+                        startAngle = 0f,
+                        sweepAngle = 360f,
+                        useCenter = false,
+                        style = Stroke(width = 10.dp.toPx(), cap = StrokeCap.Round)
+                    )
+                    drawArc(
+                        brush = Brush.sweepGradient(
+                            colors = listOf(Primary, Primary.copy(alpha = 0.6f))
+                        ),
+                        startAngle = -90f,
+                        sweepAngle = sweep,
+                        useCenter = false,
+                        style = Stroke(width = 10.dp.toPx(), cap = StrokeCap.Round)
+                    )
+                }
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(
+                        text = "$secondsRemaining",
+                        fontSize = 56.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White
+                    )
+                    Text(
+                        text = "saniye",
+                        fontSize = 13.sp,
+                        color = Color.White.copy(alpha = 0.6f)
+                    )
+                }
+            }
+
+            Text(
+                text = "Sonraki set için hazır olun",
+                fontSize = 14.sp,
+                color = Color.White.copy(alpha = 0.5f)
+            )
+
+            Row(
+                modifier = Modifier
+                    .background(Color.White.copy(alpha = 0.15f), RoundedCornerShape(Radius.pill))
+                    .border(1.dp, Color.White.copy(alpha = 0.2f), RoundedCornerShape(Radius.pill))
+                    .clickable { onSkip() }
+                    .padding(horizontal = 40.dp, vertical = 14.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(imageVector = Icons.Default.FastForward, contentDescription = null, tint = Color.White, modifier = Modifier.size(12.dp))
+                Text(text = "Atla", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = Color.White)
+            }
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Heart rate zone — mirrors iOS HeartRateZone enum
+// ---------------------------------------------------------------------------
+
+private enum class HRZoneStrength(
+    val label: String,
+    val color: Color,
+    val rangeLabel: String
+) {
+    REST("Dinlenme", Color(0xFF8E8E93), "< 50%"),
+    WARMUP("Isınma", Color(0xFF34C759), "50–60%"),
+    FAT_BURN("Yağ Yakımı", Color(0xFFFF9500), "60–70%"),
+    CARDIO("Kardiyo", Color(0xFFFF6047), "70–80%"),
+    PEAK("Zirve", Color(0xFFFF3B30), "> 80%");
+
+    companion object {
+        fun from(bpm: Int, age: Int = 30): HRZoneStrength {
+            val maxHR = (220 - age.coerceIn(10, 90)).toDouble()
+            return when {
+                bpm < maxHR * 0.50 -> REST
+                bpm < maxHR * 0.60 -> WARMUP
+                bpm < maxHR * 0.70 -> FAT_BURN
+                bpm < maxHR * 0.80 -> CARDIO
+                else               -> PEAK
+            }
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Strength center — mirrors iOS strengthCenter
+// Shows estimated BPM (TAHMİNİ) when no live HealthKit data
+// ---------------------------------------------------------------------------
+
+/**
+ * iOS strengthCenter — birebir: heart · BPM · zone badge (TAHMİNİ / ⌚) · KCAL | EGZERSİZ | ORT BPM.
+ * No guidance card (iOS doesn't have one). Wrap-content so it can be Spacer-centered.
+ */
+@Composable
+private fun StrengthCenter(
+    bpm: Int,
+    isLive: Boolean,
+    estimatedCalories: Int,
+    exerciseProgress: String,
+    avgBpm: Int
+) {
+    val zone = HRZoneStrength.from(bpm)
+
+    // Heartbeat pulse — mirrors iOS hrPulse
+    val pulse = rememberInfiniteTransition(label = "hr")
+    val heartScale by pulse.animateFloat(
+        initialValue = 1f,
+        targetValue = 1.18f,
+        animationSpec = infiniteRepeatable(tween(600), RepeatMode.Reverse),
+        label = "hrScale"
+    )
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = Spacing.xl),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        // Heart icon with zone colour — mirrors iOS heart.fill (28pt)
+        Icon(
+            imageVector = Icons.Default.Favorite,
+            contentDescription = null,
+            tint = zone.color,
+            modifier = Modifier
+                .size(28.dp)
+                .scale(heartScale)
+        )
+
+        Spacer(Modifier.height(8.dp))
+
+        // Big BPM number — mirrors iOS 56pt bold rounded
+        Text(
+            text = "$bpm",
+            fontSize = 56.sp,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.onSurface
+        )
+
+        Text(
+            text = "BPM",
+            fontSize = 14.sp,
+            fontWeight = FontWeight.Medium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            letterSpacing = 3.sp
+        )
+
+        Spacer(Modifier.height(8.dp))
+
+        // Zone chip: "TAHMİNİ" when estimated, ⌚ when live — mirrors iOS zone row
+        Row(
+            modifier = Modifier
+                .background(zone.color.copy(alpha = 0.1f), RoundedCornerShape(Radius.pill))
+                .padding(horizontal = 16.dp, vertical = 6.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = zone.label.uppercase(),
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Bold,
+                color = zone.color,
+                letterSpacing = 2.sp
+            )
+            if (isLive) {
+                Icon(
+                    imageVector = Icons.Default.Watch,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(13.dp)
+                )
+            } else {
+                Box(
+                    modifier = Modifier
+                        .background(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f), RoundedCornerShape(4.dp))
+                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                ) {
+                    Text(
+                        text = "TAHMİNİ",
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        letterSpacing = 1.sp
+                    )
+                }
+            }
+        }
+
+        Spacer(Modifier.height(28.dp))
+
+        // Stats row: KCAL | EGZERSİZ | ORT BPM — mirrors iOS WorkoutStatColumn row
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(28.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            WorkoutStatColumn(value = "$estimatedCalories", label = "KCAL", color = Primary)
+            StatDivider()
+            WorkoutStatColumn(value = exerciseProgress, label = "EGZERSİZ", color = MaterialTheme.colorScheme.onSurface)
+            StatDivider()
+            WorkoutStatColumn(
+                value = if (avgBpm > 0) "$avgBpm" else "--",
+                label = "ORT BPM",
+                color = Color(0xFFFF9500)
+            )
+        }
+    }
+}
+
+@Composable
+private fun StatDivider() {
+    Box(
+        modifier = Modifier
+            .width(1.dp)
+            .height(32.dp)
+            .background(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f))
+    )
+}
+
+@Composable
+private fun WorkoutStatColumn(value: String, label: String, color: Color) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(
+            text = value,
+            fontSize = 22.sp,
+            fontWeight = FontWeight.Bold,
+            color = color
+        )
+        Text(
+            text = label,
+            fontSize = 10.sp,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            letterSpacing = 2.sp
+        )
+    }
+}
+
+// ---------------------------------------------------------------------------
+// GPS Workout Layout — Athlete HUD (dark/light dashboard + mini map)
+// ---------------------------------------------------------------------------
+
+private data class HudColors(
+    val bgBrush: Brush,
+    val surface: Color,
+    val surfaceBorder: Color,
+    val textPrimary: Color,
+    val textSecondary: Color,
+    val textHint: Color,
+    val divider: Color,
+    val iconBg: Color,
+    val iconBorder: Color,
+    val mapPlaceholder: Color,
+    val pausePlayBg: Color,
+    val pausePlayIcon: Color
+)
+
+private fun darkHud() = HudColors(
+    bgBrush        = Brush.verticalGradient(listOf(Color(0xFF0A0A0F), Color(0xFF13131F))),
+    surface        = Color.White.copy(alpha = 0.05f),
+    surfaceBorder  = Color.White.copy(alpha = 0.07f),
+    textPrimary    = Color.White,
+    textSecondary  = Color.White.copy(alpha = 0.85f),
+    textHint       = Color.White.copy(alpha = 0.3f),
+    divider        = Color.White.copy(alpha = 0.07f),
+    iconBg         = Color.White.copy(alpha = 0.07f),
+    iconBorder     = Color.White.copy(alpha = 0.1f),
+    mapPlaceholder = Color(0xFF191926),
+    pausePlayBg    = Color.White,
+    pausePlayIcon  = Color.Black
+)
+
+private fun lightHud() = HudColors(
+    bgBrush        = Brush.verticalGradient(listOf(Color(0xFFF2F2F7), Color(0xFFE8E8F0))),
+    surface        = Color.Black.copy(alpha = 0.04f),
+    surfaceBorder  = Color.Black.copy(alpha = 0.07f),
+    textPrimary    = Color(0xFF0D0D0D),
+    textSecondary  = Color(0xFF1A1A1A),
+    textHint       = Color.Black.copy(alpha = 0.35f),
+    divider        = Color.Black.copy(alpha = 0.07f),
+    iconBg         = Color.Black.copy(alpha = 0.05f),
+    iconBorder     = Color.Black.copy(alpha = 0.08f),
+    mapPlaceholder = Color(0xFFDDDDE8),
+    pausePlayBg    = Color(0xFF1A1A1A),
+    pausePlayIcon  = Color.White
+)
+
+@Composable
+private fun GPSWorkoutLayout(
+    training: Training,
+    elapsedSeconds: Int,
+    gpsDistance: Double,
+    gpsPace: Double,
+    gpsSpeed: Double,
+    gpsCurrentSpeed: Double,
+    gpsAltitude: Double,
+    gpsSignalWeak: Boolean,
+    gpsIsPaused: Boolean,
+    gpsIsAutoPaused: Boolean,
+    awaitingStart: Boolean,
+    routePoints: List<Pair<Double, Double>>,
+    gpsSplits: List<KmSplit>,
+    goal: WorkoutGoal,
+    goalProgress: Float,
+    onClose: () -> Unit,
+    onGoalTap: () -> Unit,
+    onStartWorkout: () -> Unit,
+    onPauseToggle: () -> Unit,
+    onFinishWorkout: () -> Unit
+) {
+    val estimatedBpm   = training.category.estimatedBPM
+    val hcAvailable    by HealthConnectService.isAvailable.collectAsState()
+    val liveHR         by HealthConnectService.currentHeartRate.collectAsState()
+    val displayBpm     = if (hcAvailable && liveHR > 0) liveHR else estimatedBpm
+    val zone           = HRZoneStrength.from(displayBpm)
+    val latLngs        = remember(routePoints) { routePoints.map { LatLng(it.first, it.second) } }
+    val cameraPositionState = rememberCameraPositionState {
+        position = CameraPosition.fromLatLngZoom(LatLng(39.9208, 32.8541), 14f)
+    }
+
+    var heroMetric    by remember { mutableIntStateOf(0) }
+    var isDark        by remember { mutableStateOf(true) }
+    var cameraLocked  by remember { mutableStateOf(true) }
+    val c             = if (isDark) darkHud() else lightHud()
+    val coroutineScope = androidx.compose.runtime.rememberCoroutineScope()
+
+    // Kamera kilidi açıkken harita sürüklendiğinde kilidi otomatik kaldır
+    LaunchedEffect(cameraPositionState.isMoving) {
+        if (cameraPositionState.isMoving && cameraLocked) {
+            cameraLocked = false
+        }
+    }
+
+    // Kamera kilitliyken yeni GPS noktası gelince takip et
+    LaunchedEffect(latLngs) {
+        if (latLngs.isEmpty() || !cameraLocked) return@LaunchedEffect
+        try {
+            cameraPositionState.animate(
+                CameraUpdateFactory.newCameraPosition(
+                    CameraPosition.fromLatLngZoom(latLngs.last(), 16f)
+                ),
+                durationMs = 800
+            )
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {}
+    }
+
+    Box(modifier = Modifier.fillMaxSize().background(c.bgBrush)) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .statusBarsPadding()
+                .navigationBarsPadding()
+        ) {
+
+            // ── Top bar ───────────────────────────────────────────────────────
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp, vertical = 14.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                HudIconButton(c, icon = Icons.Default.KeyboardArrowDown, onClick = onClose)
+
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(
+                        text = formatTime(elapsedSeconds),
+                        fontSize = 30.sp,
+                        fontWeight = FontWeight.Bold,
+                        fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                        color = c.textPrimary
+                    )
+                    Text("SÜRE", fontSize = 9.sp, color = c.textHint, letterSpacing = 2.sp, fontWeight = FontWeight.Bold)
+                }
+
+                // Sağ üstte: tema toggle + bitir
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    HudIconButton(
+                        c,
+                        icon = if (isDark) Icons.Default.LightMode else Icons.Default.DarkMode,
+                        onClick = { isDark = !isDark }
+                    )
+                    HudIconButton(c, icon = Icons.Default.Flag, tint = Primary, onClick = onGoalTap)
+                }
+            }
+
+            // ── Banners ───────────────────────────────────────────────────────
+            if (gpsSignalWeak && latLngs.size >= 2) {
+                Row(
+                    modifier = Modifier
+                        .padding(horizontal = 20.dp)
+                        .fillMaxWidth()
+                        .background(Color(0xFF8B6914).copy(alpha = 0.85f), RoundedCornerShape(12.dp))
+                        .padding(horizontal = 14.dp, vertical = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(Icons.Default.GpsNotFixed, null, tint = Color.White, modifier = Modifier.size(13.dp))
+                    Text("GPS sinyali zayıf", fontSize = 12.sp, color = Color.White, fontWeight = FontWeight.SemiBold)
+                }
+                Spacer(Modifier.height(8.dp))
+            }
+
+            if (gpsIsAutoPaused && !awaitingStart) {
+                Row(
+                    modifier = Modifier
+                        .padding(horizontal = 20.dp)
+                        .fillMaxWidth()
+                        .background(Primary.copy(alpha = 0.12f), RoundedCornerShape(12.dp))
+                        .border(1.dp, Primary.copy(alpha = 0.3f), RoundedCornerShape(12.dp))
+                        .padding(horizontal = 14.dp, vertical = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(Icons.Default.Pause, null, tint = Primary, modifier = Modifier.size(13.dp))
+                    Text("Otomatik duraklama aktif", fontSize = 12.sp, color = Primary, fontWeight = FontWeight.Medium)
+                }
+                Spacer(Modifier.height(8.dp))
+            }
+
+            Spacer(Modifier.height(4.dp))
+
+            // ── Hero metric card ──────────────────────────────────────────────
+            val heroLabel = when (heroMetric) { 0 -> "MESAFE"; 1 -> "TEMPO"; else -> "HIZ" }
+            val heroValue = when (heroMetric) { 0 -> "%.2f".format(gpsDistance); 1 -> formatPace(gpsPace); else -> "%.1f".format(gpsSpeed) }
+            val heroUnit  = when (heroMetric) { 0 -> "km"; 1 -> "/km"; else -> "km/s" }
+            val secLeft   = when (heroMetric) { 0 -> Pair(formatPace(gpsPace), "TEMPO"); 1 -> Pair("%.2f".format(gpsDistance), "KM"); else -> Pair(formatPace(gpsPace), "TEMPO") }
+            val secRight  = when (heroMetric) { 0 -> Pair("%.1f".format(gpsSpeed), "HIZ"); else -> Pair("%.2f".format(gpsDistance), "KM") }
+
+            Box(
+                modifier = Modifier
+                    .padding(horizontal = 20.dp)
+                    .fillMaxWidth()
+                    .background(c.surface, RoundedCornerShape(24.dp))
+                    .border(1.dp, c.surfaceBorder, RoundedCornerShape(24.dp))
+                    .clickable { heroMetric = (heroMetric + 1) % 3 }
+                    .padding(horizontal = 22.dp, vertical = 18.dp)
+            ) {
+                Column {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(heroLabel, fontSize = 10.sp, color = Primary, fontWeight = FontWeight.Bold, letterSpacing = 2.sp)
+                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
+                            repeat(3) { i ->
+                                Box(
+                                    modifier = Modifier.then(
+                                        if (i == heroMetric)
+                                            Modifier.width(14.dp).height(4.dp).background(Primary, RoundedCornerShape(2.dp))
+                                        else
+                                            Modifier.size(4.dp).background(c.textHint, CircleShape)
+                                    )
+                                )
+                            }
+                        }
+                    }
+
+                    Spacer(Modifier.height(2.dp))
+
+                    Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text(
+                            text = heroValue,
+                            fontSize = 68.sp,
+                            fontWeight = FontWeight.Bold,
+                            fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                            color = c.textPrimary,
+                            lineHeight = 68.sp
+                        )
+                        Text(heroUnit, fontSize = 20.sp, color = c.textHint, modifier = Modifier.padding(bottom = 10.dp))
+                    }
+
+                    Spacer(Modifier.height(10.dp))
+                    Box(Modifier.fillMaxWidth().height(1.dp).background(c.divider))
+                    Spacer(Modifier.height(10.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceEvenly,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        HudSecondStat(c, secLeft.first, secLeft.second)
+                        Box(Modifier.width(1.dp).height(26.dp).background(c.divider))
+                        HudSecondStat(c, secRight.first, secRight.second)
+                    }
+                }
+            }
+
+            Spacer(Modifier.height(10.dp))
+
+            // ── Stat grid — saat/HC varsa 3 kart (BPM dahil), yoksa 2 kart ───
+            Row(
+                modifier = Modifier.padding(horizontal = 20.dp).fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                HudStatCard(c, Modifier.weight(1f), Icons.Default.TrendingUp, "+%.0f".format(gpsAltitude), "m", "YÜKSEKLİK")
+                if (hcAvailable) {
+                    HudStatCard(
+                        c, Modifier.weight(1f), Icons.Default.Favorite,
+                        if (liveHR > 0) "$liveHR" else "--",
+                        "", "BPM", valueColor = zone.color
+                    )
+                }
+                HudStatCard(c, Modifier.weight(1f), Icons.Default.LocalFireDepartment, "${(elapsedSeconds / 60) * 7}", "", "KCAL")
+            }
+
+            Spacer(Modifier.height(10.dp))
+
+            // ── Harita kartı (kalan alanı doldurur) ──────────────────────────
+            Box(
+                modifier = Modifier
+                    .padding(horizontal = 20.dp)
+                    .fillMaxWidth()
+                    .weight(1f)
+                    .clip(RoundedCornerShape(20.dp))
+                    .border(1.dp, c.surfaceBorder, RoundedCornerShape(20.dp))
+            ) {
+                if (latLngs.isEmpty()) {
+                    Box(
+                        modifier = Modifier.fillMaxSize().background(c.mapPlaceholder),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Icon(Icons.Default.GpsFixed, null, tint = Primary.copy(alpha = 0.4f), modifier = Modifier.size(28.dp))
+                            Text(
+                                text = if (gpsSignalWeak) "GPS sinyali aranıyor..." else "GPS konumu bekleniyor...",
+                                fontSize = 12.sp, color = c.textHint
+                            )
+                            Text("Açık bir alanda durun", fontSize = 11.sp, color = c.textHint.copy(alpha = 0.6f))
+                        }
+                    }
+                } else {
+                    GoogleMap(
+                        modifier = Modifier.fillMaxSize(),
+                        cameraPositionState = cameraPositionState,
+                        properties = MapProperties(
+                            isMyLocationEnabled = true,
+                            mapType = com.google.maps.android.compose.MapType.NORMAL
+                        ),
+                        uiSettings = MapUiSettings(
+                            zoomControlsEnabled = false,
+                            mapToolbarEnabled = false,
+                            myLocationButtonEnabled = false,
+                            scrollGesturesEnabled = true,
+                            rotationGesturesEnabled = false,
+                            zoomGesturesEnabled = true,
+                            tiltGesturesEnabled = false
+                        )
+                    ) {
+                        if (latLngs.size >= 2) {
+                            Polyline(points = latLngs, color = Primary, width = 14f)
+                        }
+                        if (latLngs.isNotEmpty()) {
+                            Marker(state = MarkerState(position = latLngs.first()), title = "Başlangıç")
+                        }
+                        if (latLngs.size >= 2) {
+                            Circle(
+                                center      = latLngs.last(),
+                                radius      = 7.0,
+                                fillColor   = Primary,
+                                strokeColor = Color.White,
+                                strokeWidth = 4f
+                            )
+                        }
+                    }
+
+                    // Konuma kilitle butonu — kamera serbest olduğunda görünür
+                    if (!cameraLocked) {
+                        Surface(
+                            onClick = {
+                                cameraLocked = true
+                                if (latLngs.isNotEmpty()) {
+                                    coroutineScope.launch {
+                                        try {
+                                            cameraPositionState.animate(
+                                                CameraUpdateFactory.newCameraPosition(
+                                                    CameraPosition.fromLatLngZoom(latLngs.last(), 16f)
+                                                ),
+                                                durationMs = 600
+                                            )
+                                        } catch (e: CancellationException) {
+                                            throw e
+                                        } catch (_: Exception) {}
+                                    }
+                                }
+                            },
+                            modifier = Modifier
+                                .align(Alignment.BottomEnd)
+                                .padding(10.dp)
+                                .size(40.dp),
+                            shape = CircleShape,
+                            color = Color.White,
+                            shadowElevation = 4.dp,
+                            tonalElevation = 0.dp
+                        ) {
+                            Box(
+                                modifier = Modifier.fillMaxSize(),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.MyLocation,
+                                    contentDescription = "Konuma kilitle",
+                                    tint = Primary,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            Spacer(Modifier.height(10.dp))
+
+            // ── Hedef progress ────────────────────────────────────────────────
+            if (goal !is WorkoutGoal.None) {
+                Column(
+                    modifier = Modifier.padding(horizontal = 20.dp).fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(5.dp)
+                ) {
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text(goal.label(), fontSize = 11.sp, color = c.textHint)
+                        Text(
+                            "%d%%".format((goalProgress * 100).toInt()),
+                            fontSize = 11.sp, fontWeight = FontWeight.Bold,
+                            color = if (goalProgress >= 1f) Color(0xFF4CAF50) else Primary
+                        )
+                    }
+                    LinearProgressIndicator(
+                        progress = { goalProgress },
+                        modifier = Modifier.fillMaxWidth().height(4.dp).clip(RoundedCornerShape(2.dp)),
+                        color = if (goalProgress >= 1f) Color(0xFF4CAF50) else Primary,
+                        trackColor = c.divider
+                    )
+                }
+                Spacer(Modifier.height(10.dp))
+            }
+
+            // ── Alt butonlar (yalnızca aktif antrenman) ───────────────────────
+            if (!awaitingStart && !gpsIsPaused) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 32.dp)
+                        .padding(bottom = 12.dp),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(72.dp)
+                            .background(c.pausePlayBg, CircleShape)
+                            .clickable { onPauseToggle() },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Pause,
+                            contentDescription = "Duraklat",
+                            tint = c.pausePlayIcon,
+                            modifier = Modifier.size(32.dp)
+                        )
+                    }
+                }
+            }
+        }
+
+        if (awaitingStart) {
+            WorkoutStartOverlay(onStart = onStartWorkout)
+        } else if (gpsIsPaused) {
+            WorkoutPausedOverlay(
+                onResume = onPauseToggle,
+                onFinish = onFinishWorkout
+            )
+        }
+    }
+}
+
+// ── HUD helper composables ─────────────────────────────────────────────────────
+
+@Composable
+private fun HudIconButton(
+    c: HudColors,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    tint: Color = Color.Unspecified,
+    onClick: () -> Unit
+) {
+    val iconTint = if (tint == Color.Unspecified) c.textPrimary else tint
+    Box(
+        modifier = Modifier
+            .size(44.dp)
+            .background(c.iconBg, CircleShape)
+            .border(1.dp, c.iconBorder, CircleShape)
+            .clickable { onClick() },
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(icon, null, tint = iconTint, modifier = Modifier.size(20.dp))
+    }
+}
+
+@Composable
+private fun HudStatCard(
+    c: HudColors,
+    modifier: Modifier = Modifier,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    value: String,
+    unit: String,
+    label: String,
+    valueColor: Color = Color.Unspecified
+) {
+    val vColor = if (valueColor == Color.Unspecified) c.textPrimary else valueColor
+    Column(
+        modifier = modifier
+            .background(c.surface, RoundedCornerShape(16.dp))
+            .border(1.dp, c.surfaceBorder, RoundedCornerShape(16.dp))
+            .padding(horizontal = 8.dp, vertical = 12.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(3.dp)
+    ) {
+        Icon(icon, null, tint = vColor.copy(alpha = 0.55f), modifier = Modifier.size(13.dp))
+        Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(value, fontSize = 17.sp, fontWeight = FontWeight.Bold, color = vColor)
+            if (unit.isNotEmpty())
+                Text(unit, fontSize = 9.sp, color = c.textHint, modifier = Modifier.padding(bottom = 2.dp))
+        }
+        Text(label, fontSize = 8.sp, color = c.textHint, letterSpacing = 1.sp, fontWeight = FontWeight.Bold)
+    }
+}
+
+@Composable
+private fun HudSecondStat(c: HudColors, value: String, label: String) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Text(value, fontSize = 19.sp, fontWeight = FontWeight.SemiBold, color = c.textSecondary)
+        Text(label, fontSize = 9.sp, color = c.textHint, letterSpacing = 1.5.sp, fontWeight = FontWeight.Bold)
+    }
+}
+
+@Composable
+private fun HudActionButton(
+    c: HudColors,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    label: String,
+    tint: Color = Color.Unspecified,
+    onClick: () -> Unit
+) {
+    val iconTint = if (tint == Color.Unspecified) c.textPrimary else tint
+    Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(5.dp)) {
+        Box(
+            modifier = Modifier
+                .size(50.dp)
+                .background(c.iconBg, CircleShape)
+                .border(1.dp, c.iconBorder, CircleShape)
+                .clickable { onClick() },
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(icon, null, tint = iconTint, modifier = Modifier.size(20.dp))
+        }
+        Text(label, fontSize = 11.sp, color = c.textHint)
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Program preview — salon / AI hareket listesi (sayaç öncesi)
+// ---------------------------------------------------------------------------
+
+@Composable
+private fun ProgramPreviewOverlay(
+    training: Training,
+    exercises: List<ProgramExercise>,
+    fallbackNames: List<String>,
+    isLoading: Boolean,
+    onStart: () -> Unit,
+    onBack: () -> Unit
+) {
+    val items = remember(exercises, fallbackNames) {
+        if (exercises.isNotEmpty()) {
+            exercises.sortedBy { it.orderIndex }.map { pe ->
+                val name = pe.exercise?.name ?: "Hareket"
+                val detail = buildString {
+                    append("${pe.sets} set × ${pe.reps} tekrar")
+                    pe.weightSuggestion?.takeIf { it > 0 }?.let { append(" · ${it.toInt()} kg") }
+                }
+                name to detail
+            }
+        } else {
+            fallbackNames.map { it to "" }
+        }
+    }
+
+    Surface(
+        modifier = Modifier.fillMaxSize(),
+        color = MaterialTheme.colorScheme.background
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .statusBarsPadding()
+                .navigationBarsPadding()
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                TextButton(onClick = onBack) {
+                    Text("İptal", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                Text(
+                    text = training.title,
+                    modifier = Modifier.weight(1f),
+                    textAlign = TextAlign.Center,
+                    fontSize = 17.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Spacer(Modifier.width(56.dp))
+            }
+
+            Text(
+                text = "Program hareketleri",
+                modifier = Modifier.padding(horizontal = 20.dp),
+                fontSize = 22.sp,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+            Text(
+                text = "Başlamadan önce içeriği inceleyin",
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
+                fontSize = 14.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+
+            if (isLoading && items.isEmpty()) {
+                Box(modifier = Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator(color = Primary)
+                }
+            } else if (items.isEmpty()) {
+                Box(modifier = Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                    Text(
+                        "Bu program için hareket listesi bulunamadı.",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(20.dp),
+                        textAlign = TextAlign.Center
+                    )
+                }
+            } else {
+                LazyColumn(
+                    modifier = Modifier.weight(1f),
+                    contentPadding = PaddingValues(horizontal = 20.dp, vertical = 16.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    items(items.size) { index ->
+                        val (name, detail) = items[index]
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(MaterialTheme.colorScheme.surface)
+                                .padding(horizontal = 14.dp, vertical = 12.dp),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "${index + 1}.",
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Primary,
+                                modifier = Modifier.width(28.dp)
+                            )
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    name,
+                                    fontSize = 15.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                if (detail.isNotBlank()) {
+                                    Text(
+                                        detail,
+                                        fontSize = 12.sp,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            Button(
+                onClick = onStart,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp, vertical = 16.dp)
+                    .height(52.dp),
+                shape = RoundedCornerShape(14.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = Primary)
+            ) {
+                Text("Antrenmana Başla", fontSize = 16.sp, fontWeight = FontWeight.Bold)
+            }
+        }
+    }
+}
+
+@Composable
+private fun MinimalWorkoutLayout(
+    elapsedSeconds: Int,
+    primaryMetric: String,
+    secondaryMetric: String,
+    isPaused: Boolean,
+    onClose: () -> Unit,
+    onPauseToggle: () -> Unit
+) {
+    val pulse = rememberInfiniteTransition(label = "minimalHr")
+    val heartScale by pulse.animateFloat(
+        initialValue = 1f,
+        targetValue = 1.12f,
+        animationSpec = infiniteRepeatable(tween(700), RepeatMode.Reverse),
+        label = "heartScale"
+    )
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black)
+            .statusBarsPadding()
+    ) {
+        Column(modifier = Modifier.fillMaxSize()) {
+            Icon(
+                imageVector = Icons.Default.KeyboardArrowDown,
+                contentDescription = "Kapat",
+                tint = Color.White.copy(alpha = 0.85f),
+                modifier = Modifier
+                    .padding(start = 12.dp, top = 8.dp)
+                    .size(32.dp)
+                    .clickable { onClose() }
+            )
+
+            Text(
+                text = formatTimeFull(elapsedSeconds),
+                fontSize = 52.sp,
+                fontWeight = FontWeight.Bold,
+                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                color = Color.White,
+                textAlign = TextAlign.Center,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 24.dp)
+                    .padding(top = 8.dp)
+            )
+
+            Spacer(modifier = Modifier.weight(1f))
+
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(28.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = primaryMetric,
+                        fontSize = 28.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = Color.White.copy(alpha = 0.9f)
+                    )
+                    Text(
+                        text = secondaryMetric,
+                        fontSize = 28.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = Color.White.copy(alpha = 0.9f)
+                    )
+                }
+
+                Icon(
+                    imageVector = Icons.Default.Favorite,
+                    contentDescription = null,
+                    tint = Color(0xFFFF3B30),
+                    modifier = Modifier
+                        .size(22.dp)
+                        .scale(heartScale)
+                )
+            }
+
+            Spacer(modifier = Modifier.weight(1f))
+
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(
+                        Color(0xFF1C1C1E),
+                        RoundedCornerShape(topStart = 22.dp, topEnd = 22.dp)
+                    )
+                    .navigationBarsPadding()
+                    .padding(bottom = 20.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Box(
+                    modifier = Modifier
+                        .padding(top = 10.dp, bottom = 18.dp)
+                        .width(40.dp)
+                        .height(4.dp)
+                        .background(Color.White.copy(alpha = 0.35f), RoundedCornerShape(2.dp))
+                )
+
+                Button(
+                    onClick = onPauseToggle,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 24.dp)
+                        .height(56.dp),
+                    shape = RoundedCornerShape(28.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = Primary)
+                ) {
+                    Icon(
+                        imageVector = if (isPaused) Icons.Default.PlayArrow else Icons.Default.Pause,
+                        contentDescription = null,
+                        tint = Color.White,
+                        modifier = Modifier.size(22.dp)
+                    )
+                    Spacer(Modifier.width(10.dp))
+                    Text(
+                        text = if (isPaused) "Devam Et" else "Duraklat",
+                        fontSize = 17.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun StravaStyleWorkoutControls(
+    isPaused: Boolean,
+    onPauseToggle: () -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 32.dp, vertical = 20.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Box(
+            modifier = Modifier
+                .size(72.dp)
+                .background(
+                    if (isPaused) Primary else MaterialTheme.colorScheme.surfaceVariant,
+                    CircleShape
+                )
+                .clickable { onPauseToggle() },
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = if (isPaused) Icons.Default.PlayArrow else Icons.Default.Pause,
+                contentDescription = if (isPaused) "Devam" else "Duraklat",
+                tint = if (isPaused) Color.White else MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.size(32.dp)
+            )
+        }
+    }
+}
+
+@Composable
+private fun WorkoutStartOverlay(onStart: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black.copy(alpha = 0.55f)),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            modifier = Modifier
+                .padding(horizontal = 32.dp)
+                .widthIn(max = 320.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(20.dp)
+        ) {
+            Text(
+                "Hazır mısın?",
+                fontSize = 24.sp,
+                fontWeight = FontWeight.Bold,
+                color = Color.White,
+                textAlign = TextAlign.Center
+            )
+            Text(
+                "Başlat'a bastığında süre ve GPS takibi başlar.",
+                fontSize = 14.sp,
+                color = Color.White.copy(alpha = 0.72f),
+                textAlign = TextAlign.Center
+            )
+            Button(
+                onClick = onStart,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(56.dp),
+                shape = RoundedCornerShape(28.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = Primary)
+            ) {
+                Text("Başlat", fontSize = 17.sp, fontWeight = FontWeight.Bold)
+            }
+        }
+    }
+}
+
+@Composable
+private fun WorkoutPausedOverlay(
+    onResume: () -> Unit,
+    onFinish: () -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black.copy(alpha = 0.72f)),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            modifier = Modifier
+                .padding(horizontal = 32.dp)
+                .widthIn(max = 320.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            Text(
+                "Duraklatıldı",
+                fontSize = 22.sp,
+                fontWeight = FontWeight.Bold,
+                color = Color.White,
+                textAlign = TextAlign.Center
+            )
+            Button(
+                onClick = onResume,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(56.dp),
+                shape = RoundedCornerShape(28.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = Primary)
+            ) {
+                Text("Devam Et", fontSize = 17.sp, fontWeight = FontWeight.Bold)
+            }
+            OutlinedButton(
+                onClick = onFinish,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(56.dp),
+                shape = RoundedCornerShape(28.dp),
+                colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFFF3B30)),
+                border = androidx.compose.foundation.BorderStroke(1.5.dp, Color(0xFFFF3B30))
+            ) {
+                Text("Bitir", fontSize = 17.sp, fontWeight = FontWeight.Bold)
+            }
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+private fun formatTime(seconds: Int): String {
+    val m = seconds / 60
+    val s = seconds % 60
+    return String.format("%02d:%02d", m, s)
+}
+
+private fun formatTimeFull(seconds: Int): String {
+    val h = seconds / 3600
+    val m = (seconds % 3600) / 60
+    val s = seconds % 60
+    return String.format("%02d:%02d:%02d", h, m, s)
+}
+
+private fun formatPace(paceMinPerKm: Double): String {
+    if (paceMinPerKm <= 0) return "--'--"
+    val min = paceMinPerKm.toInt()
+    val sec = ((paceMinPerKm - min) * 60).toInt()
+    return "%d'%02d\"".format(min, sec)
+}
