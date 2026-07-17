@@ -167,15 +167,14 @@ fun RegisterScreen(
                 if (emailConfirmed && AuthService.isCurrentUserEmailConfirmed()) {
                     onRegisterSuccess()
                 } else {
-                    AuthService.signOut()
                     showEmailConfirm = true
                 }
             } catch (e: CancellationException) {
                 throw e
             } catch (_: AuthException.EmailNotConfirmed) {
-                AuthService.signOut()
                 showEmailConfirm = true
             } catch (e: Exception) {
+                android.util.Log.e("RegisterScreen", "Registration failed", e)
                 errorMessage = when {
                     e.message?.contains("already registered", ignoreCase = true) == true ||
                     e.message?.contains("User already registered", ignoreCase = true) == true ->
@@ -494,7 +493,13 @@ fun RegisterScreen(
 
     if (showEmailConfirm) {
         AlertDialog(
-            onDismissRequest = { showEmailConfirm = false; onNavigateBack() },
+            onDismissRequest = {
+                scope.launch {
+                    try { AuthService.signOut() } catch (_: Exception) {}
+                    showEmailConfirm = false
+                    onNavigateBack()
+                }
+            },
             title = { Text("E-posta Doğrulama") },
             text = {
                 Text("Kayıt oluşturuldu. Giriş yapmadan önce e-posta adresinize gelen doğrulama linkine tıklayın.")
@@ -521,7 +526,15 @@ fun RegisterScreen(
                 }
             },
             dismissButton = {
-                TextButton(onClick = { showEmailConfirm = false; onNavigateBack() }) {
+                TextButton(
+                    onClick = {
+                        scope.launch {
+                            try { AuthService.signOut() } catch (_: Exception) {}
+                            showEmailConfirm = false
+                            onNavigateBack()
+                        }
+                    }
+                ) {
                     Text("Giriş Ekranına Dön", color = Primary)
                 }
             }

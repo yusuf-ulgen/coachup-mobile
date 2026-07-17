@@ -158,6 +158,7 @@ object AuthService {
         } catch (e: AuthException) {
             throw e
         } catch (e: Exception) {
+            android.util.Log.e("AuthService", "SignUp failed raw exception", e)
             throw AuthException.SignUpFailed(extractAuthErrorMessage(e))
         }
     }
@@ -336,6 +337,11 @@ object AuthService {
             raw.contains("Email not confirmed", ignoreCase = true)
         ) {
             return "email_not_confirmed"
+        }
+        if (raw.contains("over_email_send_rate_limit", ignoreCase = true) ||
+            raw.contains("rate limit exceeded", ignoreCase = true)
+        ) {
+            return "E-posta gönderim limiti aşıldı. Lütfen bir süre sonra tekrar deneyin."
         }
         if (raw.contains("URL:") || raw.length > 120) {
             return "Sunucu hatası. Lütfen tekrar deneyin."

@@ -122,15 +122,21 @@ fun LoginScreen(
                 errorMessage = "E-posta adresinizi doğrulamadınız. Gelen kutunuzu kontrol edin."
                 showEmailNotConfirmed = true
             } catch (e: Exception) {
+                android.util.Log.e("LoginScreen", "Login failed", e)
                 errorMessage = when {
                     e.message?.contains("invalid_credentials", ignoreCase = true) == true ||
-                    e.message?.contains("Invalid login credentials", ignoreCase = true) == true ->
+                    e.message?.contains("Invalid login credentials", ignoreCase = true) == true ||
+                    e.message?.contains("E-posta veya şifre hatalı", ignoreCase = true) == true ->
                         "E-posta veya şifre hatalı."
                     e.message?.contains("email_not_confirmed", ignoreCase = true) == true ->
                         "E-posta adresinizi doğrulamadınız. Gelen kutunuzu kontrol edin."
                     e.message?.contains("network", ignoreCase = true) == true ||
                     e.message?.contains("Unable to resolve host", ignoreCase = true) == true ->
                         "İnternet bağlantısı yok."
+                    e is AuthException.SignInFailed -> {
+                        val msg = e.message.orEmpty().removePrefix("Giriş başarısız: ")
+                        if (msg.isNotBlank()) msg else "Giriş başarısız. Tekrar deneyin."
+                    }
                     else -> "Giriş yapılamadı. Lütfen tekrar deneyin."
                 }
                 showError = true
