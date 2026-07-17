@@ -44,6 +44,7 @@ import com.app.coachup.app.ui.training.components.CircularRestTimer
 import com.app.coachup.app.ui.training.components.PlateVisualView
 import com.app.coachup.app.ui.training.components.RPESlider
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -201,41 +202,48 @@ fun RecordAttemptSessionScreen(
         scope.launch {
             var newPR = false
             try {
-                // Single complete call (includes streak when success + userId)
-                RecordAttemptService.completeAttempt(
-                    attemptId = attempt.id,
-                    success = success,
-                    notes = null,
-                    userId = attempt.userId
-                )
-                if (success) {
-                    // Run result upsert + PR in parallel-ish, don't block UI longer than needed
-                    try {
-                        ResultsService.upsertExerciseResult(
-                            userId = attempt.userId,
-                            exerciseId = attempt.exerciseId,
-                            weight = recordWeight,
-                            reps = recordReps
-                        )
-                    } catch (e: CancellationException) {
-                        throw e
-                    } catch (_: Exception) {
-                    }
-                    newPR = try {
-                        RecordAttemptService.updatePersonalRecordIfNeeded(
-                            userId = attempt.userId,
-                            exerciseId = attempt.exerciseId,
-                            weight = recordWeight,
-                            reps = recordReps,
-                            notes = null,
-                            measureType = measureType
-                        )
-                    } catch (e: CancellationException) {
-                        throw e
-                    } catch (_: Exception) {
-                        false
-                    }
+                // Run completeAttempt and PR updates concurrently to speed up response time
+                val completeJob = async {
+                    RecordAttemptService.completeAttempt(
+                        attemptId = attempt.id,
+                        success = success,
+                        notes = null,
+                        userId = attempt.userId
+                    )
                 }
+
+                val prJob = if (success) {
+                    async {
+                        try {
+                            ResultsService.upsertExerciseResult(
+                                userId = attempt.userId,
+                                exerciseId = attempt.exerciseId,
+                                weight = recordWeight,
+                                reps = recordReps
+                            )
+                        } catch (e: CancellationException) {
+                            throw e
+                        } catch (_: Exception) {}
+
+                        try {
+                            RecordAttemptService.updatePersonalRecordIfNeeded(
+                                userId = attempt.userId,
+                                exerciseId = attempt.exerciseId,
+                                weight = recordWeight,
+                                reps = recordReps,
+                                notes = null,
+                                measureType = measureType
+                            )
+                        } catch (e: CancellationException) {
+                            throw e
+                        } catch (_: Exception) {
+                            false
+                        }
+                    }
+                } else null
+
+                completeJob.await()
+                newPR = prJob?.await() ?: false
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {

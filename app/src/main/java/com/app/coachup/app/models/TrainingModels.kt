@@ -37,16 +37,36 @@ enum class TrainingCategory(
 
     val isProgramBased: Boolean get() = this == GYM_PROGRAM || this == AI_PROGRAM
 
-    val estimatedBPM: Int get() = when (this) {
-        RUNNING, HYROX -> 155
-        WALKING -> 110
-        CYCLING -> 140
-        SWIMMING -> 145
-        CROSSFIT, COMBAT, FUNCTIONAL -> 160
-        FITNESS -> 120
-        YOGA, PILATES -> 95
-        GYM_PROGRAM, AI_PROGRAM, CUSTOM -> 115
+    /**
+     * Bu aktivite tipi için gösterilecek / kaydedilecek metrikler.
+     * Süre her zaman gösterilir, burada ekstra metrikler tanımlanır.
+     * Nabız / Kalori sadece akıllı saatten gelir — veri yoksa UI'da "—" gösterilir.
+     */
+    val trackedMetrics: Set<ActivityMetric> get() = when (this) {
+        FITNESS          -> setOf(ActivityMetric.AVG_HR, ActivityMetric.MAX_HR, ActivityMetric.CALORIES)
+        RUNNING          -> setOf(ActivityMetric.DISTANCE, ActivityMetric.AVG_PACE, ActivityMetric.AVG_HR, ActivityMetric.MAX_HR, ActivityMetric.CALORIES)
+        WALKING          -> setOf(ActivityMetric.DISTANCE, ActivityMetric.AVG_PACE, ActivityMetric.AVG_HR, ActivityMetric.CALORIES)
+        CYCLING          -> setOf(ActivityMetric.DISTANCE, ActivityMetric.AVG_SPEED, ActivityMetric.AVG_HR, ActivityMetric.MAX_HR, ActivityMetric.CALORIES)
+        SWIMMING         -> setOf(ActivityMetric.DISTANCE, ActivityMetric.AVG_HR, ActivityMetric.CALORIES)
+        COMBAT           -> setOf(ActivityMetric.AVG_HR, ActivityMetric.MAX_HR, ActivityMetric.CALORIES)
+        YOGA             -> setOf(ActivityMetric.AVG_HR, ActivityMetric.CALORIES)
+        PILATES          -> setOf(ActivityMetric.AVG_HR, ActivityMetric.CALORIES)
+        CROSSFIT         -> setOf(ActivityMetric.AVG_HR, ActivityMetric.MAX_HR, ActivityMetric.CALORIES)
+        FUNCTIONAL       -> setOf(ActivityMetric.AVG_HR, ActivityMetric.MAX_HR, ActivityMetric.CALORIES)
+        HYROX            -> setOf(ActivityMetric.AVG_HR, ActivityMetric.MAX_HR, ActivityMetric.CALORIES)
+        CUSTOM           -> setOf(ActivityMetric.AVG_HR, ActivityMetric.MAX_HR, ActivityMetric.CALORIES)
+        GYM_PROGRAM      -> setOf(ActivityMetric.AVG_HR, ActivityMetric.MAX_HR, ActivityMetric.CALORIES)
+        AI_PROGRAM       -> setOf(ActivityMetric.AVG_HR, ActivityMetric.MAX_HR, ActivityMetric.CALORIES)
     }
+
+    /** Bu aktivite mesafe takip ediyor mu? */
+    val tracksDistance: Boolean get() = ActivityMetric.DISTANCE in trackedMetrics
+
+    /** Bu aktivite tempo (min/km) gösterecek mi? */
+    val tracksPace: Boolean get() = ActivityMetric.AVG_PACE in trackedMetrics
+
+    /** Bu aktivite hız (km/h) gösterecek mi? */
+    val tracksSpeed: Boolean get() = ActivityMetric.AVG_SPEED in trackedMetrics
 
     companion object {
         val defaultModules: List<TrainingCategory> = listOf(
@@ -162,5 +182,42 @@ object SessionWorkoutMeta {
     private fun metaPart(notes: String?): String? {
         if (notes.isNullOrBlank() || !notes.contains(META_SEP)) return null
         return notes.substringAfter(META_SEP)
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Activity Metrics — defines which data fields each activity type tracks
+// ---------------------------------------------------------------------------
+
+enum class ActivityMetric(val label: String, val unit: String, val emoji: String) {
+    DISTANCE("Mesafe", "km", "📏"),
+    AVG_PACE("Ort. Tempo", "dk/km", "⏱️"),
+    AVG_SPEED("Ort. Hız", "km/sa", "💨"),
+    AVG_HR("Ort. Nabız", "bpm", "❤️"),
+    MAX_HR("Maks. Nabız", "bpm", "❤️"),
+    CALORIES("Kalori", "kcal", "🔥");
+
+    /** True if this metric requires a smartwatch / Health Connect */
+    val requiresWearable: Boolean get() = this in setOf(AVG_HR, MAX_HR, CALORIES)
+}
+
+// ---------------------------------------------------------------------------
+// Perceived Effort — post-workout "Nasıl hissediyorsun?" response
+// ---------------------------------------------------------------------------
+
+enum class PerceivedEffort(
+    val label: String,
+    val emoji: String,
+    val dbValue: String
+) {
+    GREAT("Harika", "😁", "great"),
+    GOOD("İyi", "🙂", "good"),
+    NORMAL("Normal", "😐", "normal"),
+    HARD("Zor", "😤", "hard"),
+    VERY_HARD("Çok Zor", "🥵", "very_hard");
+
+    companion object {
+        fun fromDbValue(v: String): PerceivedEffort? =
+            entries.firstOrNull { it.dbValue == v }
     }
 }

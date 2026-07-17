@@ -354,10 +354,32 @@ object TrainingService {
     }
 
     /**
-     * Marks a session as completed and clears currentSession.
-     * Mirrors iOS completeSession(sessionId:notes:).
+     * Marks a session as completed with all workout metrics.
+     *
+     * @param notes          Legacy builtin:… encoded notes (backward compat)
+     * @param durationSeconds Workout duration in seconds (always set)
+     * @param distanceKm     GPS distance — outdoor activities only
+     * @param avgHeartRate   From Health Connect — null if no wearable
+     * @param maxHeartRate   From Health Connect — null if no wearable
+     * @param calories       From Health Connect — null if no wearable (NO fake estimates)
+     * @param avgPace        min/km — running/walking only
+     * @param avgSpeed       km/h — cycling only
+     * @param altitudeGain   metres — GPS activities with altitude data
+     * @param perceivedEffort "great"|"good"|"normal"|"hard"|"very_hard"
      */
-    suspend fun completeSession(sessionId: String, notes: String? = null) {
+    suspend fun completeSession(
+        sessionId: String,
+        notes: String? = null,
+        durationSeconds: Int? = null,
+        distanceKm: Double? = null,
+        avgHeartRate: Int? = null,
+        maxHeartRate: Int? = null,
+        calories: Int? = null,
+        avgPace: Double? = null,
+        avgSpeed: Double? = null,
+        altitudeGain: Double? = null,
+        perceivedEffort: String? = null
+    ) {
         _isLoading.value = true
         try {
             val session = supabase
@@ -370,7 +392,16 @@ object TrainingService {
                     SessionCompleteUpdate(
                         completedAt = Instant.now().toString(),
                         status = "completed",
-                        notes = notes ?: session.notes
+                        notes = notes ?: session.notes,
+                        durationSeconds = durationSeconds,
+                        distanceKm = distanceKm?.takeIf { it > 0.001 },
+                        avgHeartRate = avgHeartRate?.takeIf { it > 0 },
+                        maxHeartRate = maxHeartRate?.takeIf { it > 0 },
+                        calories = calories?.takeIf { it > 0 },
+                        avgPace = avgPace?.takeIf { it > 0.0 },
+                        avgSpeed = avgSpeed?.takeIf { it > 0.0 },
+                        altitudeGain = altitudeGain?.takeIf { it > 0.0 },
+                        perceivedEffort = perceivedEffort
                     )
                 ) { filter { eq("id", sessionId) } }
 

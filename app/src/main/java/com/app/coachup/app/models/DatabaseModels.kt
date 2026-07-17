@@ -280,6 +280,23 @@ data class TrainingSession(
     /** scheduled | in_progress | completed | cancelled */
     @SerialName("status")       val status: String,
     @SerialName("notes")        val notes: String? = null,
+    // ── Workout metric columns (migration 20260717000000) ──
+    @SerialName("duration_seconds")  val durationSeconds: Int? = null,
+    @SerialName("distance_km")       val distanceKm: Double? = null,
+    /** From Health Connect / smartwatch only — null when no wearable */
+    @SerialName("avg_heart_rate")    val avgHeartRate: Int? = null,
+    @SerialName("max_heart_rate")    val maxHeartRate: Int? = null,
+    /** From Health Connect / smartwatch only — null when no wearable */
+    @SerialName("calories")          val calories: Int? = null,
+    /** min/km — outdoor GPS activities only */
+    @SerialName("avg_pace")          val avgPace: Double? = null,
+    /** km/h — outdoor GPS activities only */
+    @SerialName("avg_speed")         val avgSpeed: Double? = null,
+    /** metres — GPS activities with altitude data */
+    @SerialName("altitude_gain")     val altitudeGain: Double? = null,
+    /** great | good | normal | hard | very_hard */
+    @SerialName("perceived_effort")  val perceivedEffort: String? = null,
+    // ── Joined/virtual fields ──
     @SerialName("program")      val program: TrainingProgram? = null,
     @SerialName("coach")        val coach: Coach? = null
 ) {
@@ -303,8 +320,10 @@ data class TrainingSession(
     val activityDisplayName: String
         get() = resolvedActivityCategory?.label ?: program?.name ?: "Antrenman"
 
+    /** Prefer dedicated column → notes fallback → timestamp diff */
     val recordedDurationSeconds: Int?
         get() {
+            durationSeconds?.let { return it }
             SessionWorkoutMeta.durationSeconds(notes)?.let { return it }
             if (completedAt.isNullOrBlank() || startedAt.isNullOrBlank()) return null
             return try {
@@ -316,8 +335,13 @@ data class TrainingSession(
             }
         }
 
+    /** Prefer dedicated column → notes fallback */
     val recordedDistanceKm: Double?
-        get() = SessionWorkoutMeta.distanceKm(notes)
+        get() = distanceKm ?: SessionWorkoutMeta.distanceKm(notes)
+
+    /** Resolved perceived effort enum (null-safe) */
+    val resolvedPerceivedEffort: PerceivedEffort?
+        get() = perceivedEffort?.let { PerceivedEffort.fromDbValue(it) }
 }
 
 // ---------------------------------------------------------------------------

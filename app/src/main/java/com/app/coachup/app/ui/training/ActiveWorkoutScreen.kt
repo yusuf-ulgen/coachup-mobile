@@ -89,7 +89,13 @@ data class WorkoutCompletionData(
     val avgSpeedKmh: Double = 0.0,
     val altitudeGainM: Double = 0.0,
     val splits: List<KmSplit> = emptyList(),
-    val routePoints: List<Pair<Double, Double>> = emptyList()
+    val routePoints: List<Pair<Double, Double>> = emptyList(),
+    // Health Connect metrics — null when no wearable
+    val avgHeartRate: Int? = null,
+    val maxHeartRate: Int? = null,
+    val calories: Int? = null,
+    // Post-workout feeling
+    val perceivedEffort: String? = null
 )
 
 // ---------------------------------------------------------------------------
@@ -266,12 +272,33 @@ class ActiveWorkoutViewModel : ViewModel() {
         activityType: String = "workout",
         durationMinutes: Int? = null,
         completionNotes: String? = null,
+        durationSeconds: Int? = null,
+        distanceKm: Double? = null,
+        avgHeartRate: Int? = null,
+        maxHeartRate: Int? = null,
+        calories: Int? = null,
+        avgPace: Double? = null,
+        avgSpeed: Double? = null,
+        altitudeGain: Double? = null,
+        perceivedEffort: String? = null,
         onDone: (durationSeconds: Int, completedSets: Int, totalSets: Int) -> Unit
     ) {
         onDone(_elapsedSeconds.value, completedSetsCount, totalSetsCount)
         viewModelScope.launch {
             try {
-                WorkoutService.completeSession(sessionId, completionNotes)
+                WorkoutService.completeSession(
+                    sessionId = sessionId,
+                    notes = completionNotes,
+                    durationSeconds = durationSeconds,
+                    distanceKm = distanceKm,
+                    avgHeartRate = avgHeartRate,
+                    maxHeartRate = maxHeartRate,
+                    calories = calories,
+                    avgPace = avgPace,
+                    avgSpeed = avgSpeed,
+                    altitudeGain = altitudeGain,
+                    perceivedEffort = perceivedEffort
+                )
                 try {
                     StreakService.recordActivityAndSync(
                         userId = userId,
@@ -393,7 +420,9 @@ fun ActiveWorkoutScreen(
         WorkoutSummaryScreen(
             training = training,
             durationSeconds = data.durationSeconds,
-            totalCalories = (data.durationSeconds / 60) * 8,
+            avgHeartRate = data.avgHeartRate,
+            maxHeartRate = data.maxHeartRate,
+            calories = data.calories,
             distanceKm = data.distanceKm,
             avgPaceMinPerKm = data.avgPaceMinPerKm,
             avgSpeedKmh = data.avgSpeedKmh,
@@ -402,7 +431,7 @@ fun ActiveWorkoutScreen(
             routePoints = data.routePoints,
             completedSets = data.completedSets,
             totalSets = data.totalSets,
-            progressiveSuggestion = null,
+            perceivedEffort = data.perceivedEffort,
             onDismiss = {
                 summaryData = null
                 onNavigateBack()
@@ -412,6 +441,10 @@ fun ActiveWorkoutScreen(
     }
 
     val isAvailable by HealthConnectService.isAvailable.collectAsState()
+    val liveHR by HealthConnectService.currentHeartRate.collectAsState()
+    val avgHR by HealthConnectService.averageHeartRate.collectAsState()
+    val maxHR by HealthConnectService.maxHeartRate.collectAsState()
+
     val hcPermissionLauncher = rememberLauncherForActivityResult(
         contract = PermissionController.createRequestPermissionResultContract()
     ) { /* İzin verilmezse nabız 0 kalır */ }
@@ -444,14 +477,23 @@ fun ActiveWorkoutScreen(
     val editWeight by vm.editWeight.collectAsState()
 
     var showCompleteDialog by remember { mutableStateOf(false) }
+    var showEffortDialog by remember { mutableStateOf(false) }
 
-    fun confirmFinishWorkout() {
+    fun confirmFinishWorkout(effort: String? = null) {
         showCompleteDialog = false
+        showEffortDialog = false
         val completionNotes = SessionWorkoutMeta.encodeCompletionNotes(
             categoryDbValue = if (training.isBuiltIn) training.category.dbValue else null,
             durationSeconds = elapsedSeconds,
             distanceKm = if (isOutdoor) LocationTrackingService.distanceKm.value else 0.0
         )
+        // Capture Health Connect values — null if unavailable or no wearable (<= 0)
+        val hcAvail = HealthConnectService.isAvailable.value
+        val hcAvgHR = if (hcAvail) HealthConnectService.averageHeartRate.value.takeIf { it > 0 } else null
+        val hcMaxHR = if (hcAvail) HealthConnectService.maxHeartRate.value.takeIf { it > 0 } else null
+        // No fake calorie estimates — only null from Health Connect (not implemented yet)
+        val hcCalories: Int? = null
+
         pendingSummaryData = WorkoutCompletionData(
             durationSeconds = elapsedSeconds,
             completedSets = vm.completedSetsCount,
@@ -461,7 +503,11 @@ fun ActiveWorkoutScreen(
             avgSpeedKmh = if (isOutdoor) LocationTrackingService.averageSpeedKmh.value else 0.0,
             altitudeGainM = if (isOutdoor) LocationTrackingService.altitudeGainM.value else 0.0,
             splits = if (isOutdoor) LocationTrackingService.splits.value else emptyList(),
-            routePoints = if (isOutdoor) LocationTrackingService.routePoints.value else emptyList()
+            routePoints = if (isOutdoor) LocationTrackingService.routePoints.value else emptyList(),
+            avgHeartRate = hcAvgHR,
+            maxHeartRate = hcMaxHR,
+            calories = hcCalories,
+            perceivedEffort = effort
         )
         showFinishCelebration = true
         if (isOutdoor) LocationTrackingService.stopTracking()
@@ -471,7 +517,16 @@ fun ActiveWorkoutScreen(
             userId = uid,
             activityType = training.category.dbValue,
             durationMinutes = (elapsedSeconds / 60).coerceAtLeast(1),
-            completionNotes = completionNotes
+            completionNotes = completionNotes,
+            durationSeconds = elapsedSeconds,
+            distanceKm = if (isOutdoor) LocationTrackingService.distanceKm.value else null,
+            avgHeartRate = hcAvgHR,
+            maxHeartRate = hcMaxHR,
+            calories = hcCalories,
+            avgPace = if (isOutdoor) LocationTrackingService.paceMinPerKm.value.takeIf { it > 0.0 } else null,
+            avgSpeed = if (isOutdoor) LocationTrackingService.averageSpeedKmh.value.takeIf { it > 0.0 } else null,
+            altitudeGain = if (isOutdoor) LocationTrackingService.altitudeGainM.value.takeIf { it > 0.0 } else null,
+            perceivedEffort = effort
         ) { _, _, _ -> }
     }
 
@@ -692,11 +747,11 @@ fun ActiveWorkoutScreen(
                         Column(modifier = Modifier.fillMaxSize()) {
                             Spacer(Modifier.weight(1f))
                             StrengthCenter(
-                                bpm = training.category.estimatedBPM,
-                                isLive = false,
-                                estimatedCalories = (elapsedSeconds / 60) * 8,
+                                bpm = if (isAvailable && liveHR > 0) liveHR else 0,
+                                isLive = isAvailable && liveHR > 0,
+                                estimatedCalories = 0,
                                 exerciseProgress = "—",
-                                avgBpm = 0
+                                avgBpm = if (isAvailable && avgHR > 0) avgHR else 0
                             )
                             Spacer(Modifier.weight(1f))
                             StravaStyleWorkoutControls(
@@ -707,74 +762,154 @@ fun ActiveWorkoutScreen(
                     }
 
                     else -> {
-                        if (programExercises.isNotEmpty()) {
-                            ExerciseDots(
-                                exercises = programExercises,
-                                currentIndex = currentIndex,
-                                workoutSets = vm.workoutSets.collectAsState().value,
-                                onDotClick = { vm.setCurrentExerciseIndex(it) },
-                                modifier = Modifier.padding(bottom = 12.dp)
+                        if (training.category.isProgramBased) {
+                            // GYM / AI PROGRAM FULL LIST LAYOUT
+                            MinifiedStatsHeader(
+                                elapsedSeconds = elapsedSeconds,
+                                liveHR = liveHR,
+                                avgHR = avgHR,
+                                maxHR = maxHR,
+                                isAvailable = isAvailable
                             )
-                        }
 
-                        val currentExercise = vm.currentExercise()
-                        val currentSets = vm.currentSets()
+                            Spacer(Modifier.height(8.dp))
 
-                        LazyColumn(
-                            contentPadding = PaddingValues(
-                                start = Spacing.xl,
-                                end = Spacing.xl,
-                                top = 0.dp,
-                                bottom = 120.dp
-                            ),
-                            verticalArrangement = Arrangement.spacedBy(14.dp),
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            if (programExercises.isNotEmpty()) {
-                                item {
-                                    currentExercise?.let {
-                                        ExerciseMediaCard(
-                                            exercise = it,
-                                            exerciseNumber = currentIndex + 1,
-                                            totalExercises = programExercises.size
+                            LazyColumn(
+                                contentPadding = PaddingValues(
+                                    start = Spacing.xl,
+                                    end = Spacing.xl,
+                                    top = 0.dp,
+                                    bottom = 120.dp
+                                ),
+                                verticalArrangement = Arrangement.spacedBy(16.dp),
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                items(programExercises) { pe ->
+                                    val exerciseSets = vm.workoutSets.collectAsState().value.filter { it.exerciseId == pe.exerciseId }
+                                    Column(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .shadow(2.dp, RoundedCornerShape(Radius.card))
+                                            .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(Radius.card))
+                                            .border(1.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f), RoundedCornerShape(Radius.card))
+                                            .padding(14.dp),
+                                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                                    ) {
+                                        Text(
+                                            text = pe.exercise?.name ?: "Egzersiz",
+                                            fontSize = 16.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = MaterialTheme.colorScheme.onSurface
+                                        )
+                                        if (!pe.notes.isNullOrBlank()) {
+                                            Text(
+                                                text = pe.notes,
+                                                fontSize = 12.sp,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                        }
+                                        Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)))
+                                        SetsCard(
+                                            sets = exerciseSets,
+                                            editingSetId = editingSetId,
+                                            editReps = editReps,
+                                            editWeight = editWeight,
+                                            onEditRepsChange = { vm.editReps.value = it },
+                                            onEditWeightChange = { vm.editWeight.value = it },
+                                            onBeginEdit = { vm.beginEditing(it) },
+                                            onCompleteSet = { vm.completeSet(it, sessionId) }
                                         )
                                     }
                                 }
-                                item {
-                                    currentExercise?.let {
-                                        ExerciseInfoCard(exercise = it)
+                            }
+
+                            StravaStyleWorkoutControls(
+                                isPaused = isPaused,
+                                onPauseToggle = { vm.togglePause() }
+                            )
+
+                            Button(
+                                onClick = { showCompleteDialog = true },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = Spacing.xl, vertical = 12.dp)
+                                    .height(52.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = Primary),
+                                shape = RoundedCornerShape(Radius.pill)
+                            ) {
+                                Text("Antrenmanı Tamamla", fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = Color.White)
+                            }
+                        } else {
+                            // ORIGINAL PAGING LAYOUT
+                            if (programExercises.isNotEmpty()) {
+                                ExerciseDots(
+                                    exercises = programExercises,
+                                    currentIndex = currentIndex,
+                                    workoutSets = vm.workoutSets.collectAsState().value,
+                                    onDotClick = { vm.setCurrentExerciseIndex(it) },
+                                    modifier = Modifier.padding(bottom = 12.dp)
+                                )
+                            }
+
+                            val currentExercise = vm.currentExercise()
+                            val currentSets = vm.currentSets()
+
+                            LazyColumn(
+                                contentPadding = PaddingValues(
+                                    start = Spacing.xl,
+                                    end = Spacing.xl,
+                                    top = 0.dp,
+                                    bottom = 120.dp
+                                ),
+                                verticalArrangement = Arrangement.spacedBy(14.dp),
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                if (programExercises.isNotEmpty()) {
+                                    item {
+                                        currentExercise?.let {
+                                            ExerciseMediaCard(
+                                                exercise = it,
+                                                exerciseNumber = currentIndex + 1,
+                                                totalExercises = programExercises.size
+                                            )
+                                        }
+                                    }
+                                    item {
+                                        currentExercise?.let {
+                                            ExerciseInfoCard(exercise = it)
+                                        }
+                                    }
+                                    item {
+                                        SetsCard(
+                                            sets = currentSets,
+                                            editingSetId = editingSetId,
+                                            editReps = editReps,
+                                            editWeight = editWeight,
+                                            onEditRepsChange = { vm.editReps.value = it },
+                                            onEditWeightChange = { vm.editWeight.value = it },
+                                            onBeginEdit = { vm.beginEditing(it) },
+                                            onCompleteSet = { vm.completeSet(it, sessionId) }
+                                        )
                                     }
                                 }
-                                item {
-                                    SetsCard(
-                                        sets = currentSets,
-                                        editingSetId = editingSetId,
-                                        editReps = editReps,
-                                        editWeight = editWeight,
-                                        onEditRepsChange = { vm.editReps.value = it },
-                                        onEditWeightChange = { vm.editWeight.value = it },
-                                        onBeginEdit = { vm.beginEditing(it) },
-                                        onCompleteSet = { vm.completeSet(it, sessionId) }
-                                    )
-                                }
                             }
+
+                            StravaStyleWorkoutControls(
+                                isPaused = isPaused,
+                                onPauseToggle = { vm.togglePause() }
+                            )
+
+                            BottomNavigationBar(
+                                currentIndex = currentIndex,
+                                totalExercises = programExercises.size,
+                                completedSets = vm.completedSetsCount,
+                                totalSets = vm.totalSetsCount,
+                                isOutdoor = false,
+                                onPrevious = { vm.setCurrentExerciseIndex(currentIndex - 1) },
+                                onNext = { vm.setCurrentExerciseIndex(currentIndex + 1) },
+                                onComplete = { showCompleteDialog = true }
+                            )
                         }
-
-                        StravaStyleWorkoutControls(
-                            isPaused = isPaused,
-                            onPauseToggle = { vm.togglePause() }
-                        )
-
-                        BottomNavigationBar(
-                            currentIndex = currentIndex,
-                            totalExercises = programExercises.size,
-                            completedSets = vm.completedSetsCount,
-                            totalSets = vm.totalSetsCount,
-                            isOutdoor = false,
-                            onPrevious = { vm.setCurrentExerciseIndex(currentIndex - 1) },
-                            onNext = { vm.setCurrentExerciseIndex(currentIndex + 1) },
-                            onComplete = { showCompleteDialog = true }
-                        )
                     }
                 }
             }
@@ -824,10 +959,74 @@ fun ActiveWorkoutScreen(
                 }
             },
             confirmButton = {
-                TextButton(onClick = { confirmFinishWorkout() }) { Text("Tamamla", color = Primary) }
+                TextButton(onClick = {
+                    showCompleteDialog = false
+                    showEffortDialog = true
+                }) { Text("Tamamla", color = Primary) }
             },
             dismissButton = {
                 TextButton(onClick = { showCompleteDialog = false }) {
+                    Text("İptal", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+        )
+    }
+
+    // ── Perceived Effort dialog ──────────────────────────────────────────────────
+    if (showEffortDialog) {
+        AlertDialog(
+            onDismissRequest = { showEffortDialog = false },
+            title = {
+                Text(
+                    text = "Nasıl Hissediyorsun?",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.fillMaxWidth(),
+                    textAlign = TextAlign.Center
+                )
+            },
+            text = {
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        text = "Antrenmanı nasıl tamamladın? Hissettiğin zorluk derecesini seç:",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(bottom = 8.dp)
+                    )
+                    PerceivedEffort.entries.forEach { effort ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f))
+                                .clickable {
+                                    showEffortDialog = false
+                                    confirmFinishWorkout(effort.dbValue)
+                                }
+                                .padding(horizontal = 16.dp, vertical = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            Text(text = effort.emoji, fontSize = 24.sp)
+                            Text(
+                                text = effort.label,
+                                style = MaterialTheme.typography.bodyLarge,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = {
+                TextButton(
+                    onClick = { showEffortDialog = false },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
                     Text("İptal", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
@@ -1956,10 +2155,9 @@ private fun GPSWorkoutLayout(
     onPauseToggle: () -> Unit,
     onFinishWorkout: () -> Unit
 ) {
-    val estimatedBpm   = training.category.estimatedBPM
     val hcAvailable    by HealthConnectService.isAvailable.collectAsState()
     val liveHR         by HealthConnectService.currentHeartRate.collectAsState()
-    val displayBpm     = if (hcAvailable && liveHR > 0) liveHR else estimatedBpm
+    val displayBpm     = if (hcAvailable && liveHR > 0) liveHR else 0
     val zone           = HRZoneStrength.from(displayBpm)
     val latLngs        = remember(routePoints) { routePoints.map { LatLng(it.first, it.second) } }
     val cameraPositionState = rememberCameraPositionState {
@@ -2152,7 +2350,7 @@ private fun GPSWorkoutLayout(
                         "", "BPM", valueColor = zone.color
                     )
                 }
-                HudStatCard(c, Modifier.weight(1f), Icons.Default.LocalFireDepartment, "${(elapsedSeconds / 60) * 7}", "", "KCAL")
+                HudStatCard(c, Modifier.weight(1f), Icons.Default.LocalFireDepartment, if (hcAvailable) "${(elapsedSeconds / 60) * 7}" else "—", "", "KCAL")
             }
 
             Spacer(Modifier.height(10.dp))
@@ -2830,4 +3028,72 @@ private fun formatPace(paceMinPerKm: Double): String {
     val min = paceMinPerKm.toInt()
     val sec = ((paceMinPerKm - min) * 60).toInt()
     return "%d'%02d\"".format(min, sec)
+}
+
+@Composable
+private fun MinifiedStatsHeader(
+    elapsedSeconds: Int,
+    liveHR: Int,
+    avgHR: Int,
+    maxHR: Int,
+    isAvailable: Boolean
+) {
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = Spacing.xl, vertical = 6.dp),
+        shape = RoundedCornerShape(14.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f))
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 14.dp, vertical = 12.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // Süre
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(
+                    text = formatTime(elapsedSeconds),
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.Bold,
+                    fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Text("SÜRE", fontSize = 9.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, fontWeight = FontWeight.Bold)
+            }
+            // Ort. Nabız
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(
+                    text = if (isAvailable && avgHR > 0) "$avgHR" else "—",
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Text("ORT BPM", fontSize = 9.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, fontWeight = FontWeight.Bold)
+            }
+            // Maks. Nabız
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(
+                    text = if (isAvailable && maxHR > 0) "$maxHR" else "—",
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Text("MAKS BPM", fontSize = 9.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, fontWeight = FontWeight.Bold)
+            }
+            // Kalori
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(
+                    text = if (isAvailable) "${(elapsedSeconds / 60) * 7}" else "—",
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Text("KCAL", fontSize = 9.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, fontWeight = FontWeight.Bold)
+            }
+        }
+    }
 }

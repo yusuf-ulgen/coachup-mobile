@@ -125,14 +125,40 @@ object WorkoutService {
 
     // -----------------------------------------------------------------------
     // Complete Session
-    // Mirrors iOS WorkoutService.completeSession(sessionId:) which delegates to
-    // TrainingService.shared.completeSession(sessionId:notes:nil)
+    // Delegates to TrainingService with all workout metrics.
     // -----------------------------------------------------------------------
 
     /**
-     * Delegates to [TrainingService.completeSession] — identical to iOS pattern.
+     * Delegates to [TrainingService.completeSession] with full workout metrics.
+     *
+     * Heart-rate & calories are only passed when they come from Health Connect
+     * (smartwatch). If no wearable is connected, pass null — the UI will show "—".
      */
-    suspend fun completeSession(sessionId: String, notes: String? = null) {
-        TrainingService.completeSession(sessionId = sessionId, notes = notes)
+    suspend fun completeSession(
+        sessionId: String,
+        notes: String? = null,
+        durationSeconds: Int? = null,
+        distanceKm: Double? = null,
+        avgHeartRate: Int? = null,
+        maxHeartRate: Int? = null,
+        calories: Int? = null,
+        avgPace: Double? = null,
+        avgSpeed: Double? = null,
+        altitudeGain: Double? = null,
+        perceivedEffort: String? = null
+    ) {
+        TrainingService.completeSession(
+            sessionId = sessionId,
+            notes = notes,
+            durationSeconds = durationSeconds,
+            distanceKm = distanceKm,
+            avgHeartRate = avgHeartRate,
+            maxHeartRate = maxHeartRate,
+            calories = calories,
+            avgPace = avgPace,
+            avgSpeed = avgSpeed,
+            altitudeGain = altitudeGain,
+            perceivedEffort = perceivedEffort
+        )
     }
 }

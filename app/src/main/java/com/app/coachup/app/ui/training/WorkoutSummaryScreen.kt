@@ -33,6 +33,8 @@ import com.google.maps.android.compose.Polyline
 import com.google.maps.android.compose.rememberCameraPositionState
 import com.google.maps.android.compose.rememberMarkerState
 import com.app.coachup.app.models.Training
+import com.app.coachup.app.models.ActivityMetric
+import com.app.coachup.app.models.PerceivedEffort
 import com.app.coachup.app.theme.*
 import kotlinx.coroutines.CancellationException
 
@@ -52,9 +54,9 @@ data class KmSplit(
 fun WorkoutSummaryScreen(
     training: Training,
     durationSeconds: Int,
-    totalCalories: Int,
-    avgHeartRate: Int = 0,
-    maxHeartRate: Int = 0,
+    avgHeartRate: Int? = null,
+    maxHeartRate: Int? = null,
+    calories: Int? = null,
     distanceKm: Double = 0.0,
     avgPaceMinPerKm: Double = 0.0,
     avgSpeedKmh: Double = 0.0,
@@ -63,15 +65,18 @@ fun WorkoutSummaryScreen(
     routePoints: List<Pair<Double, Double>> = emptyList(),
     completedSets: Int = 0,
     totalSets: Int = 0,
-    progressiveSuggestion: Double? = null,
+    perceivedEffort: String? = null,
     onDismiss: () -> Unit
 ) {
+    val category = training.category
+    val metrics = category.trackedMetrics
     val hasGPSData = distanceKm > 0
     val hasRouteMap = routePoints.size >= 2
     var appear by remember { mutableStateOf(false) }
     var showShareSheet by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { appear = true }
     val context = LocalContext.current
+    val resolvedEffort = perceivedEffort?.let { PerceivedEffort.fromDbValue(it) }
 
     Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         Column(
@@ -82,6 +87,7 @@ fun WorkoutSummaryScreen(
         ) {
             SummaryHeader(training = training)
 
+            // ── SÜRE (her zaman gösterilir) ──
             SummarySectionLabel("ÖZET", modifier = Modifier.padding(horizontal = 20.dp).padding(top = 20.dp, bottom = 8.dp))
             Row(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp),
@@ -94,15 +100,19 @@ fun WorkoutSummaryScreen(
                     label = "Süre",
                     modifier = Modifier.weight(1f)
                 )
-                SummaryStatCard(
-                    icon = Icons.Default.LocalFireDepartment,
-                    iconColor = Color(0xFFFF7043),
-                    value = "$totalCalories",
-                    label = "Kalori",
-                    modifier = Modifier.weight(1f)
-                )
+                // Kalori — sadece akıllı saatten, yoksa "—"
+                if (ActivityMetric.CALORIES in metrics) {
+                    SummaryStatCard(
+                        icon = Icons.Default.LocalFireDepartment,
+                        iconColor = Color(0xFFFF7043),
+                        value = calories?.toString() ?: "—",
+                        label = "Kalori",
+                        modifier = Modifier.weight(1f)
+                    )
+                }
             }
 
+            // ── SETLER (varsa) ──
             if (totalSets > 0) {
                 Spacer(modifier = Modifier.height(12.dp))
                 Row(
@@ -119,41 +129,50 @@ fun WorkoutSummaryScreen(
                     SummaryStatCard(
                         icon = Icons.Default.CheckCircle,
                         iconColor = Color(0xFF4CAF50),
-                        value = if (totalSets > 0) "%d%%".format((completedSets * 100) / totalSets) else "--",
+                        value = if (totalSets > 0) "%d%%".format((completedSets * 100) / totalSets) else "—",
                         label = "Tamamlanma",
                         modifier = Modifier.weight(1f)
                     )
                 }
             }
 
-            if (avgHeartRate > 0 || maxHeartRate > 0) {
+            // ── NABIZ — sadece akıllı saatten (veri yoksa "—") ──
+            if (ActivityMetric.AVG_HR in metrics || ActivityMetric.MAX_HR in metrics) {
                 Spacer(modifier = Modifier.height(12.dp))
                 Row(
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp),
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    SummaryStatCard(
-                        icon = Icons.Default.Favorite,
-                        iconColor = Color.Red,
-                        value = if (avgHeartRate > 0) "$avgHeartRate" else "--",
-                        label = "Ort. Nabız (bpm)",
-                        modifier = Modifier.weight(1f)
-                    )
-                    SummaryStatCard(
-                        icon = Icons.Default.MonitorHeart,
-                        iconColor = Color(0xFFFF6047),
-                        value = if (maxHeartRate > 0) "$maxHeartRate" else "--",
-                        label = "Maks. Nabız (bpm)",
-                        modifier = Modifier.weight(1f)
-                    )
+                    if (ActivityMetric.AVG_HR in metrics) {
+                        SummaryStatCard(
+                            icon = Icons.Default.Favorite,
+                            iconColor = Color.Red,
+                            value = avgHeartRate?.toString() ?: "—",
+                            label = "Ort. Nabız (bpm)",
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                    if (ActivityMetric.MAX_HR in metrics) {
+                        SummaryStatCard(
+                            icon = Icons.Default.MonitorHeart,
+                            iconColor = Color(0xFFFF6047),
+                            value = maxHeartRate?.toString() ?: "—",
+                            label = "Maks. Nabız (bpm)",
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
                 }
 
-                Spacer(modifier = Modifier.height(20.dp))
-                SummarySectionLabel("KALBİN ATTIĞI BÖLGELER", modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp))
-                HRZonesCard(avgHeartRate = avgHeartRate, maxHeartRate = maxHeartRate, appear = appear)
+                // HR Zones — sadece gerçek nabız verisi varsa göster
+                if ((avgHeartRate ?: 0) > 0 || (maxHeartRate ?: 0) > 0) {
+                    Spacer(modifier = Modifier.height(20.dp))
+                    SummarySectionLabel("KALBİN ATTIĞI BÖLGELER", modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp))
+                    HRZonesCard(avgHeartRate = avgHeartRate ?: 0, maxHeartRate = maxHeartRate ?: 0, appear = appear)
+                }
             }
 
-            if (hasGPSData) {
+            // ── GPS / MESAFE VERİLERİ (aktivite tipine göre) ──
+            if (hasGPSData && ActivityMetric.DISTANCE in metrics) {
                 if (hasRouteMap) {
                     Spacer(modifier = Modifier.height(20.dp))
                     SummarySectionLabel("GÜZERGAH", modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp))
@@ -161,7 +180,7 @@ fun WorkoutSummaryScreen(
                 }
 
                 Spacer(modifier = Modifier.height(20.dp))
-                SummarySectionLabel("KOŞU VERİLERİ", modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp))
+                SummarySectionLabel("MESAFE VERİLERİ", modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp))
                 Row(
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp),
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
@@ -173,43 +192,41 @@ fun WorkoutSummaryScreen(
                         label = "Toplam Mesafe",
                         modifier = Modifier.weight(1f)
                     )
-                    SummaryStatCard(
-                        icon = Icons.Default.Speed,
-                        iconColor = Primary,
-                        value = "%.1f km/s".format(avgSpeedKmh),
-                        label = "Ort. Hız",
-                        modifier = Modifier.weight(1f)
-                    )
+                    if (ActivityMetric.AVG_SPEED in metrics) {
+                        SummaryStatCard(
+                            icon = Icons.Default.Speed,
+                            iconColor = Primary,
+                            value = "%.1f km/s".format(avgSpeedKmh),
+                            label = "Ort. Hız",
+                            modifier = Modifier.weight(1f)
+                        )
+                    } else if (ActivityMetric.AVG_PACE in metrics && avgPaceMinPerKm > 0) {
+                        SummaryStatCard(
+                            icon = Icons.Default.Timer,
+                            iconColor = Color(0xFF9C27B0),
+                            value = formatPaceSummary(avgPaceMinPerKm),
+                            label = "Ort. Tempo",
+                            modifier = Modifier.weight(1f)
+                        )
+                    } else {
+                        Spacer(modifier = Modifier.weight(1f))
+                    }
                 }
 
-                if (avgPaceMinPerKm > 0 || altitudeGainM > 0) {
+                if (altitudeGainM > 0) {
                     Spacer(modifier = Modifier.height(12.dp))
                     Row(
                         modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp),
                         horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        if (avgPaceMinPerKm > 0) {
-                            SummaryStatCard(
-                                icon = Icons.Default.Timer,
-                                iconColor = Color(0xFF9C27B0),
-                                value = formatPaceSummary(avgPaceMinPerKm),
-                                label = "Ort. Tempo",
-                                modifier = Modifier.weight(1f)
-                            )
-                        } else {
-                            Spacer(modifier = Modifier.weight(1f))
-                        }
-                        if (altitudeGainM > 0) {
-                            SummaryStatCard(
-                                icon = Icons.Default.Terrain,
-                                iconColor = Color(0xFF795548),
-                                value = "%.0f m".format(altitudeGainM),
-                                label = "Yükseklik Kazanımı",
-                                modifier = Modifier.weight(1f)
-                            )
-                        } else {
-                            Spacer(modifier = Modifier.weight(1f))
-                        }
+                        SummaryStatCard(
+                            icon = Icons.Default.Terrain,
+                            iconColor = Color(0xFF795548),
+                            value = "%.0f m".format(altitudeGainM),
+                            label = "Yükseklik Kazanımı",
+                            modifier = Modifier.weight(1f)
+                        )
+                        Spacer(modifier = Modifier.weight(1f))
                     }
                 }
 
@@ -220,14 +237,64 @@ fun WorkoutSummaryScreen(
                 }
             }
 
-            if (progressiveSuggestion != null) {
+            // ── NASIL HİSSEDİYORSUN (effort) ──
+            if (resolvedEffort != null) {
                 Spacer(modifier = Modifier.height(20.dp))
-                SummarySectionLabel("BİR SONRAKİ ANTRENMAN", modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp))
-                ProgressiveOverloadCard(suggestion = progressiveSuggestion)
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 20.dp)
+                        .clip(RoundedCornerShape(Radius.card))
+                        .background(MaterialTheme.colorScheme.surface)
+                        .padding(16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(text = resolvedEffort.emoji, fontSize = 28.sp)
+                    Column {
+                        Text(
+                            text = "Nasıl hissettin?",
+                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Text(
+                            text = resolvedEffort.label,
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+                }
+            }
+
+            // ── AKILLI SAAT BİLGİ NOTU ──
+            Spacer(modifier = Modifier.height(20.dp))
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp)
+                    .clip(RoundedCornerShape(Radius.card))
+                    .background(Primary.copy(alpha = 0.06f))
+                    .padding(14.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Watch,
+                    contentDescription = null,
+                    tint = Primary,
+                    modifier = Modifier.size(20.dp)
+                )
+                Text(
+                    text = "Akıllı saat bağlayarak daha detaylı analizlere ulaşabilirsiniz.",
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.weight(1f)
+                )
             }
         }
 
-        // Bottom bar — koyu arka plan sistem navigasyon çubuğunun altına kadar uzanır
+        // Bottom bar
         Box(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
@@ -274,7 +341,7 @@ fun WorkoutSummaryScreen(
         WorkoutShareSheet(
             training = training,
             durationSeconds = durationSeconds,
-            totalCalories = totalCalories,
+            totalCalories = calories ?: 0,
             distanceKm = distanceKm,
             avgPaceMinPerKm = avgPaceMinPerKm,
             routePoints = routePoints,

@@ -30,6 +30,7 @@ import com.app.coachup.app.models.CoachMessage
 import com.app.coachup.app.models.LocalCoach
 import com.app.coachup.app.services.AuthService
 import com.app.coachup.app.services.CoachService
+import com.app.coachup.app.services.RealtimeService
 import com.app.coachup.app.theme.*
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -59,12 +60,24 @@ class CoachChatViewModel : ViewModel() {
     private val _error = MutableStateFlow<String?>(null)
     val error: StateFlow<String?> = _error.asStateFlow()
 
+    private var activeSubscriptionChannelId: String? = null
+
     fun loadMessages(userId: String, coachId: String) {
         viewModelScope.launch {
             _isLoading.value = true
             try {
                 val fetched = CoachService.fetchMessages(userId, coachId)
                 _messages.value = fetched
+
+                // Subscribe to real-time messages
+                activeSubscriptionChannelId = "coach-messages:$userId:$coachId"
+                RealtimeService.subscribeToCoachMessages(userId, coachId) { incoming ->
+                    // Avoid duplicate inserts
+                    if (_messages.value.none { it.id == incoming.id }) {
+                        _messages.value = _messages.value + incoming
+                        markAsRead(userId, coachId)
+                    }
+                }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -117,6 +130,13 @@ class CoachChatViewModel : ViewModel() {
     }
 
     fun clearError() { _error.value = null }
+
+    override fun onCleared() {
+        super.onCleared()
+        activeSubscriptionChannelId?.let { channelId ->
+            RealtimeService.unsubscribe(channelId)
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------

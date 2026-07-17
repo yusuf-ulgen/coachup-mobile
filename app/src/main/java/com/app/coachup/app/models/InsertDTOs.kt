@@ -388,9 +388,19 @@ data class MembershipCancelUpdate(
 
 @Serializable
 data class SessionCompleteUpdate(
-    @SerialName("completed_at") val completedAt: String,
-    @SerialName("status")       val status: String,
-    @SerialName("notes")        val notes: String? = null
+    @SerialName("completed_at")     val completedAt: String,
+    @SerialName("status")           val status: String,
+    @SerialName("notes")            val notes: String? = null,
+    // ── Workout metric columns (migration 20260717000000) ──
+    @SerialName("duration_seconds")  val durationSeconds: Int? = null,
+    @SerialName("distance_km")       val distanceKm: Double? = null,
+    @SerialName("avg_heart_rate")    val avgHeartRate: Int? = null,
+    @SerialName("max_heart_rate")    val maxHeartRate: Int? = null,
+    @SerialName("calories")          val calories: Int? = null,
+    @SerialName("avg_pace")          val avgPace: Double? = null,
+    @SerialName("avg_speed")         val avgSpeed: Double? = null,
+    @SerialName("altitude_gain")     val altitudeGain: Double? = null,
+    @SerialName("perceived_effort")  val perceivedEffort: String? = null
 )
 
 @Serializable
