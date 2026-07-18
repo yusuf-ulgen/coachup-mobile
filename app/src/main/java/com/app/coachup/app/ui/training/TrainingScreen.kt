@@ -31,6 +31,7 @@ import com.app.coachup.app.models.*
 import com.app.coachup.app.services.AuthService
 import com.app.coachup.app.services.TrainingService
 import com.app.coachup.app.services.UserService
+import com.app.coachup.app.services.ActiveWorkoutManager
 import com.app.coachup.app.theme.*
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.async
@@ -138,6 +139,9 @@ fun TrainingScreen(
     vm: TrainingViewModel = viewModel()
 ) {
     var searchText by remember { mutableStateOf("") }
+    val activeSessionState by ActiveWorkoutManager.activeSession.collectAsState()
+    var showActiveWorkoutWarning by remember { mutableStateOf(false) }
+    var warningActiveSession by remember { mutableStateOf<ActiveWorkoutManager.ActiveSession?>(null) }
     val coroutineScope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
     val currentProfile by UserService.currentProfile.collectAsState(initial = null)
@@ -233,15 +237,20 @@ fun TrainingScreen(
                         training = training,
                         isStarting = startingId == training.id,
                         onClick = {
-                            coroutineScope.launch {
-                                val uid = AuthService.getCurrentUserId()
-                                    ?: user?.id
-                                    ?: currentProfile?.id
-                                if (uid == null) {
-                                    snackbarHostState.showSnackbar("Oturum bulunamadı. Lütfen tekrar giriş yapın.")
-                                    return@launch
+                            if (activeSessionState != null) {
+                                warningActiveSession = activeSessionState
+                                showActiveWorkoutWarning = true
+                            } else {
+                                coroutineScope.launch {
+                                    val uid = AuthService.getCurrentUserId()
+                                        ?: user?.id
+                                        ?: currentProfile?.id
+                                    if (uid == null) {
+                                        snackbarHostState.showSnackbar("Oturum bulunamadı. Lütfen tekrar giriş yapın.")
+                                        return@launch
+                                    }
+                                    vm.startTraining(training, uid)
                                 }
-                                vm.startTraining(training, uid)
                             }
                         },
                         modifier = Modifier.weight(1f)
@@ -281,15 +290,20 @@ fun TrainingScreen(
                     training = filteredGym[index],
                     isStarting = startingId == filteredGym[index].id,
                     onStartClick = {
-                        coroutineScope.launch {
-                            val uid = AuthService.getCurrentUserId()
-                                ?: user?.id
-                                ?: currentProfile?.id
-                            if (uid == null) {
-                                snackbarHostState.showSnackbar("Oturum bulunamadı. Lütfen tekrar giriş yapın.")
-                                return@launch
+                        if (activeSessionState != null) {
+                            warningActiveSession = activeSessionState
+                            showActiveWorkoutWarning = true
+                        } else {
+                            coroutineScope.launch {
+                                val uid = AuthService.getCurrentUserId()
+                                    ?: user?.id
+                                    ?: currentProfile?.id
+                                if (uid == null) {
+                                    snackbarHostState.showSnackbar("Oturum bulunamadı. Lütfen tekrar giriş yapın.")
+                                    return@launch
+                                }
+                                vm.startTraining(filteredGym[index], uid)
                             }
-                            vm.startTraining(filteredGym[index], uid)
                         }
                     }
                 )
@@ -312,15 +326,20 @@ fun TrainingScreen(
                     training = filteredAi[index],
                     isStarting = startingId == filteredAi[index].id,
                     onStartClick = {
-                        coroutineScope.launch {
-                            val uid = AuthService.getCurrentUserId()
-                                ?: user?.id
-                                ?: currentProfile?.id
-                            if (uid == null) {
-                                snackbarHostState.showSnackbar("Oturum bulunamadı. Lütfen tekrar giriş yapın.")
-                                return@launch
+                        if (activeSessionState != null) {
+                            warningActiveSession = activeSessionState
+                            showActiveWorkoutWarning = true
+                        } else {
+                            coroutineScope.launch {
+                                val uid = AuthService.getCurrentUserId()
+                                    ?: user?.id
+                                    ?: currentProfile?.id
+                                if (uid == null) {
+                                    snackbarHostState.showSnackbar("Oturum bulunamadı. Lütfen tekrar giriş yapın.")
+                                    return@launch
+                                }
+                                vm.startTraining(filteredAi[index], uid)
                             }
-                            vm.startTraining(filteredAi[index], uid)
                         }
                     }
                 )
@@ -338,6 +357,31 @@ fun TrainingScreen(
                 )
             }
         }
+    }
+
+    if (showActiveWorkoutWarning && warningActiveSession != null) {
+        val session = warningActiveSession!!
+        AlertDialog(
+            onDismissRequest = { showActiveWorkoutWarning = false },
+            title = { Text("Aktif Antrenman Mevcut", fontWeight = FontWeight.Bold) },
+            text = { Text("Zaten devam eden bir ${session.training.title} antrenmanınız var. Yeni bir antrenmana başlamak için lütfen mevcut antrenmanı bitirin veya iptal edin.") },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showActiveWorkoutWarning = false
+                        onNavigateToActiveWorkout(session.training, session.sessionId)
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Primary)
+                ) {
+                    Text("Antrenmana Dön")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showActiveWorkoutWarning = false }) {
+                    Text("Vazgeç")
+                }
+            }
+        )
     }
     }
 }

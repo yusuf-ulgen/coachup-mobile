@@ -20,7 +20,7 @@ object GymConfig {
     const val SPLASH_BG_COLOR = 0xFF000000
 
     /** Splash screen center logo/icon resource ID */
-    val SPLASH_LOGO_RES = com.app.coachup.app.R.drawable.coach_logo
+    val SPLASH_LOGO_RES = com.app.coachup.app.R.drawable.fav
 
     /** Login & Register screens logo resource ID */
     val LOGIN_LOGO_RES = com.app.coachup.app.R.drawable.coach_logo

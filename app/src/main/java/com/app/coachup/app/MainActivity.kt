@@ -39,11 +39,40 @@ import com.app.coachup.app.services.StreakService
 import com.app.coachup.app.services.UserService
 import io.github.jan.supabase.auth.status.SessionStatus
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.delay
 import com.app.coachup.app.theme.CoachUpTheme
 import com.app.coachup.app.theme.ThemeManager
 import com.app.coachup.app.utils.AppLocaleManager
 import com.app.coachup.app.ui.components.SplashView
 import com.app.coachup.app.ui.guardian.GuardianScreen
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.OpenInFull
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import kotlin.math.roundToInt
+import com.app.coachup.app.services.ActiveWorkoutManager
 
 /**
  * Single Activity that hosts the entire Compose UI tree.
@@ -95,7 +124,11 @@ class MainActivity : ComponentActivity() {
                     // replay the splash or rebuild NavHost with a new start destination.
                     var hasBooted by rememberSaveable { mutableStateOf(false) }
                     LaunchedEffect(isLoading) {
-                        if (!isLoading) hasBooted = true
+                        if (!isLoading) {
+                            keepSystemSplash = false
+                            delay(1800) // Minimum display time of 1.8 seconds for SplashView
+                            hasBooted = true
+                        }
                     }
 
                     // Fixed once on first resolved session — never toggled on refresh.
@@ -112,10 +145,6 @@ class MainActivity : ComponentActivity() {
 
                     // Guardian role — checked in the background; never blocks the UI.
                     var isGuardian by rememberSaveable { mutableStateOf(false) }
-
-                    LaunchedEffect(hasBooted) {
-                        if (hasBooted) keepSystemSplash = false
-                    }
 
                     // Restore persisted Supabase session on first composition.
                     LaunchedEffect(Unit) {
@@ -229,6 +258,125 @@ class MainActivity : ComponentActivity() {
                         if (!hasBooted) {
                             SplashView()
                         }
+
+                        val activeSession by ActiveWorkoutManager.activeSession.collectAsState()
+                        val showFloatingOverlay by ActiveWorkoutManager.showFloatingOverlay.collectAsState()
+
+                        if (activeSession != null && showFloatingOverlay) {
+                            val session = activeSession!!
+                            val elapsedSeconds by session.elapsedSeconds.collectAsState()
+                            val isPaused by session.isPaused.collectAsState()
+
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .padding(bottom = 100.dp, end = 20.dp),
+                                contentAlignment = Alignment.BottomEnd
+                            ) {
+                                var offsetX by remember { mutableStateOf(0f) }
+                                var offsetY by remember { mutableStateOf(0f) }
+
+                                Surface(
+                                    modifier = Modifier
+                                        .offset { IntOffset(offsetX.roundToInt(), offsetY.roundToInt()) }
+                                        .pointerInput(Unit) {
+                                            detectDragGestures { change, dragAmount ->
+                                                change.consume()
+                                                offsetX += dragAmount.x
+                                                offsetY += dragAmount.y
+                                            }
+                                        }
+                                        .width(260.dp)
+                                        .height(72.dp)
+                                        .clickable {
+                                            ActiveWorkoutManager.hideOverlay()
+                                            navController.navigate(Routes.activeWorkout(session.sessionId, session.programId)) {
+                                                launchSingleTop = true
+                                            }
+                                        },
+                                    shape = RoundedCornerShape(16.dp),
+                                    color = MaterialTheme.colorScheme.surface,
+                                    shadowElevation = 8.dp,
+                                    border = androidx.compose.foundation.BorderStroke(1.2.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
+                                ) {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .padding(horizontal = 12.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        Text(
+                                            text = session.training.category.emoji,
+                                            fontSize = 24.sp
+                                        )
+
+                                        Column(
+                                            modifier = Modifier.weight(1f),
+                                            verticalArrangement = Arrangement.Center
+                                        ) {
+                                            Text(
+                                                text = formatTime(elapsedSeconds),
+                                                fontSize = 18.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                                                color = MaterialTheme.colorScheme.onSurface,
+                                                maxLines = 1,
+                                                softWrap = false
+                                            )
+                                            Text(
+                                                text = session.training.title,
+                                                fontSize = 10.sp,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                        }
+
+                                        IconButton(
+                                            onClick = {
+                                                ActiveWorkoutManager.hideOverlay()
+                                                navController.navigate(Routes.activeWorkout(session.sessionId, session.programId)) {
+                                                    launchSingleTop = true
+                                                }
+                                            },
+                                            modifier = Modifier.size(28.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.OpenInFull,
+                                                contentDescription = "Büyüt",
+                                                tint = MaterialTheme.colorScheme.onSurface,
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                        }
+
+                                        IconButton(
+                                            onClick = { ActiveWorkoutManager.togglePause() },
+                                            modifier = Modifier.size(28.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = if (isPaused) Icons.Default.PlayArrow else Icons.Default.Pause,
+                                                contentDescription = if (isPaused) "Devam Et" else "Duraklat",
+                                                tint = MaterialTheme.colorScheme.onSurface,
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                        }
+
+                                        IconButton(
+                                            onClick = { ActiveWorkoutManager.stopSession() },
+                                            modifier = Modifier.size(28.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.Close,
+                                                contentDescription = "Kapat",
+                                                tint = MaterialTheme.colorScheme.error,
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
 
                     if (showHealthPermissionRationale) {
@@ -277,5 +425,11 @@ class MainActivity : ComponentActivity() {
                 notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
             }
         }
+    }
+
+    private fun formatTime(seconds: Int): String {
+        val m = seconds / 60
+        val s = seconds % 60
+        return String.format("%02d:%02d", m, s)
     }
 }

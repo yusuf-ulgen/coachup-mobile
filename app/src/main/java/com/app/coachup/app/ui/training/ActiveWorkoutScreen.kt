@@ -75,6 +75,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import androidx.activity.compose.BackHandler
+import com.app.coachup.app.services.ActiveWorkoutManager
 
 // ---------------------------------------------------------------------------
 // Summary data — replaces the old Triple so GPS fields can be passed through
@@ -137,7 +139,6 @@ class ActiveWorkoutViewModel : ViewModel() {
     private val _completed = MutableStateFlow(false)
     val completed: StateFlow<Boolean> = _completed.asStateFlow()
 
-    private var timerJob: Job? = null
     private var restTimerJob: Job? = null
 
     val completedSetsCount get() = _workoutSets.value.count { it.isCompleted }
@@ -193,40 +194,51 @@ class ActiveWorkoutViewModel : ViewModel() {
         }
     }
 
-    fun startTimer() {
-        timerJob?.cancel()
-        timerJob = viewModelScope.launch {
-            while (true) {
-                delay(1000)
-                _elapsedSeconds.value++
+    fun initSession(training: Training, sessionId: String) {
+        val session = ActiveWorkoutManager.activeSession.value
+        if (session != null && session.sessionId == sessionId) {
+            viewModelScope.launch {
+                session.elapsedSeconds.collect { _elapsedSeconds.value = it }
+            }
+            viewModelScope.launch {
+                session.isPaused.collect { _isPaused.value = it }
+            }
+        } else {
+            ActiveWorkoutManager.startSession(training, sessionId)
+            val newSession = ActiveWorkoutManager.activeSession.value
+            if (newSession != null) {
+                viewModelScope.launch {
+                    newSession.elapsedSeconds.collect { _elapsedSeconds.value = it }
+                }
+                viewModelScope.launch {
+                    newSession.isPaused.collect { _isPaused.value = it }
+                }
             }
         }
     }
 
+    fun startTimer() {
+        ActiveWorkoutManager.startTimer()
+    }
+
     fun stopTimer() {
-        timerJob?.cancel()
+        ActiveWorkoutManager.pauseTimer()
     }
 
     private val _isPaused = MutableStateFlow(false)
     val isPaused: StateFlow<Boolean> = _isPaused.asStateFlow()
 
     fun pauseTimer() {
-        if (!_isPaused.value) {
-            _isPaused.value = true
-            timerJob?.cancel()
-        }
+        ActiveWorkoutManager.pauseTimer()
     }
 
     fun resumeTimer() {
-        if (_isPaused.value) {
-            _isPaused.value = false
-            startTimer()
-        }
+        ActiveWorkoutManager.resumeTimer()
     }
 
     /** Mirrors iOS togglePause(): pauses the elapsed timer. */
     fun togglePause() {
-        if (_isPaused.value) resumeTimer() else pauseTimer()
+        ActiveWorkoutManager.togglePause()
     }
 
     /** Mirrors iOS "Set Tamamla" → triggerRestTimer() for the HR-only strength view. */
@@ -342,7 +354,6 @@ class ActiveWorkoutViewModel : ViewModel() {
 
     override fun onCleared() {
         super.onCleared()
-        timerJob?.cancel()
         restTimerJob?.cancel()
     }
 }
@@ -384,14 +395,22 @@ fun ActiveWorkoutScreen(
 ) {
     val isOutdoor = training.category.isOutdoor
 
+    // Sync state with ActiveWorkoutManager
+    val isSessionAlreadyActive = remember(sessionId) {
+        ActiveWorkoutManager.activeSession.value?.sessionId == sessionId
+    }
+    LaunchedEffect(sessionId) {
+        vm.initSession(training, sessionId)
+    }
+
     // ── Workout goal sheet (outdoor only) ─────────────────────────────────────
-    var showGoalSheet by remember { mutableStateOf(isOutdoor) }
-    var workoutSessionStarted by remember { mutableStateOf(!isOutdoor) }
+    var showGoalSheet by remember { mutableStateOf(isOutdoor && !isSessionAlreadyActive) }
+    var workoutSessionStarted by remember { mutableStateOf(isSessionAlreadyActive) }
 
     // ── Salon / AI program önizlemesi — sayaç başlamadan hareket listesi ───────
     val needsProgramPreview = !training.isBuiltIn
-    var showProgramPreview by remember { mutableStateOf(needsProgramPreview) }
-    var timerStarted by remember { mutableStateOf(false) }
+    var showProgramPreview by remember { mutableStateOf(needsProgramPreview && !isSessionAlreadyActive) }
+    var timerStarted by remember { mutableStateOf(isSessionAlreadyActive) }
     var workoutGoal by remember { mutableStateOf<WorkoutGoal>(WorkoutGoal.None) }
 
     // ── Summary data — includes GPS fields ────────────────────────────────────
@@ -414,6 +433,20 @@ fun ActiveWorkoutScreen(
     var showGoalSheetDuringWorkout by remember { mutableStateOf(false) }
     var showFinishCelebration by remember { mutableStateOf(false) }
     var pendingSummaryData by remember { mutableStateOf<WorkoutCompletionData?>(null) }
+
+    val handleClose = {
+        if (workoutSessionStarted && !showFinishCelebration) {
+            ActiveWorkoutManager.showOverlay()
+            onNavigateBack()
+        } else {
+            ActiveWorkoutManager.stopSession()
+            onNavigateBack()
+        }
+    }
+
+    BackHandler {
+        handleClose()
+    }
 
     // ── Show summary when complete ─────────────────────────────────────────────
     summaryData?.let { data ->
@@ -589,8 +622,11 @@ fun ActiveWorkoutScreen(
     DisposableEffect(isOutdoor, showFinishCelebration) {
         onDispose {
             if (!showFinishCelebration) {
-                vm.stopTimer()
-                if (isOutdoor) LocationTrackingService.stopTracking()
+                if (!ActiveWorkoutManager.showFloatingOverlay.value) {
+                    vm.stopTimer()
+                    ActiveWorkoutManager.stopSession()
+                    if (isOutdoor) LocationTrackingService.stopTracking()
+                }
             }
         }
     }
@@ -607,8 +643,24 @@ fun ActiveWorkoutScreen(
             exercises = programExercises,
             fallbackNames = training.exerciseNames,
             isLoading = isLoading,
-            onStart = { showProgramPreview = false },
+            onStart = {
+                showProgramPreview = false
+                workoutSessionStarted = true
+            },
             onBack = onNavigateBack
+        )
+        return
+    }
+
+    // Start Prompt Overlay for Indoor built-in activities
+    if (!isOutdoor && !showProgramPreview && !workoutSessionStarted) {
+        WorkoutStartPromptOverlay(
+            training = training,
+            onStart = { workoutSessionStarted = true },
+            onBack = {
+                ActiveWorkoutManager.stopSession()
+                onNavigateBack()
+            }
         )
         return
     }
@@ -634,9 +686,7 @@ fun ActiveWorkoutScreen(
                 gpsSplits = gpsSplits,
                 goal = workoutGoal,
                 goalProgress = goalProgress,
-                onClose = {
-                    if (gpsDistance > 0 || elapsedSeconds > 5) showCompleteDialog = true else onNavigateBack()
-                },
+                onClose = handleClose,
                 onGoalTap = { showGoalSheetDuringWorkout = true },
                 onStartWorkout = {
                     workoutSessionStarted = true
@@ -675,13 +725,7 @@ fun ActiveWorkoutScreen(
                 primaryMetric = primaryMetric,
                 secondaryMetric = secondaryMetric,
                 isPaused = isPaused,
-                onClose = {
-                    if (vm.completedSetsCount > 0 || elapsedSeconds > 5) {
-                        showCompleteDialog = true
-                    } else {
-                        onNavigateBack()
-                    }
-                },
+                onClose = handleClose,
                 onPauseToggle = { vm.togglePause() }
             )
 
@@ -721,9 +765,7 @@ fun ActiveWorkoutScreen(
                     totalSets = vm.totalSetsCount,
                     elapsedSeconds = elapsedSeconds,
                     isOutdoor = false,
-                    onClose = {
-                        if (vm.completedSetsCount > 0) showCompleteDialog = true else onNavigateBack()
-                    }
+                    onClose = handleClose
                 )
 
                 when {
@@ -3093,6 +3135,79 @@ private fun MinifiedStatsHeader(
                     color = MaterialTheme.colorScheme.onSurface
                 )
                 Text("KCAL", fontSize = 9.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, fontWeight = FontWeight.Bold)
+            }
+        }
+    }
+}
+
+@Composable
+private fun WorkoutStartPromptOverlay(
+    training: Training,
+    onStart: () -> Unit,
+    onBack: () -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black.copy(alpha = 0.85f)),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            modifier = Modifier
+                .padding(horizontal = 32.dp)
+                .widthIn(max = 320.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(20.dp)
+        ) {
+            Text(
+                text = training.category.emoji,
+                fontSize = 64.sp
+            )
+
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                Text(
+                    text = training.title,
+                    fontSize = 22.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White,
+                    textAlign = TextAlign.Center
+                )
+                Text(
+                    text = "Antrenmana başlamak ister misiniz?",
+                    fontSize = 15.sp,
+                    color = Color.White.copy(alpha = 0.7f),
+                    textAlign = TextAlign.Center
+                )
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Button(
+                onClick = onStart,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(56.dp),
+                shape = RoundedCornerShape(28.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = Primary)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.PlayArrow,
+                    contentDescription = null,
+                    tint = Color.White,
+                    modifier = Modifier.size(20.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("Başla", fontSize = 17.sp, fontWeight = FontWeight.Bold, color = Color.White)
+            }
+
+            TextButton(
+                onClick = onBack,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("Vazgeç", fontSize = 15.sp, color = Color.White.copy(alpha = 0.6f))
             }
         }
     }

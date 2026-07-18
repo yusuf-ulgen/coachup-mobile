@@ -52,9 +52,10 @@ object RealtimeService {
         onInsert: (AppNotification) -> Unit
     ) {
         val channelId = "notifications:$userId"
-        removeChannel(channelId)
 
         scope.launch {
+            removeChannelSuspend(channelId)
+
             runCatching { client.realtime.connect() }
                 .onFailure { Log.e(TAG, "Realtime connect failed", it) }
 
@@ -95,9 +96,10 @@ object RealtimeService {
         onInsert: (CoachMessage) -> Unit
     ) {
         val channelId = "coach-messages:$userId:$coachId"
-        removeChannel(channelId)
 
         scope.launch {
+            removeChannelSuspend(channelId)
+
             runCatching { client.realtime.connect() }
                 .onFailure { Log.e(TAG, "Realtime connect failed", it) }
 
@@ -137,9 +139,10 @@ object RealtimeService {
         onUpdate: (UserMembership) -> Unit
     ) {
         val channelId = "user-memberships:$userId"
-        removeChannel(channelId)
 
         scope.launch {
+            removeChannelSuspend(channelId)
+
             runCatching { client.realtime.connect() }
                 .onFailure { Log.e(TAG, "Realtime connect failed", it) }
 
@@ -188,13 +191,18 @@ object RealtimeService {
     }
 
     private fun removeChannel(channelId: String) {
-        channels[channelId]?.let { channel ->
-            scope.launch {
-                runCatching { client.realtime.removeChannel(channel) }
-            }
-            channels.remove(channelId)
+        scope.launch {
+            removeChannelSuspend(channelId)
         }
+    }
+
+    private suspend fun removeChannelSuspend(channelId: String) {
         channelJobs[channelId]?.cancel()
         channelJobs.remove(channelId)
+
+        channels[channelId]?.let { channel ->
+            runCatching { client.realtime.removeChannel(channel) }
+            channels.remove(channelId)
+        }
     }
 }

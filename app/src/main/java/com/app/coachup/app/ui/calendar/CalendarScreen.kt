@@ -508,60 +508,67 @@ fun CalendarScreen(
             }
         }
 
-        // Month header
-        MonthHeader(
-            yearMonth = currentYearMonth,
-            onPrevious = {
-                currentYearMonth = currentYearMonth.minusMonths(1)
-                selectedDay = 1
-            },
-            onNext = {
-                currentYearMonth = currentYearMonth.plusMonths(1)
-                selectedDay = 1
-            },
-            modifier = Modifier
-                .padding(horizontal = Spacing.xl)
-                .padding(top = Spacing.sm, bottom = Spacing.lg)
-        )
-
-        // Weekday header
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = Spacing.xl)
-                .padding(bottom = Spacing.sm),
-            horizontalArrangement = Arrangement.SpaceEvenly
-        ) {
-            weekDayNames.forEach { day ->
-                Text(
-                    text = day,
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.Medium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.weight(1f),
-                    textAlign = TextAlign.Center
-                )
-            }
-        }
-
-        // Calendar grid
         val calendarDays = remember(currentYearMonth, today, eventDays) {
             generateCalendarDays(currentYearMonth, today, eventDays)
         }
-        CalendarGrid(
-            days = calendarDays,
-            selectedDay = selectedDay,
-            onDayClick = { day -> selectedDay = day },
-            modifier = Modifier
-                .padding(horizontal = Spacing.xl)
-                .padding(bottom = 24.dp)
-        )
 
         // Programs list
         LazyColumn(
             contentPadding = PaddingValues(bottom = 100.dp),
             modifier = Modifier.fillMaxSize()
         ) {
+            item {
+                // Month header
+                MonthHeader(
+                    yearMonth = currentYearMonth,
+                    onPrevious = {
+                        currentYearMonth = currentYearMonth.minusMonths(1)
+                        selectedDay = 1
+                    },
+                    onNext = {
+                        currentYearMonth = currentYearMonth.plusMonths(1)
+                        selectedDay = 1
+                    },
+                    modifier = Modifier
+                        .padding(horizontal = Spacing.xl)
+                        .padding(top = Spacing.sm, bottom = Spacing.lg)
+                )
+            }
+
+            item {
+                // Weekday header
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = Spacing.xl)
+                        .padding(bottom = Spacing.sm),
+                    horizontalArrangement = Arrangement.SpaceEvenly
+                ) {
+                    weekDayNames.forEach { day ->
+                        Text(
+                            text = day,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.weight(1f),
+                            textAlign = TextAlign.Center
+                        )
+                    }
+                }
+            }
+
+            item {
+                // Calendar grid
+                CalendarGrid(
+                    days = calendarDays,
+                    selectedDay = selectedDay,
+                    onDayClick = { day -> selectedDay = day },
+                    modifier = Modifier
+                        .padding(horizontal = Spacing.xl)
+                        .padding(bottom = 24.dp)
+                )
+            }
+
             item {
                 Row(
                     modifier = Modifier.padding(horizontal = Spacing.xl, vertical = Spacing.sm),
