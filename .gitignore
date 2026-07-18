@@ -17,3 +17,11 @@ local.properties
 # Supabase CLI local
 supabase/.temp/
 
+# AI agent workspace config and logs
+.gemini/
+*.txt
+claude*
+gemini*
+agy*
+codex*
+
