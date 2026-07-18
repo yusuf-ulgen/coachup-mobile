@@ -65,7 +65,7 @@ fun SplashView(modifier: Modifier = Modifier) {
                 painter = painterResource(id = GymConfig.SPLASH_LOGO_RES),
                 contentDescription = "Salon Logo",
                 contentScale = ContentScale.Fit,
-                modifier = Modifier.size(100.dp)
+                modifier = Modifier.size(160.dp)
             )
 
             Spacer(modifier = Modifier.height(24.dp))
@@ -87,16 +87,16 @@ fun SplashView(modifier: Modifier = Modifier) {
                 .alpha(alpha.value)
         ) {
             Text(
-                text = "by ",
+                text = "by",
                 color = Color(0xFF8E8E93),
                 fontSize = 14.sp,
                 fontWeight = FontWeight.Normal
             )
-            Spacer(modifier = Modifier.width(4.dp))
+            Spacer(modifier = Modifier.width(2.dp))
             Image(
                 painter = painterResource(id = R.drawable.w_logo),
                 contentDescription = "CoachUP",
-                modifier = Modifier.height(18.dp),
+                modifier = Modifier.height(26.dp),
                 contentScale = ContentScale.Fit
             )
         }

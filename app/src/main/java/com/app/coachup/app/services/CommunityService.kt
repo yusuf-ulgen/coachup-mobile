@@ -5,16 +5,7 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
 import com.app.coachup.app.config.SupabaseConfig.client
-import com.app.coachup.app.models.CommunityGroup
-import com.app.coachup.app.models.CommunityGroupInsert
-import com.app.coachup.app.models.CommunityGroupMember
-import com.app.coachup.app.models.CommunityGroupMemberInsert
-import com.app.coachup.app.models.CommunityLike
-import com.app.coachup.app.models.CommunityPost
-import com.app.coachup.app.models.CommunityPostInsert
-import com.app.coachup.app.models.CommunityPostUi
-import com.app.coachup.app.models.CommunitySettings
-import com.app.coachup.app.models.UserProfile
+import com.app.coachup.app.models.*
 import io.github.jan.supabase.postgrest.postgrest
 import io.github.jan.supabase.postgrest.query.Order
 import io.github.jan.supabase.storage.storage
@@ -237,6 +228,7 @@ object CommunityService {
     }
 
     // -------------------------------------------------------------------------
+    // -------------------------------------------------------------------------
     // Posts
     // -------------------------------------------------------------------------
 
@@ -282,12 +274,81 @@ object CommunityService {
         val likeCounts = likes.groupingBy { it.postId }.eachCount()
         val myLikes = likes.filter { it.userId == userId }.map { it.postId }.toSet()
 
+        val comments = try {
+            client.postgrest["community_comments"]
+                .select {
+                    filter { isIn("post_id", postIds) }
+                }
+                .decodeList<CommunityComment>()
+        } catch (_: Exception) {
+            emptyList<CommunityComment>()
+        }
+        val commentCounts = comments.groupingBy { it.postId }.eachCount()
+
+        val polls = try {
+            client.postgrest["community_polls"]
+                .select {
+                    filter { isIn("post_id", postIds) }
+                }
+                .decodeList<CommunityPoll>()
+        } catch (_: Exception) {
+            emptyList<CommunityPoll>()
+        }
+
+        val pollUis = if (polls.isNotEmpty()) {
+            val pollIds = polls.map { it.id }
+            val options = try {
+                client.postgrest["community_poll_options"]
+                    .select {
+                        filter { isIn("poll_id", pollIds) }
+                    }
+                    .decodeList<CommunityPollOption>()
+            } catch (_: Exception) {
+                emptyList<CommunityPollOption>()
+            }
+
+            val votes = try {
+                client.postgrest["community_poll_votes"]
+                    .select {
+                        filter { isIn("poll_id", pollIds) }
+                    }
+                    .decodeList<CommunityPollVote>()
+            } catch (_: Exception) {
+                emptyList<CommunityPollVote>()
+            }
+
+            polls.associate { p ->
+                val pOptions = options.filter { it.pollId == p.id }
+                val pVotes = votes.filter { it.pollId == p.id }
+                val totalVotes = pVotes.size
+                val optionVotes = pVotes.groupingBy { it.optionId }.eachCount()
+                val myVoteOptionId = pVotes.firstOrNull { it.userId == userId }?.optionId
+
+                val optionsUi = pOptions.map { opt ->
+                    val voteCount = optionVotes[opt.id] ?: 0
+                    val pct = if (totalVotes == 0) 0 else ((voteCount.toFloat() / totalVotes) * 100).toInt()
+                    CommunityPollOptionUi(option = opt, voteCount = voteCount, percentage = pct)
+                }
+
+                p.postId to CommunityPollUi(
+                    poll = p,
+                    options = optionsUi,
+                    myVoteOptionId = myVoteOptionId,
+                    totalVotes = totalVotes
+                )
+            }
+        } else {
+            emptyMap()
+        }
+
         return posts.map { post ->
             CommunityPostUi(
                 post = post,
                 authorName = authors[post.authorId] ?: "Üye",
                 likeCount = likeCounts[post.id] ?: 0,
-                likedByMe = post.id in myLikes
+                likedByMe = post.id in myLikes,
+                commentCount = commentCounts[post.id] ?: 0,
+                poll = pollUis[post.id]
             )
         }
     }
@@ -331,7 +392,7 @@ object CommunityService {
         imageUrl: String?,
         gymId: String? = null,
         groupId: String? = null
-    ) {
+    ): String {
         val effectiveScope = if (groupId != null) "group" else scope
         val insert = CommunityPostInsert(
             authorId = authorId,
@@ -341,7 +402,10 @@ object CommunityService {
             content = content?.trim()?.takeIf { it.isNotEmpty() },
             imageUrl = imageUrl?.takeIf { it.isNotBlank() }
         )
-        client.postgrest["community_posts"].insert(insert)
+        val post = client.postgrest["community_posts"].insert(insert) {
+            select()
+        }.decodeSingle<CommunityPost>()
+        return post.id
     }
 
     suspend fun deletePost(postId: String, userId: String) {
@@ -378,6 +442,84 @@ object CommunityService {
             )
             true
         }
+    }
+
+    // -------------------------------------------------------------------------
+    // Comments
+    // -------------------------------------------------------------------------
+
+    suspend fun fetchComments(postId: String): List<CommunityCommentUi> {
+        val comments = try {
+            client.postgrest["community_comments"]
+                .select {
+                    filter { eq("post_id", postId) }
+                    order("created_at", Order.ASCENDING)
+                }
+                .decodeList<CommunityComment>()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            emptyList()
+        }
+
+        if (comments.isEmpty()) return emptyList()
+
+        val authorIds = comments.map { it.authorId }.distinct()
+        val authors = fetchAuthorNames(authorIds)
+
+        return comments.map { c ->
+            CommunityCommentUi(
+                comment = c,
+                authorName = authors[c.authorId] ?: "Üye"
+            )
+        }
+    }
+
+    suspend fun createComment(postId: String, authorId: String, content: String) {
+        val insert = CommunityCommentInsert(
+            postId = postId,
+            authorId = authorId,
+            content = content.trim()
+        )
+        client.postgrest["community_comments"].insert(insert)
+    }
+
+    suspend fun deleteComment(commentId: String, userId: String) {
+        client.postgrest["community_comments"].delete {
+            filter {
+                eq("id", commentId)
+                eq("author_id", userId)
+            }
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // Polls
+    // -------------------------------------------------------------------------
+
+    suspend fun createPoll(postId: String, question: String, options: List<String>) {
+        val poll = client.postgrest["community_polls"]
+            .insert(mapOf("post_id" to postId, "question" to question.trim())) {
+                select()
+            }
+            .decodeSingle<CommunityPoll>()
+
+        val optionsInserts = options.filter { it.isNotBlank() }.map { opt ->
+            mapOf("poll_id" to poll.id, "option_text" to opt.trim())
+        }
+        client.postgrest["community_poll_options"].insert(optionsInserts)
+    }
+
+    suspend fun votePoll(pollId: String, optionId: String, userId: String) {
+        client.postgrest["community_poll_votes"].delete {
+            filter {
+                eq("poll_id", pollId)
+                eq("user_id", userId)
+            }
+        }
+        client.postgrest["community_poll_votes"].insert(
+            CommunityPollVoteInsert(pollId = pollId, optionId = optionId, userId = userId)
+        )
     }
 
     // -------------------------------------------------------------------------

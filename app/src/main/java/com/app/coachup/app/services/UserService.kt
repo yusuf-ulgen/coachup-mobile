@@ -18,10 +18,15 @@ import com.app.coachup.app.models.WeightUnitUpdate
 import io.github.jan.supabase.postgrest.from
 import io.github.jan.supabase.postgrest.query.Columns
 import io.github.jan.supabase.postgrest.query.Order
+import io.github.jan.supabase.storage.storage
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.withContext
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneOffset
@@ -355,7 +360,9 @@ object UserService {
         surname: String,
         email: String,
         gender: String,
-        birthDate: String? = null  // yyyy-MM-dd
+        birthDate: String? = null,  // yyyy-MM-dd
+        height: Double? = null,
+        weight: Double? = null
     ) {
         _isLoading.value = true
         try {
@@ -364,7 +371,9 @@ object UserService {
                 surname = surname,
                 email = email,
                 gender = gender,
-                birthDate = birthDate
+                birthDate = birthDate,
+                height = height,
+                weight = weight
             )
             supabase
                 .from("users")
@@ -376,6 +385,79 @@ object UserService {
         } finally {
             _isLoading.value = false
         }
+    }
+
+    suspend fun uploadAvatar(context: android.content.Context, userId: String, uri: android.net.Uri): String {
+        val jpegBytes = withContext(Dispatchers.IO) {
+            compressUriToJpeg(context, uri)
+        }
+        val filePath = "avatars/$userId-${System.currentTimeMillis()}.jpg"
+        val bucketName = "user-uploads"
+
+        supabase.storage[bucketName].upload(path = filePath, data = jpegBytes) {
+            upsert = true
+        }
+        val publicUrl = supabase.storage[bucketName].publicUrl(filePath)
+
+        supabase.from("users").update(mapOf(
+            "avatar_url" to publicUrl,
+            "profile_image_url" to publicUrl
+        )) {
+            filter { eq("id", userId) }
+        }
+
+        _currentProfile.value = fetchProfile(userId)
+        return publicUrl
+    }
+
+    suspend fun uploadAvatarFromBitmap(userId: String, bitmap: Bitmap): String {
+        val jpegBytes = withContext(Dispatchers.IO) {
+            val out = java.io.ByteArrayOutputStream()
+            bitmap.compress(Bitmap.CompressFormat.JPEG, 85, out)
+            out.toByteArray()
+        }
+        val filePath = "avatars/$userId-${System.currentTimeMillis()}.jpg"
+        val bucketName = "user-uploads"
+
+        supabase.storage[bucketName].upload(path = filePath, data = jpegBytes) {
+            upsert = true
+        }
+        val publicUrl = supabase.storage[bucketName].publicUrl(filePath)
+
+        supabase.from("users").update(mapOf(
+            "avatar_url" to publicUrl,
+            "profile_image_url" to publicUrl
+        )) {
+            filter { eq("id", userId) }
+        }
+
+        _currentProfile.value = fetchProfile(userId)
+        return publicUrl
+    }
+
+    private fun compressUriToJpeg(context: android.content.Context, uri: android.net.Uri): ByteArray {
+        val input = context.contentResolver.openInputStream(uri)
+            ?: throw IllegalStateException("Görsel okunamadı")
+        val bitmap = input.use { BitmapFactory.decodeStream(it) }
+            ?: throw IllegalStateException("Görsel çözümlenemedi")
+        val maxSide = 1000
+        val scale = maxOf(bitmap.width, bitmap.height).toFloat() / maxSide
+        val scaled = if (scale > 1f) {
+            Bitmap.createScaledBitmap(
+                bitmap,
+                (bitmap.width / scale).toInt().coerceAtLeast(1),
+                (bitmap.height / scale).toInt().coerceAtLeast(1),
+                true
+            )
+        } else bitmap
+
+        val out = java.io.ByteArrayOutputStream()
+        scaled.compress(Bitmap.CompressFormat.JPEG, 80, out)
+        if (scaled != bitmap) {
+            scaled.recycle()
+        }
+        bitmap.recycle()
+        return out.toByteArray()
     }
 
     // -----------------------------------------------------------------------

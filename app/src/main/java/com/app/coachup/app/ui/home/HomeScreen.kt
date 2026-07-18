@@ -132,15 +132,15 @@ private enum class MainTab(
         Icons.Filled.FitnessCenter,
         Icons.Filled.FitnessCenter
     ),
-    QR_ENTRY(
-        "QR Giriş",
-        Icons.Filled.QrCodeScanner,
-        Icons.Filled.QrCodeScanner
-    ),
     COMMUNITY(
         "Topluluk",
         Icons.Filled.Groups,
         Icons.Outlined.Groups
+    ),
+    QR_ENTRY(
+        "QR Tarama",
+        Icons.Filled.QrCodeScanner,
+        Icons.Filled.QrCodeScanner
     )
 }
 
@@ -440,9 +440,12 @@ fun HomeScreen(navController: NavController) {
                 }
             }
 
+            val hasActiveGym = !currentProfile?.gymId.isNullOrBlank()
+
             // Bottom tab bar
             BottomTabBar(
                 selectedTab = selectedTab,
+                hasActiveGym = hasActiveGym,
                 onTabSelected = { tab ->
                     selectedTabName = tab.name
                     HomeTabState.selectedTabName = tab.name
@@ -1113,8 +1116,13 @@ private fun CompletedSessionCard(session: TrainingSession) {
 @Composable
 private fun BottomTabBar(
     selectedTab: MainTab,
+    hasActiveGym: Boolean,
     onTabSelected: (MainTab) -> Unit
 ) {
+    val tabs = remember(hasActiveGym) {
+        MainTab.values().filter { it != MainTab.QR_ENTRY || hasActiveGym }
+    }
+
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -1129,7 +1137,7 @@ private fun BottomTabBar(
                 .padding(top = 12.dp, bottom = 12.dp),
             horizontalArrangement = Arrangement.SpaceEvenly
         ) {
-        MainTab.values().forEach { tab ->
+        tabs.forEach { tab ->
             val isSelected = tab == selectedTab
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,

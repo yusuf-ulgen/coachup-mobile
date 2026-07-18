@@ -221,7 +221,7 @@ class CalendarViewModel : ViewModel() {
                     yearMonth.year
                 )
                 val gymPrograms = if (showAllEvents) {
-                    ScheduleService.fetchGymPrograms(yearMonth.monthValue, yearMonth.year)
+                    ScheduleService.fetchGymPrograms(yearMonth.monthValue, yearMonth.year, userId = userId)
                 } else {
                     emptyList()
                 }

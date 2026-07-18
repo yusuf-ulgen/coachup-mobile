@@ -101,7 +101,8 @@ data class Training(
     val iconName: String = "fitness_center",
     val source: TrainingSource,
     val description: String? = null,
-    val exerciseNames: List<String> = emptyList()
+    val exerciseNames: List<String> = emptyList(),
+    val programText: String? = null
 ) {
     val isBuiltIn: Boolean get() = source == TrainingSource.BUILTIN
     val isOutdoor: Boolean get() = category.isOutdoor
@@ -131,7 +132,8 @@ data class Training(
             iconName = program.iconName ?: "fitness_center",
             source = source,
             description = program.description,
-            exerciseNames = exerciseNames
+            exerciseNames = exerciseNames,
+            programText = program.programText
         )
     }
 }

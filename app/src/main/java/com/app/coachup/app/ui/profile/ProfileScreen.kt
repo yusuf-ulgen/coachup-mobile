@@ -23,6 +23,11 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
+import coil.compose.AsyncImage
 import com.app.coachup.app.models.Gender
 import com.app.coachup.app.services.AuthService
 import com.app.coachup.app.services.UserService
@@ -35,6 +40,10 @@ import kotlinx.coroutines.launch
 fun ProfileScreen(
     navController: NavController
 ) {
+    val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
+    val currentProfile by UserService.currentProfile.collectAsState()
+
     var name by remember { mutableStateOf("") }
     var surname by remember { mutableStateOf("") }
     var email by remember { mutableStateOf("") }
@@ -48,24 +57,132 @@ fun ProfileScreen(
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var genderExpanded by remember { mutableStateOf(false) }
 
+    // Photo pickers state
+    var showPhotoSourceDialog by remember { mutableStateOf(false) }
+
     val genderOptions = listOf("Erkek", "Kadın")
-    val coroutineScope = rememberCoroutineScope()
+
+    // Launchers
+    val galleryLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri ->
+        uri?.let {
+            isLoading = true
+            coroutineScope.launch {
+                try {
+                    val userId = AuthService.getCurrentUserId() ?: return@launch
+                    UserService.uploadAvatar(context, userId, it)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    errorMessage = "Fotoğraf yüklenemedi: ${e.localizedMessage}"
+                } finally {
+                    isLoading = false
+                }
+            }
+        }
+    }
+
+    var cameraImageUri by remember { mutableStateOf<android.net.Uri?>(null) }
+
+    val cameraLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.TakePicture()
+    ) { success ->
+        if (success) {
+            val uri = cameraImageUri ?: return@rememberLauncherForActivityResult
+            isLoading = true
+            coroutineScope.launch {
+                try {
+                    val userId = AuthService.getCurrentUserId() ?: return@launch
+                    UserService.uploadAvatar(context, userId, uri)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    errorMessage = "Fotoğraf yüklenemedi: ${e.localizedMessage}"
+                } finally {
+                    isLoading = false
+                }
+            }
+        }
+    }
+
+    val cameraPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) {
+            val file = java.io.File(context.cacheDir, "avatar_capture.jpg")
+            val uri = androidx.core.content.FileProvider.getUriForFile(
+                context,
+                "${context.packageName}.provider",
+                file
+            )
+            cameraImageUri = uri
+            cameraLauncher.launch(uri)
+        } else {
+            errorMessage = "Kamera izni verilmedi."
+        }
+    }
+
+    fun requestCameraAndLaunch() {
+        val check = androidx.core.content.ContextCompat.checkSelfPermission(
+            context,
+            android.Manifest.permission.CAMERA
+        )
+        if (check == android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            val file = java.io.File(context.cacheDir, "avatar_capture.jpg")
+            val uri = androidx.core.content.FileProvider.getUriForFile(
+                context,
+                "${context.packageName}.provider",
+                file
+            )
+            cameraImageUri = uri
+            cameraLauncher.launch(uri)
+        } else {
+            cameraPermissionLauncher.launch(android.Manifest.permission.CAMERA)
+        }
+    }
+
+    LaunchedEffect(currentProfile) {
+        val p = currentProfile ?: return@LaunchedEffect
+        name = p.name ?: ""
+        surname = p.surname ?: ""
+        email = p.email ?: ""
+        phone = p.phone ?: ""
+        birthDate = p.birthDate ?: ""
+        height = p.height?.toInt()?.toString() ?: ""
+        weight = p.weight?.toInt()?.toString() ?: ""
+        selectedGender = Gender.toDisplayValue(p.gender)
+    }
 
     LaunchedEffect(Unit) {
         val userId = AuthService.getCurrentUserId() ?: return@LaunchedEffect
-        try {
-            val profile = UserService.fetchProfile(userId) ?: return@LaunchedEffect
-            name = profile.name ?: ""
-            surname = profile.surname ?: ""
-            email = profile.email ?: ""
-            phone = profile.phone ?: ""
-            birthDate = profile.birthDate ?: ""
-            height = profile.height?.toInt()?.toString() ?: ""
-            weight = profile.weight?.toInt()?.toString() ?: ""
-            selectedGender = Gender.toDisplayValue(profile.gender)
-        } catch (e: CancellationException) {
-            throw e
-        } catch (_: Exception) {}
+        if (UserService.currentProfile.value == null) {
+            UserService.fetchProfile(userId)
+        }
+    }
+
+    if (showPhotoSourceDialog) {
+        AlertDialog(
+            onDismissRequest = { showPhotoSourceDialog = false },
+            title = { Text("Profil Fotoğrafı") },
+            text = { Text("Fotoğraf eklemek için bir kaynak seçin:") },
+            confirmButton = {
+                TextButton(onClick = {
+                    showPhotoSourceDialog = false
+                    requestCameraAndLaunch()
+                }) {
+                    Text("Kamera", color = Primary)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    showPhotoSourceDialog = false
+                    galleryLauncher.launch("image/*")
+                }) {
+                    Text("Galeri", color = Primary)
+                }
+            }
+        )
     }
 
     if (showSuccess) {
@@ -142,7 +259,9 @@ fun ProfileScreen(
             // Avatar
             Box(
                 contentAlignment = Alignment.BottomEnd,
-                modifier = Modifier.size(96.dp)
+                modifier = Modifier
+                    .size(96.dp)
+                    .clickable { showPhotoSourceDialog = true }
             ) {
                 Box(
                     modifier = Modifier
@@ -151,19 +270,29 @@ fun ProfileScreen(
                         .background(PrimaryLight),
                     contentAlignment = Alignment.Center
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.Person,
-                        contentDescription = null,
-                        tint = Primary,
-                        modifier = Modifier.size(48.dp)
-                    )
+                    val avatarUrl = currentProfile?.profileImageUrl
+                    if (!avatarUrl.isNullOrBlank()) {
+                        AsyncImage(
+                            model = avatarUrl,
+                            contentDescription = "Profil resmi",
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    } else {
+                        Icon(
+                            imageVector = Icons.Default.Person,
+                            contentDescription = null,
+                            tint = Primary,
+                            modifier = Modifier.size(48.dp)
+                        )
+                    }
                 }
                 Box(
                     modifier = Modifier
                         .size(28.dp)
                         .clip(CircleShape)
                         .background(Primary)
-                        .clickable { /* launch image picker */ },
+                        .clickable { showPhotoSourceDialog = true },
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
@@ -290,7 +419,9 @@ fun ProfileScreen(
                             surname = surname,
                             email = email,
                             gender = Gender.toDbValue(selectedGender),
-                            birthDate = birthDate.takeIf { it.isNotBlank() }
+                            birthDate = birthDate.takeIf { it.isNotBlank() },
+                            height = height.toDoubleOrNull(),
+                            weight = weight.toDoubleOrNull()
                         )
                         showSuccess = true
                     } catch (e: CancellationException) {

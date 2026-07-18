@@ -386,6 +386,7 @@ private fun ShareCardContent(
                 )
         )
 
+
         if (template == ShareTemplate.SIMPLE) {
             Column(
                 modifier = Modifier
@@ -394,13 +395,29 @@ private fun ShareCardContent(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.SpaceBetween
             ) {
-                Spacer(modifier = Modifier.height(8.dp))
+                // Training title at top
+                Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Image(
+                        painter = painterResource(R.drawable.coach_logo),
+                        contentDescription = "CoachUP",
+                        modifier = Modifier.height(22.dp).width(76.dp),
+                        contentScale = ContentScale.Fit
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text(
+                        text = training.title.uppercase(),
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White.copy(alpha = 0.6f),
+                        letterSpacing = 1.2.sp,
+                        textAlign = TextAlign.Center
+                    )
+                }
+                // Hero value centered
                 Column(
                     horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
-                    Spacer(modifier = Modifier.weight(1f))
                     Text(
                         text = heroLabel,
                         fontSize = 13.sp,
@@ -417,15 +434,13 @@ private fun ShareCardContent(
                         lineHeight = 58.sp,
                         textAlign = TextAlign.Center
                     )
-                    Spacer(modifier = Modifier.weight(1f))
                 }
-                Image(
-                    painter = painterResource(R.drawable.coach_logo),
-                    contentDescription = "CoachUP",
-                    modifier = Modifier
-                        .height(28.dp)
-                        .width(96.dp),
-                    contentScale = ContentScale.Fit
+                // Bottom label
+                Text(
+                    text = "Antrenman Tamamlandı",
+                    fontSize = 12.sp,
+                    color = Color.White.copy(alpha = 0.45f),
+                    letterSpacing = 0.5.sp
                 )
             }
         } else {
@@ -483,10 +498,16 @@ private fun ShareCardContent(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
+                        // Always show duration chip
+                        ShareMetricChip(
+                            value = formatShareTime(durationSeconds),
+                            label = "Süre",
+                            modifier = Modifier.weight(1f)
+                        )
                         if (showDistance) {
                             ShareMetricChip(
-                                value = formatShareTime(durationSeconds),
-                                label = "Süre",
+                                value = "%.2f km".format(distanceKm),
+                                label = "Mesafe",
                                 modifier = Modifier.weight(1f)
                             )
                         }
@@ -789,6 +810,13 @@ private object ShareCardBitmapRenderer {
         }
 
         if (template == ShareTemplate.SIMPLE) {
+            val titlePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = 0x99FFFFFF.toInt()
+                textSize = 28f
+                typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+                letterSpacing = 0.12f
+                textAlign = Paint.Align.CENTER
+            }
             val labelPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
                 color = 0xA6FFFFFF.toInt()
                 textSize = 34f
@@ -802,10 +830,22 @@ private object ShareCardBitmapRenderer {
                 typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
                 textAlign = Paint.Align.CENTER
             }
+            val footerPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = 0x73FFFFFF.toInt()
+                textSize = 28f
+                textAlign = Paint.Align.CENTER
+            }
             val centerX = WIDTH / 2f
+            // Draw logo at top center
+            drawLogo(context, canvas)
+            // Training title below logo
+            canvas.drawText(training.title.uppercase(), centerX, 200f, titlePaint)
+            // Hero value centered
             val centerY = HEIGHT * 0.46f
             canvas.drawText(heroLabel, centerX, centerY, labelPaint)
             canvas.drawText(heroValue, centerX, centerY + 120f, heroPaint)
+            // Bottom label
+            canvas.drawText("Antrenman Tamamland\u0131", centerX, HEIGHT - 80f, footerPaint)
             return
         }
 
@@ -845,7 +885,9 @@ private object ShareCardBitmapRenderer {
 
         if (template != ShareTemplate.SIMPLE) {
             val chips = buildList {
-                if (showDistance) add(formatShareTime(durationSeconds) to "Süre")
+                // Always show duration
+                add(formatShareTime(durationSeconds) to "S\u00fcre")
+                if (showDistance) add("%.2f km".format(distanceKm) to "Mesafe")
                 if (avgPaceMinPerKm > 0.1) add(formatSharePace(avgPaceMinPerKm) to "Tempo")
                 if (totalCalories > 0) add("$totalCalories" to "Kalori")
             }

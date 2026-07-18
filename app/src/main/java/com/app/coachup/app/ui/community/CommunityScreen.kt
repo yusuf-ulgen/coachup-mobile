@@ -27,8 +27,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
-import com.app.coachup.app.models.CommunityGroup
-import com.app.coachup.app.models.CommunityPostUi
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import com.app.coachup.app.models.*
 import com.app.coachup.app.services.AuthService
 import com.app.coachup.app.services.CommunityService
 import com.app.coachup.app.services.UserService
@@ -54,7 +55,7 @@ fun CommunityScreen() {
         UserService.resolveActiveGymIdForContent(currentProfile)
     }
 
-    var selectedTab by remember { mutableStateOf(CommunityScopeTab.SALON) }
+    var selectedTab by remember { mutableStateOf(CommunityScopeTab.GENEL) }
     var selectedGroupId by remember { mutableStateOf<String?>(null) }
     var posts by remember { mutableStateOf<List<CommunityPostUi>>(emptyList()) }
     var groups by remember { mutableStateOf<List<CommunityGroup>>(emptyList()) }
@@ -242,7 +243,24 @@ fun CommunityScreen() {
                                         snackbar = "Silinemedi"
                                     }
                                 }
-                            }
+                            },
+                            onVote = { pollId, optionId ->
+                                val uid = currentUser?.id ?: return@PostCard
+                                scope.launch {
+                                    try {
+                                        CommunityService.votePoll(pollId, optionId, uid)
+                                        loadFeed()
+                                    } catch (_: Exception) {
+                                        snackbar = "Oy kullanılamadı"
+                                    }
+                                }
+                            },
+                            onCommentAction = {
+                                scope.launch {
+                                    loadFeed()
+                                }
+                            },
+                            currentUserId = currentUser?.id
                         )
                     }
                     item { Spacer(Modifier.height(88.dp)) }
@@ -272,14 +290,14 @@ fun CommunityScreen() {
     if (showComposer) {
         ComposePostDialog(
             onDismiss = { showComposer = false },
-            onSubmit = { text, imageUri ->
+            onSubmit = { text, imageUri, pollQuestion, pollOptions ->
                 val userId = currentUser?.id ?: return@ComposePostDialog
                 scope.launch {
                     try {
                         val imageUrl = imageUri?.let {
                             CommunityService.uploadImageFromUri(context, userId, it)
                         }
-                        CommunityService.createPost(
+                        val postId = CommunityService.createPost(
                             authorId = userId,
                             scope = selectedTab.scope,
                             content = text,
@@ -287,6 +305,9 @@ fun CommunityScreen() {
                             gymId = if (selectedTab == CommunityScopeTab.SALON) gymId else null,
                             groupId = selectedGroupId
                         )
+                        if (!pollQuestion.isNullOrBlank() && !pollOptions.isNullOrEmpty()) {
+                            CommunityService.createPoll(postId, pollQuestion, pollOptions)
+                        }
                         showComposer = false
                         loadFeed()
                         snackbar = "Paylaşıldı"
@@ -379,9 +400,27 @@ private fun PostCard(
     item: CommunityPostUi,
     isMine: Boolean,
     onLike: () -> Unit,
-    onDelete: () -> Unit
+    onDelete: () -> Unit,
+    onVote: (String, String) -> Unit,
+    onCommentAction: () -> Unit,
+    currentUserId: String?
 ) {
     val post = item.post
+    var commentsExpanded by remember { mutableStateOf(false) }
+    var comments by remember { mutableStateOf<List<CommunityCommentUi>>(emptyList()) }
+    var isCommentsLoading by remember { mutableStateOf(false) }
+    var newCommentText by remember { mutableStateOf("") }
+    val scope = rememberCoroutineScope()
+    val context = androidx.compose.ui.platform.LocalContext.current
+
+    LaunchedEffect(commentsExpanded) {
+        if (commentsExpanded) {
+            isCommentsLoading = true
+            comments = runCatching { CommunityService.fetchComments(post.id) }.getOrDefault(emptyList())
+            isCommentsLoading = false
+        }
+    }
+
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -389,7 +428,7 @@ private fun PostCard(
             .background(MaterialTheme.colorScheme.surface)
             .border(1.dp, MaterialTheme.colorScheme.onBackground.copy(alpha = 0.05f), RoundedCornerShape(Radius.card))
             .padding(14.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp)
+        verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             Box(
@@ -429,6 +468,97 @@ private fun PostCard(
             )
         }
 
+        // Poll UI
+        item.poll?.let { pollUi ->
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f))
+                    .border(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f), RoundedCornerShape(12.dp))
+                    .padding(12.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Text(
+                    text = "Anket: ${pollUi.poll.question}",
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+
+                val hasVoted = pollUi.myVoteOptionId != null
+                pollUi.options.forEach { opt ->
+                    if (hasVoted) {
+                        val isMyVote = opt.option.id == pollUi.myVoteOptionId
+                        val bgColor = if (isMyVote) Primary.copy(alpha = 0.22f) else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f)
+                        val borderColor = if (isMyVote) Primary else Color.Transparent
+
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(44.dp)
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.05f))
+                                .border(1.dp, borderColor, RoundedCornerShape(8.dp))
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxHeight()
+                                    .fillMaxWidth(if (opt.percentage > 0) opt.percentage / 100f else 0.01f)
+                                    .background(bgColor)
+                            )
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .padding(horizontal = 12.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = opt.option.optionText,
+                                        fontSize = 13.sp,
+                                        fontWeight = if (isMyVote) FontWeight.Bold else FontWeight.Medium,
+                                        color = if (isMyVote) Primary else MaterialTheme.colorScheme.onSurface
+                                    )
+                                    if (isMyVote) {
+                                        Icon(Icons.Default.Check, null, tint = Primary, modifier = Modifier.size(16.dp))
+                                    }
+                                }
+                                Text(
+                                    text = "%${opt.percentage}",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = if (isMyVote) Primary else MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    } else {
+                        OutlinedButton(
+                            onClick = { onVote(pollUi.poll.id, opt.option.id) },
+                            modifier = Modifier.fillMaxWidth().height(42.dp),
+                            shape = RoundedCornerShape(8.dp),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+                        ) {
+                            Text(opt.option.optionText, fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurface)
+                        }
+                    }
+                }
+
+                if (pollUi.totalVotes > 0) {
+                    Text(
+                        text = "Toplam ${pollUi.totalVotes} oy",
+                        fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.align(Alignment.End)
+                    )
+                }
+            }
+        }
+
         post.imageUrl?.takeIf { it.isNotBlank() }?.let { url ->
             AsyncImage(
                 model = url,
@@ -442,21 +572,157 @@ private fun PostCard(
         }
 
         Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-            modifier = Modifier.clickable { onLike() }
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(24.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Icon(
-                imageVector = if (item.likedByMe) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
-                contentDescription = "Beğen",
-                tint = if (item.likedByMe) Primary else MaterialTheme.colorScheme.onBackground.copy(alpha = 0.45f),
-                modifier = Modifier.size(20.dp)
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                modifier = Modifier.clickable { onLike() }
+            ) {
+                Icon(
+                    imageVector = if (item.likedByMe) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                    contentDescription = "Beğen",
+                    tint = if (item.likedByMe) Primary else MaterialTheme.colorScheme.onBackground.copy(alpha = 0.45f),
+                    modifier = Modifier.size(20.dp)
+                )
+                Text(
+                    text = if (item.likeCount > 0) "${item.likeCount}" else "Beğen",
+                    fontSize = 13.sp,
+                    color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.55f)
+                )
+            }
+
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                modifier = Modifier.clickable { commentsExpanded = !commentsExpanded }
+            ) {
+                Icon(
+                    imageVector = Icons.Default.ChatBubbleOutline,
+                    contentDescription = "Yorumlar",
+                    tint = if (commentsExpanded) Primary else MaterialTheme.colorScheme.onBackground.copy(alpha = 0.45f),
+                    modifier = Modifier.size(18.dp)
+                )
+                Text(
+                    text = if (item.commentCount > 0) "${item.commentCount} Yorum" else "Yorum Yap",
+                    fontSize = 13.sp,
+                    color = if (commentsExpanded) Primary else MaterialTheme.colorScheme.onBackground.copy(alpha = 0.55f)
+                )
+            }
+        }
+
+        if (commentsExpanded) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(1.dp)
+                    .background(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f))
             )
-            Text(
-                text = if (item.likeCount > 0) "${item.likeCount}" else "Beğen",
-                fontSize = 13.sp,
-                color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.55f)
-            )
+
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                if (isCommentsLoading) {
+                    Box(modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp), contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp, color = Primary)
+                    }
+                } else if (comments.isEmpty()) {
+                    Text(
+                        text = "Henüz yorum yok. İlk yorumu sen yap!",
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(vertical = 6.dp)
+                    )
+                } else {
+                    comments.forEach { comm ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.Top,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(28.dp)
+                                    .clip(CircleShape)
+                                    .background(Primary.copy(alpha = 0.1f)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = comm.authorName.take(1).uppercase(),
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 11.sp,
+                                    color = Primary
+                                )
+                            }
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(comm.authorName, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
+                                Text(comm.comment.content, fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurface, lineHeight = 16.sp)
+                            }
+                            if (comm.comment.authorId == currentUserId) {
+                                IconButton(
+                                    onClick = {
+                                        scope.launch {
+                                            runCatching { CommunityService.deleteComment(comm.comment.id, currentUserId ?: "") }
+                                            comments = runCatching { CommunityService.fetchComments(post.id) }.getOrDefault(emptyList())
+                                            onCommentAction()
+                                        }
+                                    },
+                                    modifier = Modifier.size(24.dp)
+                                ) {
+                                    Icon(Icons.Default.Close, null, tint = Color.Gray, modifier = Modifier.size(14.dp))
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    OutlinedTextField(
+                        value = newCommentText,
+                        onValueChange = { newCommentText = it },
+                        placeholder = { Text("Yorum yaz...", fontSize = 13.sp) },
+                        modifier = Modifier.weight(1f).heightIn(max = 50.dp),
+                        colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = Primary),
+                        maxLines = 2,
+                        shape = RoundedCornerShape(12.dp)
+                    )
+                    IconButton(
+                        onClick = {
+                            if (newCommentText.isBlank() || currentUserId == null) return@IconButton
+                            scope.launch {
+                                val result = runCatching { CommunityService.createComment(post.id, currentUserId, newCommentText) }
+                                if (result.isSuccess) {
+                                    newCommentText = ""
+                                    comments = runCatching { CommunityService.fetchComments(post.id) }.getOrDefault(emptyList())
+                                    onCommentAction()
+                                } else {
+                                    android.widget.Toast.makeText(
+                                        context,
+                                        "Yorum gönderilemedi: ${result.exceptionOrNull()?.message}",
+                                        android.widget.Toast.LENGTH_LONG
+                                    ).show()
+                                }
+                            }
+                        },
+                        enabled = newCommentText.isNotBlank(),
+                        modifier = Modifier
+                            .size(40.dp)
+                            .clip(CircleShape)
+                            .background(if (newCommentText.isNotBlank()) Primary else MaterialTheme.colorScheme.outlineVariant)
+                    ) {
+                        Icon(Icons.Default.Send, null, tint = Color.White, modifier = Modifier.size(16.dp))
+                    }
+                }
+            }
         }
     }
 }
@@ -464,11 +730,17 @@ private fun PostCard(
 @Composable
 private fun ComposePostDialog(
     onDismiss: () -> Unit,
-    onSubmit: (String, Uri?) -> Unit
+    onSubmit: (String, Uri?, String?, List<String>?) -> Unit
 ) {
     var text by remember { mutableStateOf("") }
     var imageUri by remember { mutableStateOf<Uri?>(null) }
     var isSending by remember { mutableStateOf(false) }
+    
+    // Poll state
+    var showPollCreator by remember { mutableStateOf(false) }
+    var pollQuestion by remember { mutableStateOf("") }
+    val pollOptions = remember { mutableStateListOf("", "") }
+
     val imagePicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         imageUri = uri
     }
@@ -477,7 +749,12 @@ private fun ComposePostDialog(
         onDismissRequest = { if (!isSending) onDismiss() },
         title = { Text("Yeni Paylaşım", fontWeight = FontWeight.SemiBold) },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
                 OutlinedTextField(
                     value = text,
                     onValueChange = { text = it },
@@ -486,13 +763,33 @@ private fun ComposePostDialog(
                     colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = Primary),
                     maxLines = 6
                 )
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    TextButton(onClick = { imagePicker.launch("image/*") }, enabled = !isSending) {
-                        Icon(Icons.Default.Image, contentDescription = null, modifier = Modifier.size(18.dp))
-                        Spacer(Modifier.width(6.dp))
-                        Text(if (imageUri != null) "Görsel seçildi" else "Görsel ekle")
+
+                // Triggers Row
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(16.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    // Image picker trigger
+                    IconButton(onClick = { imagePicker.launch("image/*") }, enabled = !isSending && !showPollCreator) {
+                        Icon(
+                            imageVector = Icons.Default.Image,
+                            contentDescription = "Görsel Ekle",
+                            tint = if (imageUri != null) Primary else MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+
+                    // Poll creator trigger
+                    IconButton(onClick = { showPollCreator = !showPollCreator }, enabled = !isSending && imageUri == null) {
+                        Icon(
+                            imageVector = Icons.Default.Poll,
+                            contentDescription = "Anket Oluştur",
+                            tint = if (showPollCreator) Primary else MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
                 }
+
+                // Selected Image Preview
                 imageUri?.let { uri ->
                     AsyncImage(
                         model = uri,
@@ -504,16 +801,80 @@ private fun ComposePostDialog(
                         contentScale = ContentScale.Crop
                     )
                 }
+
+                // Poll Creator Section
+                if (showPollCreator) {
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(12.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Text("Anket Detayları", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Primary)
+                            
+                            OutlinedTextField(
+                                value = pollQuestion,
+                                onValueChange = { pollQuestion = it },
+                                placeholder = { Text("Bir soru sor...") },
+                                modifier = Modifier.fillMaxWidth(),
+                                singleLine = true,
+                                colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = Primary)
+                            )
+
+                            pollOptions.forEachIndexed { idx, opt ->
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    OutlinedTextField(
+                                        value = opt,
+                                        onValueChange = { pollOptions[idx] = it },
+                                        placeholder = { Text("Seçenek ${idx + 1}") },
+                                        modifier = Modifier.weight(1f),
+                                        singleLine = true,
+                                        colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = Primary)
+                                    )
+                                    if (pollOptions.size > 2) {
+                                        IconButton(onClick = { pollOptions.removeAt(idx) }) {
+                                            Icon(Icons.Default.Close, null, tint = Color.Gray, modifier = Modifier.size(16.dp))
+                                        }
+                                    }
+                                }
+                            }
+
+                            if (pollOptions.size < 4) {
+                                TextButton(
+                                    onClick = { pollOptions.add("") },
+                                    colors = ButtonDefaults.textButtonColors(contentColor = Primary)
+                                ) {
+                                    Icon(Icons.Default.Add, null, modifier = Modifier.size(16.dp))
+                                    Spacer(Modifier.width(4.dp))
+                                    Text("Seçenek Ekle", fontSize = 12.sp)
+                                }
+                            }
+                        }
+                    }
+                }
             }
         },
         confirmButton = {
+            val canSubmit = when {
+                showPollCreator -> pollQuestion.isNotBlank() && pollOptions.count { it.isNotBlank() } >= 2
+                else -> text.isNotBlank() || imageUri != null
+            }
             TextButton(
                 onClick = {
-                    if (text.isBlank() && imageUri == null) return@TextButton
+                    if (!canSubmit) return@TextButton
                     isSending = true
-                    onSubmit(text, imageUri)
+                    val q = if (showPollCreator) pollQuestion else null
+                    val opts = if (showPollCreator) pollOptions.toList() else null
+                    onSubmit(text, imageUri, q, opts)
                 },
-                enabled = !isSending && (text.isNotBlank() || imageUri != null)
+                enabled = !isSending && canSubmit
             ) {
                 if (isSending) CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp, color = Primary)
                 else Text("Paylaş", color = Primary)

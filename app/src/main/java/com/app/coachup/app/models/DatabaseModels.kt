@@ -248,21 +248,26 @@ data class ExerciseHistory(
 // ---------------------------------------------------------------------------
 @Serializable
 data class TrainingProgram(
-    @SerialName("id")             val id: String,
-    @SerialName("name")           val name: String,
-    @SerialName("description")    val description: String? = null,
-    @SerialName("category")       val category: String? = null,
+    @SerialName("id")                  val id: String,
+    @SerialName("name")                val name: String,
+    @SerialName("description")         val description: String? = null,
+    @SerialName("category")            val category: String? = null,
     /** Duration in minutes */
-    @SerialName("duration")       val duration: Int? = null,
-    @SerialName("difficulty")     val difficulty: String? = null,
-    @SerialName("calories_burn")  val caloriesBurn: Int? = null,
-    @SerialName("exercise_count") val exerciseCount: Int? = null,
-    @SerialName("icon_name")      val iconName: String? = null,
-    @SerialName("is_active")      val isActive: Boolean = true,
-    @SerialName("created_at")     val createdAt: String = "",
-    @SerialName("gym_id")         val gymId: String? = null,
-    @SerialName("coach_id")       val coachId: String? = null,
-    @SerialName("image_url")      val imageUrl: String? = null
+    @SerialName("duration")            val duration: Int? = null,
+    @SerialName("difficulty")          val difficulty: String? = null,
+    @SerialName("calories_burn")       val caloriesBurn: Int? = null,
+    @SerialName("exercise_count")      val exerciseCount: Int? = null,
+    @SerialName("icon_name")           val iconName: String? = null,
+    @SerialName("is_active")           val isActive: Boolean = true,
+    @SerialName("created_at")          val createdAt: String = "",
+    @SerialName("gym_id")              val gymId: String? = null,
+    @SerialName("coach_id")            val coachId: String? = null,
+    @SerialName("image_url")           val imageUrl: String? = null,
+    @SerialName("program_text")        val programText: String? = null,
+    /** "public" veya "private" — salon tarafından belirlenir */
+    @SerialName("privacy")             val privacy: String? = null,
+    /** Programı görebilecek üyelerin userId listesi (privacy=private ise geçerli) */
+    @SerialName("visible_member_ids")  val visibleMemberIds: List<String> = emptyList()
 )
 
 // ---------------------------------------------------------------------------

@@ -357,9 +357,9 @@ fun RecordTimedAttemptSession(
                         else -> TimerActivePane(
                             elapsedMs = elapsedMs,
                             subtitle = when {
-                                isBodyweight -> "Tekrarlarini say, bitirince durdur"
+                                isBodyweight -> "Tekrarlarını say, bitirince durdur"
                                 isBenchmark -> "WOD bitince Bitir'e bas — For Time"
-                                else -> "Isin bitince sureyi durdur"
+                                else -> "İşin bitince süreyi durdur"
                             },
                             isFinishing = isFinishing,
                             onFinish = { onStopPressed() }
@@ -373,11 +373,11 @@ fun RecordTimedAttemptSession(
     if (showRepsDialog) {
         AlertDialog(
             onDismissRequest = { },
-            title = { Text("Kac tekrar yaptin?") },
+            title = { Text("Kaç tekrar yaptın?") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(
-                        "Sure: ${formatDuration((elapsedMs / 1000.0).roundToInt())}",
+                        "Süre: ${formatDuration((elapsedMs / 1000.0).roundToInt())}",
                         fontSize = 13.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -434,11 +434,11 @@ fun RecordTimedAttemptSession(
     if (showRoundsDialog) {
         AlertDialog(
             onDismissRequest = { },
-            title = { Text("Kac tur yaptin?") },
+            title = { Text("Kaç tur yaptın?") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(
-                        "Cindy AMRAP ${amrapCapSeconds / 60} dk. Tamamladigin tur sayisini gir.",
+                        "Cindy AMRAP ${amrapCapSeconds / 60} dk. Tamamladığın tur sayısını gir.",
                         fontSize = 13.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         lineHeight = 18.sp
@@ -554,11 +554,11 @@ private fun IdleStartPane(
         Spacer(Modifier.height(8.dp))
         Text(
             when {
-                isBodyweight -> "Baslat → 3-2-1 → kronometre. Bitirince tekrar gir."
-                isCindyAmrap -> "Baslat → 3-2-1 → 20:00 geri sayim. Sure bitince tur sayisini gir."
-                isBenchmark -> "Baslat → 3-2-1 → kronometre (For Time). WOD bitince Bitir."
-                isRunning -> "GPS ile mesafe takip edilir. Hedefe ulasinca otomatik biter."
-                else -> "Kronometre sen bitirene kadar calisir."
+                 isBodyweight -> "Başlat → 3-2-1 → kronometre. Bitirince tekrar gir."
+                 isCindyAmrap -> "Başlat → 3-2-1 → 20:00 geri sayım. Süre bitince tur sayısını gir."
+                 isBenchmark -> "Başlat → 3-2-1 → kronometre (For Time). WOD bitince Bitir."
+                 isRunning -> "GPS ile mesafe takip edilir. Hedefe ulaşınca otomatik biter."
+                 else -> "Kronometre sen bitirene kadar çalışır."
             },
             fontSize = 13.sp,
             textAlign = TextAlign.Center,
@@ -573,7 +573,7 @@ private fun IdleStartPane(
                 fontSize = 13.sp,
                 modifier = Modifier.padding(bottom = 8.dp)
             )
-            OutlinedButton(onClick = onRequestLocation) { Text("Izin Ver") }
+            OutlinedButton(onClick = onRequestLocation) { Text("İzin Ver") }
             Spacer(Modifier.height(12.dp))
         }
         Button(
@@ -586,7 +586,7 @@ private fun IdleStartPane(
         ) {
             Icon(Icons.Default.PlayArrow, null, tint = Color.White)
             Spacer(Modifier.width(8.dp))
-            Text("Baslat", fontWeight = FontWeight.Bold, color = Color.White, fontSize = 17.sp)
+            Text("Başlat", fontWeight = FontWeight.Bold, color = Color.White, fontSize = 17.sp)
         }
     }
 }
@@ -758,7 +758,7 @@ private fun RunningActivePane(
             }
         }
         Text(
-            "Hedefe ulasinca otomatik biter · pes edersen manuel bitir",
+            "Hedefe ulaşınca otomatik biter · pes edersen manuel bitir",
             fontSize = 12.sp,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.fillMaxWidth(),
@@ -833,7 +833,7 @@ private suspend fun finishTimed(
             prType = RecordMeasureType.CALORIES
         }
         else -> {
-            weight = elapsedSeconds.toDouble()
+            weight = attempt.targetWeight
             reps = repsOverride ?: 1
             prType = measureType
         }
@@ -844,6 +844,7 @@ private suspend fun finishTimed(
             s.copy(
                 actualWeight = weight,
                 actualReps = reps,
+                restSeconds = elapsedSeconds,
                 isCompleted = true
             )
         } else s
@@ -858,7 +859,7 @@ private suspend fun finishTimed(
                 actualWeight = weight,
                 actualReps = reps,
                 rpe = null,
-                restSeconds = 0,
+                restSeconds = elapsedSeconds,
                 notes = if (isAmrap) "AMRAP rounds=$reps" else null
             )
         }
@@ -898,5 +899,15 @@ private suspend fun finishTimed(
     } finally {
         setFinishing(false)
     }
-    onNavigateToSummary(SummaryResult(success = success, newPersonalRecord = newPR), updated)
+    onNavigateToSummary(
+        SummaryResult(
+            success = success,
+            newPersonalRecord = newPR,
+            overrideMeasureType = prType,
+            overrideWeight = weight,
+            overrideReps = reps,
+            overrideDurationSeconds = elapsedSeconds
+        ),
+        updated
+    )
 }

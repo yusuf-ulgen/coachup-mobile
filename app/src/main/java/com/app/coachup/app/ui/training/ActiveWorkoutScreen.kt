@@ -12,6 +12,8 @@ import androidx.health.connect.client.PermissionController
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -769,6 +771,81 @@ fun ActiveWorkoutScreen(
                 )
 
                 when {
+                    !training.programText.isNullOrBlank() -> {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(horizontal = Spacing.xl),
+                            verticalArrangement = Arrangement.spacedBy(16.dp)
+                        ) {
+                            MinifiedStatsHeader(
+                                elapsedSeconds = elapsedSeconds,
+                                liveHR = liveHR,
+                                avgHR = avgHR,
+                                maxHR = maxHR,
+                                isAvailable = isAvailable
+                            )
+
+                            Surface(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .fillMaxWidth(),
+                                shape = RoundedCornerShape(Radius.card),
+                                shadowElevation = 2.dp,
+                                color = MaterialTheme.colorScheme.surface,
+                                border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f))
+                            ) {
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .verticalScroll(rememberScrollState())
+                                        .padding(16.dp)
+                                ) {
+                                    Text(
+                                        text = "Antrenman Detayları",
+                                        fontSize = 14.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.padding(bottom = 8.dp)
+                                    )
+                                    Text(
+                                        text = training.programText,
+                                        fontSize = 15.sp,
+                                        lineHeight = 22.sp,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                }
+                            }
+
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(bottom = 24.dp),
+                                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                Button(
+                                    onClick = { vm.togglePause() },
+                                    modifier = Modifier.weight(1f).height(50.dp),
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = if (isPaused) Color(0xFF4CAF50) else Color(0xFFFF9800)
+                                    ),
+                                    shape = RoundedCornerShape(Radius.pill)
+                                ) {
+                                    Text(if (isPaused) "Devam Et" else "Duraklat", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = Color.White)
+                                }
+
+                                Button(
+                                    onClick = { confirmFinishWorkout() },
+                                    modifier = Modifier.weight(1.5f).height(50.dp),
+                                    colors = ButtonDefaults.buttonColors(containerColor = Primary),
+                                    shape = RoundedCornerShape(Radius.pill)
+                                ) {
+                                    Text("Antrenmanı Tamamla", fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = Color.White)
+                                }
+                            }
+                        }
+                    }
+
                     isLoading -> {
                         Column(
                             modifier = Modifier.fillMaxSize(),

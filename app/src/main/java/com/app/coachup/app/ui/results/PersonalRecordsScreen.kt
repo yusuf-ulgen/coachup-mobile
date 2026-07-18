@@ -725,11 +725,13 @@ private fun workoutDetailRows(session: TrainingSession): List<WorkoutDetailRow> 
             }
         }
     }
+    val cal = session.calories ?: 0
+    add(WorkoutDetailRow("Kalori", "$cal kcal"))
+
+    val hr = session.avgHeartRate ?: 0
+    add(WorkoutDetailRow("Ort. Nabız", "$hr bpm"))
     formatCompletionClockTime(session.completedAt)?.let {
         add(WorkoutDetailRow("Bitiş saati", it))
-    }
-    session.resolvedActivityCategory?.label?.let {
-        add(WorkoutDetailRow("Tür", it))
     }
     session.program?.name?.takeIf { session.resolvedActivityCategory == null }?.let {
         add(WorkoutDetailRow("Program", it))

@@ -438,6 +438,48 @@ object AdminService {
             }
     }
 
+    /**
+     * Bir programı belirli bir üyeye atar:
+     * • privacy'i 'private' yapar
+     * • visible_member_ids dizisine [memberId] ekler (tekrar yoksa)
+     */
+    suspend fun assignProgramToMember(programId: String, memberId: String) {
+        // Önce mevcut visible_member_ids'i çek
+        val program = client.postgrest["training_programs"]
+            .select { filter { eq("id", programId) } }
+            .decodeSingle<TrainingProgram>()
+        val updatedIds = (program.visibleMemberIds + memberId).distinct()
+        client.postgrest["training_programs"]
+            .update(ProgramVisibilityUpdate(privacy = "private", visibleMemberIds = updatedIds)) {
+                filter { eq("id", programId) }
+            }
+    }
+
+    /**
+     * Bir üyeyi programdan kaldırır.
+     * visible_member_ids boşalırsa privacy 'public' yapılmaz — kasıtlı.
+     */
+    suspend fun removeProgramFromMember(programId: String, memberId: String) {
+        val program = client.postgrest["training_programs"]
+            .select { filter { eq("id", programId) } }
+            .decodeSingle<TrainingProgram>()
+        val updatedIds = program.visibleMemberIds.filter { it != memberId }
+        client.postgrest["training_programs"]
+            .update(ProgramVisibilityUpdate(privacy = program.privacy ?: "private", visibleMemberIds = updatedIds)) {
+                filter { eq("id", programId) }
+            }
+    }
+
+    /**
+     * Programı herkese açık (public) yapar ve visible_member_ids listesini temizler.
+     */
+    suspend fun setProgramPublic(programId: String) {
+        client.postgrest["training_programs"]
+            .update(ProgramVisibilityUpdate(privacy = "public", visibleMemberIds = emptyList())) {
+                filter { eq("id", programId) }
+            }
+    }
+
     // -------------------------------------------------------------------------
     // Membership Plan Management
     // -------------------------------------------------------------------------
@@ -731,6 +773,12 @@ object AdminService {
         @SerialName("calories_burn") val caloriesBurn: Int = 0,
         @SerialName("icon_name") val iconName: String? = null,
         @SerialName("is_active") val isActive: Boolean
+    )
+
+    @Serializable
+    private data class ProgramVisibilityUpdate(
+        val privacy: String,
+        @SerialName("visible_member_ids") val visibleMemberIds: List<String>
     )
 
     @Serializable

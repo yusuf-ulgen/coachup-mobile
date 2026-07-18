@@ -77,7 +77,7 @@ fun SettingsScreen(
         "home" -> "Anasayfa"
         "calendar" -> "Takvim"
         "training" -> "Antrenman"
-        "qr" -> "QR Giriş"
+        "qr" -> "QR Tarama"
         else -> "Anasayfa"
     }
 

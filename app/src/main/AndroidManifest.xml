@@ -60,7 +60,7 @@
             android:exported="true"
             android:launchMode="singleTop"
             android:windowSoftInputMode="adjustResize"
-            android:theme="@style/Theme.CoachUP">
+            android:theme="@style/Theme.CoachUP.Main">
 
             <!-- Launcher intent filter – makes this the entry-point Activity -->
             <intent-filter>

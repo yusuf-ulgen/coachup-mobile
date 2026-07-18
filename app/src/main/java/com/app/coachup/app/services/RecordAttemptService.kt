@@ -68,7 +68,14 @@ enum class AttemptSetType(val raw: String) {
     }
 }
 
-data class SummaryResult(val success: Boolean, val newPersonalRecord: Boolean)
+data class SummaryResult(
+    val success: Boolean,
+    val newPersonalRecord: Boolean,
+    val overrideMeasureType: com.app.coachup.app.models.RecordMeasureType? = null,
+    val overrideWeight: Double? = null,
+    val overrideReps: Int? = null,
+    val overrideDurationSeconds: Int? = null
+)
 
 // ---------------------------------------------------------------------------
 // Insert / Update DTOs

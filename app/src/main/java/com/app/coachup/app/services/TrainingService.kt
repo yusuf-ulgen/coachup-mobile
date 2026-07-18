@@ -17,6 +17,7 @@ import com.app.coachup.app.services.UserService
 import io.github.jan.supabase.postgrest.from
 import io.github.jan.supabase.postgrest.query.Columns
 import io.github.jan.supabase.postgrest.query.Order
+import io.github.jan.supabase.postgrest.query.filter.FilterOperator
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -99,19 +100,31 @@ object TrainingService {
             .decodeSingle<TrainingProgram>()
     }
 
-    /** Salon tarafından tanımlanan programlar. */
+    /** Salon tarafından tanımlanan programlar. userId ile görünürlük filtresi uygulanır. */
     suspend fun fetchGymPrograms(
         gymId: String?,
+        userId: String? = null,
         searchText: String? = null,
         limit: Int = ApiLimits.TRAINING_PROGRAMS
     ): List<TrainingProgram> {
         if (gymId.isNullOrBlank()) return emptyList()
+        val currentUserId = userId
+            ?: UserService.currentProfile.value?.id
+            ?: AuthService.getCurrentUserId()
         return supabase
             .from("training_programs")
             .select {
                 filter {
                     eq("is_active", true)
                     eq("gym_id", gymId)
+                    if (!currentUserId.isNullOrBlank()) {
+                        or {
+                            // Public programs visible to all gym members
+                            eq("privacy", "public")
+                            // Assigned programs (members or private): user must be in visible_member_ids
+                            filter("visible_member_ids", FilterOperator.CS, "{\"$currentUserId\"}")
+                        }
+                    }
                     if (!searchText.isNullOrEmpty()) {
                         ilike("name", "%$searchText%")
                     }

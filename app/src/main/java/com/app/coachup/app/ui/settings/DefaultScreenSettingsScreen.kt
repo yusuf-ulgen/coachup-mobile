@@ -35,7 +35,7 @@ private val tabOptions = listOf(
     TabOption("home", "Anasayfa", Icons.Default.Home),
     TabOption("calendar", "Takvim", Icons.Default.CalendarMonth),
     TabOption("training", "Antrenman", Icons.Default.FitnessCenter),
-    TabOption("qr", "QR Giriş", Icons.Default.QrCode)
+    TabOption("qr", "QR Tarama", Icons.Default.QrCode)
 )
 
 @Composable

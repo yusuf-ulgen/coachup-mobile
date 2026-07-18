@@ -418,7 +418,9 @@ data class ProfileFieldsUpdateRequest(
     @SerialName("surname")    val surname: String,
     @SerialName("email")      val email: String,
     @SerialName("gender")     val gender: String,
-    @SerialName("birth_date") val birthDate: String? = null
+    @SerialName("birth_date") val birthDate: String? = null,
+    @SerialName("height")     val height: Double? = null,
+    @SerialName("weight")     val weight: Double? = null
 )
 
 // ---------------------------------------------------------------------------

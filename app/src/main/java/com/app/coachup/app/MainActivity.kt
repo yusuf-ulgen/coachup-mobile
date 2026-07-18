@@ -89,15 +89,13 @@ class MainActivity : ComponentActivity() {
 
     private var healthPermissionRationaleIntent: Boolean = false
     /** Sistem splash turuncu ekranda kalır; Compose SplashView logo gösterene kadar. */
-    private var keepSystemSplash = true
+    private var keepSystemSplash = false
 
     private val notificationPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { /* granted or denied — local notifications still work when granted */ }
 
     override fun onCreate(savedInstanceState: Bundle?) {
-        val splashScreen = installSplashScreen()
-        splashScreen.setKeepOnScreenCondition { keepSystemSplash }
         super.onCreate(savedInstanceState)
         healthPermissionRationaleIntent = isHealthPermissionUsageIntent(intent)
         AppLocaleManager.applyStored(this)

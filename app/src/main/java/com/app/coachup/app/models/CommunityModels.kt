@@ -81,10 +81,77 @@ data class CommunityLike(
     @SerialName("user_id") val userId: String
 )
 
-/** UI model with author display + like state */
+@Serializable
+data class CommunityComment(
+    @SerialName("id")          val id: String,
+    @SerialName("post_id")     val postId: String,
+    @SerialName("author_id")   val authorId: String,
+    @SerialName("content")     val content: String,
+    @SerialName("created_at")  val createdAt: String
+)
+
+@Serializable
+data class CommunityCommentInsert(
+    @SerialName("post_id")     val postId: String,
+    @SerialName("author_id")   val authorId: String,
+    @SerialName("content")     val content: String
+)
+
+data class CommunityCommentUi(
+    val comment: CommunityComment,
+    val authorName: String
+)
+
+@Serializable
+data class CommunityPoll(
+    @SerialName("id")          val id: String,
+    @SerialName("post_id")     val postId: String,
+    @SerialName("question")     val question: String,
+    @SerialName("created_at")  val createdAt: String
+)
+
+@Serializable
+data class CommunityPollOption(
+    @SerialName("id")          val id: String,
+    @SerialName("poll_id")     val pollId: String,
+    @SerialName("option_text") val optionText: String,
+    @SerialName("created_at")  val createdAt: String
+)
+
+@Serializable
+data class CommunityPollVote(
+    @SerialName("poll_id")     val pollId: String,
+    @SerialName("option_id")   val optionId: String,
+    @SerialName("user_id")     val userId: String,
+    @SerialName("created_at")  val createdAt: String = ""
+)
+
+@Serializable
+data class CommunityPollVoteInsert(
+    @SerialName("poll_id")     val pollId: String,
+    @SerialName("option_id")   val optionId: String,
+    @SerialName("user_id")     val userId: String
+)
+
+data class CommunityPollUi(
+    val poll: CommunityPoll,
+    val options: List<CommunityPollOptionUi>,
+    val myVoteOptionId: String?,
+    val totalVotes: Int
+)
+
+data class CommunityPollOptionUi(
+    val option: CommunityPollOption,
+    val voteCount: Int,
+    val percentage: Int
+)
+
+/** UI model with author display + like state + comments + poll */
 data class CommunityPostUi(
     val post: CommunityPost,
     val authorName: String,
     val likeCount: Int,
-    val likedByMe: Boolean
+    val likedByMe: Boolean,
+    val commentCount: Int = 0,
+    val poll: CommunityPollUi? = null
 )

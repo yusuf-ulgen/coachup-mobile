@@ -23,6 +23,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.app.coachup.app.models.RecordMeasureType
+import com.app.coachup.app.models.RecordAttemptCategories
+import com.app.coachup.app.utils.FormatHelpers
 import com.app.coachup.app.models.Exercise
 import com.app.coachup.app.services.AttemptSetType
 import com.app.coachup.app.services.PlateCalculator
@@ -41,7 +44,21 @@ fun RecordAttemptSummaryScreen(
     result: SummaryResult,
     onDismiss: () -> Unit
 ) {
+    val recordExercise = RecordAttemptCategories.all
+        .flatMap { it.exercises }
+        .firstOrNull { catalog ->
+            val catalogNameKey = catalog.name.lowercase(java.util.Locale.ROOT).replace("&", "and").replace(Regex("[^a-z0-9]"), "")
+            val slugKey = catalog.id.replace('_', ' ').lowercase(java.util.Locale.ROOT).replace("&", "and").replace(Regex("[^a-z0-9]"), "")
+            val nameKey = exercise.name.lowercase(java.util.Locale.ROOT).replace("&", "and").replace(Regex("[^a-z0-9]"), "")
+            nameKey == catalogNameKey || nameKey == slugKey
+        }
+    // Prefer override from finishTimed (e.g. bodyweight stopwatch = REPS, not WEIGHT)
+    val measureType = result.overrideMeasureType
+        ?: recordExercise?.measureType
+        ?: RecordMeasureType.WEIGHT
+
     val mainSets = sets.filter { it.setType == AttemptSetType.MAIN }
+    val completedSet = mainSets.firstOrNull { it.isCompleted } ?: sets.firstOrNull { it.isCompleted }
     val rpeValues = mainSets.mapNotNull { it.rpe }
     val estimated1RM = PlateCalculator.epley1RM(attempt.targetWeight, attempt.targetReps)
 
@@ -79,19 +96,21 @@ fun RecordAttemptSummaryScreen(
                 Spacer(Modifier.height(4.dp))
 
                 // Hero card
-                HeroCard(attempt = attempt, result = result)
+                HeroCard(attempt = attempt, result = result, measureType = measureType, completedSet = completedSet)
 
                 if (result.success) {
                     // Stats row
                     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        if (measureType == RecordMeasureType.WEIGHT) {
+                            StatTile(
+                                modifier = Modifier.weight(1f),
+                                label = "Tahmini 1RM",
+                                value = "${formatWeight(estimated1RM)} kg",
+                                icon = Icons.Filled.ShowChart
+                            )
+                        }
                         StatTile(
-                            modifier = Modifier.weight(1f),
-                            label = "Tahmini 1RM",
-                            value = "${formatWeight(estimated1RM)} kg",
-                            icon = Icons.Filled.ShowChart
-                        )
-                        StatTile(
-                            modifier = Modifier.weight(1f),
+                            modifier = if (measureType == RecordMeasureType.WEIGHT) Modifier.weight(1f) else Modifier.fillMaxWidth(),
                             label = "RPE",
                             value = if (rpeValues.isEmpty()) "—" else "%.1f".format(rpeValues.average()),
                             icon = Icons.Filled.Speed
@@ -140,7 +159,16 @@ fun RecordAttemptSummaryScreen(
 // ---------------------------------------------------------------------------
 
 @Composable
-private fun HeroCard(attempt: RecordAttempt, result: SummaryResult) {
+private fun HeroCard(
+    attempt: RecordAttempt,
+    result: SummaryResult,
+    measureType: RecordMeasureType,
+    completedSet: RecordAttemptSet?
+) {
+    val actualWeight = result.overrideWeight ?: completedSet?.actualWeight ?: attempt.targetWeight
+    val actualReps = result.overrideReps ?: completedSet?.actualReps ?: attempt.targetReps
+    val durationSeconds = result.overrideDurationSeconds ?: completedSet?.restSeconds ?: 0
+
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -167,18 +195,90 @@ private fun HeroCard(attempt: RecordAttempt, result: SummaryResult) {
                 Text("Bir sonraki sefere", fontSize = 13.sp, color = Color.White.copy(alpha = 0.6f))
             }
 
-            Row(
-                verticalAlignment = Alignment.Bottom,
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                Text(
-                    formatWeight(attempt.targetWeight),
-                    fontSize = 56.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Color.White
-                )
-                Text("kg", fontSize = 18.sp, fontWeight = FontWeight.SemiBold, color = Color.White.copy(alpha = 0.7f))
-                Text("× ${attempt.targetReps}", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color.White.copy(alpha = 0.9f))
+            when (measureType) {
+                RecordMeasureType.WEIGHT -> {
+                    Row(
+                        verticalAlignment = Alignment.Bottom,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Text(
+                            formatWeight(if (result.success) actualWeight else attempt.targetWeight),
+                            fontSize = 56.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White
+                        )
+                        Text("kg", fontSize = 18.sp, fontWeight = FontWeight.SemiBold, color = Color.White.copy(alpha = 0.7f))
+                        Text("× ${if (result.success) actualReps else attempt.targetReps}", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color.White.copy(alpha = 0.9f))
+                    }
+                }
+                RecordMeasureType.REPS -> {
+                    Row(
+                        verticalAlignment = Alignment.Bottom,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Text(
+                            "${if (result.success) actualReps else attempt.targetReps}",
+                            fontSize = 56.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White
+                        )
+                        Text("tekrar", fontSize = 18.sp, fontWeight = FontWeight.SemiBold, color = Color.White.copy(alpha = 0.7f))
+                        val displaySec = if (result.success) durationSeconds else 0
+                        if (displaySec > 0) {
+                            Text("(${FormatHelpers.formatDuration(displaySec)})", fontSize = 24.sp, fontWeight = FontWeight.Medium, color = Color.White.copy(alpha = 0.8f))
+                        }
+                    }
+                }
+                RecordMeasureType.TIME -> {
+                    Row(
+                        verticalAlignment = Alignment.Bottom,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        val displaySec = if (result.success) actualWeight.toInt() else attempt.targetWeight.toInt()
+                        Text(
+                            FormatHelpers.formatDuration(displaySec),
+                            fontSize = 56.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White
+                        )
+                    }
+                }
+                RecordMeasureType.CALORIES -> {
+                    Row(
+                        verticalAlignment = Alignment.Bottom,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        val calVal = if (result.success) actualWeight.toInt() else attempt.targetWeight.toInt()
+                        Text(
+                            "$calVal",
+                            fontSize = 56.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White
+                        )
+                        Text("cal", fontSize = 18.sp, fontWeight = FontWeight.SemiBold, color = Color.White.copy(alpha = 0.7f))
+                        val displaySec = if (result.success) actualReps else 0
+                        if (displaySec > 0) {
+                            Text("(${FormatHelpers.formatDuration(displaySec)})", fontSize = 24.sp, fontWeight = FontWeight.Medium, color = Color.White.copy(alpha = 0.8f))
+                        }
+                    }
+                }
+                RecordMeasureType.DISTANCE -> {
+                    Row(
+                        verticalAlignment = Alignment.Bottom,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        val distVal = if (result.success) actualWeight else attempt.targetWeight
+                        val distText = if (distVal >= 1.0) "%.1f".format(distVal) else "${(distVal * 1000).toInt()}"
+                        val unit = if (distVal >= 1.0) "km" else "m"
+                        Text(
+                            distText,
+                            fontSize = 56.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White
+                        )
+                        Text(unit, fontSize = 18.sp, fontWeight = FontWeight.SemiBold, color = Color.White.copy(alpha = 0.7f))
+                    }
+                }
             }
         }
     }

@@ -10,6 +10,7 @@ import com.app.coachup.app.models.TrainingProgramIdRow
 import io.github.jan.supabase.postgrest.from
 import io.github.jan.supabase.postgrest.query.Columns
 import io.github.jan.supabase.postgrest.query.Order
+import io.github.jan.supabase.postgrest.query.filter.FilterOperator
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -106,15 +107,26 @@ object ScheduleService {
             .decodeList<ScheduledProgramDB>()
     }
 
-    suspend fun fetchGymProgramsForDate(date: LocalDate): List<ScheduledProgramDB> {
+    suspend fun fetchGymProgramsForDate(date: LocalDate, userId: String? = null): List<ScheduledProgramDB> {
         val gymId = UserService.resolveActiveGymIdForContent() ?: return emptyList()
         val startOfDay = date.toString()
         val endOfDay = date.plusDays(1).toString()
+        val currentUserId = userId
+            ?: UserService.currentProfile.value?.id
+            ?: AuthService.getCurrentUserId()
 
         val programRows = supabase
             .from("training_programs")
             .select(columns = Columns.list("id")) {
-                filter { eq("gym_id", gymId) }
+                filter {
+                    eq("gym_id", gymId)
+                    if (!currentUserId.isNullOrBlank()) {
+                        or {
+                            eq("privacy", "public")
+                            filter("visible_member_ids", FilterOperator.CS, "{\"$currentUserId\"}")
+                        }
+                    }
+                }
             }
             .decodeList<TrainingProgramIdRow>()
 
@@ -137,22 +149,33 @@ object ScheduleService {
 
     suspend fun fetchCalendarProgramsForDate(userId: String, date: LocalDate): List<ScheduledProgramDB> {
         val mine = fetchScheduledPrograms(userId, date)
-        val gym = fetchGymProgramsForDate(date)
+        val gym = fetchGymProgramsForDate(date, userId = userId)
         val seen = mutableSetOf<String>()
         return (mine + gym)
             .filter { it.status != "cancelled" && seen.add(it.id) }
             .sortedBy { it.startTime }
     }
 
-    suspend fun fetchGymPrograms(month: Int, year: Int): List<ScheduledProgramDB> {
+    suspend fun fetchGymPrograms(month: Int, year: Int, userId: String? = null): List<ScheduledProgramDB> {
         val gymId = UserService.resolveActiveGymIdForContent() ?: return emptyList()
         val startOfMonth = LocalDate.of(year, month, 1)
         val endOfMonth = startOfMonth.plusMonths(1)
+        val currentUserId = userId
+            ?: UserService.currentProfile.value?.id
+            ?: AuthService.getCurrentUserId()
 
         val programRows = supabase
             .from("training_programs")
             .select(columns = Columns.list("id")) {
-                filter { eq("gym_id", gymId) }
+                filter {
+                    eq("gym_id", gymId)
+                    if (!currentUserId.isNullOrBlank()) {
+                        or {
+                            eq("privacy", "public")
+                            filter("visible_member_ids", FilterOperator.CS, "{\"$currentUserId\"}")
+                        }
+                    }
+                }
             }
             .decodeList<TrainingProgramIdRow>()
 
@@ -187,7 +210,7 @@ object ScheduleService {
      */
     suspend fun getDaysWithEvents(userId: String, month: Int, year: Int): Set<Int> {
         val mine = fetchScheduledPrograms(userId, month, year)
-        val gym = fetchGymPrograms(month, year)
+        val gym = fetchGymPrograms(month, year, userId = userId)
         return (mine + gym)
             .filter { it.status != "cancelled" }
             .mapNotNull { p ->

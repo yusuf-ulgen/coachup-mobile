@@ -77,7 +77,7 @@ class TrainingViewModel : ViewModel() {
                 _builtinActivities.value = BuiltInActivities.all()
                 coroutineScope {
                     val gymDeferred = async {
-                        TrainingService.fetchGymPrograms(gymId, searchText).map { program ->
+                        TrainingService.fetchGymPrograms(gymId = gymId, userId = userId, searchText = searchText).map { program ->
                             TrainingService.loadProgramTraining(program, TrainingSource.GYM)
                         }
                     }
@@ -665,7 +665,41 @@ private fun ProgramTrainingCard(
                     )
                 }
 
-                if (training.exerciseNames.isNotEmpty()) {
+                val isFreeText = !training.programText.isNullOrBlank()
+                if (isFreeText) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f))
+                            .clickable { expanded = !expanded }
+                            .padding(horizontal = 12.dp, vertical = 10.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "Program Detayı",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Icon(
+                            imageVector = if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+
+                    if (expanded) {
+                        Text(
+                            text = training.programText.orEmpty(),
+                            fontSize = 13.sp,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
+                        )
+                    }
+                } else if (training.exerciseNames.isNotEmpty()) {
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
