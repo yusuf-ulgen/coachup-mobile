@@ -271,6 +271,27 @@ data class TrainingProgram(
 )
 
 // ---------------------------------------------------------------------------
+// UserAssignedProgram — maps to "user_assigned_programs" table
+// ---------------------------------------------------------------------------
+@Serializable
+data class UserAssignedProgram(
+    @SerialName("id")          val id: String,
+    @SerialName("gym_id")      val gymId: String? = null,
+    @SerialName("user_id")     val userId: String,
+    @SerialName("program_id")  val programId: String,
+    @SerialName("coach_id")    val coachId: String? = null,
+    @SerialName("status")      val status: String,
+    @SerialName("start_date")  val startDate: String? = null,
+    @SerialName("end_date")    val endDate: String? = null,
+    @SerialName("progress")    val progress: Double = 0.0,
+    @SerialName("notes")       val notes: String? = null,
+    @SerialName("created_at")  val createdAt: String = "",
+    @SerialName("program")     val program: TrainingProgram? = null,
+    @SerialName("coach")       val coach: Coach? = null
+)
+
+
+// ---------------------------------------------------------------------------
 // TrainingSession — maps to "training_sessions" table
 // ---------------------------------------------------------------------------
 @Serializable

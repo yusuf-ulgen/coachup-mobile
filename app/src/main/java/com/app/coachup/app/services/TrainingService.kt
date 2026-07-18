@@ -12,6 +12,7 @@ import com.app.coachup.app.models.TrainingProgram
 import com.app.coachup.app.models.TrainingSession
 import com.app.coachup.app.models.TrainingSessionInsert
 import com.app.coachup.app.models.TrainingSource
+import com.app.coachup.app.models.UserAssignedProgram
 import com.app.coachup.app.services.AuthService
 import com.app.coachup.app.services.UserService
 import io.github.jan.supabase.postgrest.from
@@ -100,7 +101,7 @@ object TrainingService {
             .decodeSingle<TrainingProgram>()
     }
 
-    /** Salon tarafından tanımlanan programlar. userId ile görünürlük filtresi uygulanır. */
+    /** Salon tarafından tanımlanan programlar. Kullanıcıya atanan programları getirir. */
     suspend fun fetchGymPrograms(
         gymId: String?,
         userId: String? = null,
@@ -111,41 +112,64 @@ object TrainingService {
         val currentUserId = userId
             ?: UserService.currentProfile.value?.id
             ?: AuthService.getCurrentUserId()
-        return supabase
-            .from("training_programs")
-            .select {
-                filter {
-                    eq("is_active", true)
-                    eq("gym_id", gymId)
-                    if (!currentUserId.isNullOrBlank()) {
-                        or {
-                            // Public programs visible to all gym members
-                            eq("privacy", "public")
-                            // Assigned programs (members or private): user must be in visible_member_ids
-                            filter("visible_member_ids", FilterOperator.CS, "{\"$currentUserId\"}")
-                        }
+        if (currentUserId.isNullOrBlank()) return emptyList()
+
+        return try {
+            val assignments = supabase
+                .from("user_assigned_programs")
+                .select(columns = Columns.raw("*, program:training_programs(*)")) {
+                    filter {
+                        eq("user_id", currentUserId)
+                        eq("status", "active")
                     }
-                    if (!searchText.isNullOrEmpty()) {
-                        ilike("name", "%$searchText%")
-                    }
+                    limit(limit.toLong())
                 }
-                order("name", Order.ASCENDING)
-                limit(limit.toLong())
+                .decodeList<UserAssignedProgram>()
+
+            assignments.mapNotNull { assignment ->
+                val p = assignment.program ?: return@mapNotNull null
+                if (!searchText.isNullOrEmpty() && !p.name.contains(searchText, ignoreCase = true)) {
+                    null
+                } else {
+                    p
+                }
             }
-            .decodeList<TrainingProgram>()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            android.util.Log.e("TrainingService", "fetchGymPrograms failed: ${e.message}", e)
+            emptyList()
+        }
     }
+
 
     /** Kişisel AI programları. */
     suspend fun fetchAiPrograms(
         searchText: String? = null,
         limit: Int = ApiLimits.TRAINING_PROGRAMS
     ): List<TrainingProgram> {
+        val currentUserId = UserService.currentProfile.value?.id
+            ?: AuthService.getCurrentUserId()
+        val gymId = UserService.currentProfile.value?.gymId
+            ?: UserService.resolveActiveGymIdForContent()
         return supabase
             .from("training_programs")
             .select {
                 filter {
                     eq("is_active", true)
                     eq("category", TrainingCategory.AI_PROGRAM.dbValue)
+                    // Filter AI programs to only those belonging to user's gym or assigned to user
+                    if (!gymId.isNullOrBlank()) {
+                        eq("gym_id", gymId)
+                    }
+                    if (!currentUserId.isNullOrBlank()) {
+                        or {
+                            eq("privacy", "public")
+                            filter("visible_member_ids", FilterOperator.CS, "{\"$currentUserId\"}")
+                        }
+                    } else {
+                        eq("privacy", "public")
+                    }
                     if (!searchText.isNullOrEmpty()) {
                         ilike("name", "%$searchText%")
                     }

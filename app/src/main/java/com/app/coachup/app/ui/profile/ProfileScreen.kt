@@ -110,7 +110,9 @@ fun ProfileScreen(
         contract = ActivityResultContracts.RequestPermission()
     ) { granted ->
         if (granted) {
-            val file = java.io.File(context.cacheDir, "avatar_capture.jpg")
+            val file = java.io.File(context.cacheDir, "avatar_capture_${System.currentTimeMillis()}.jpg")
+            file.parentFile?.mkdirs()
+            file.createNewFile()
             val uri = androidx.core.content.FileProvider.getUriForFile(
                 context,
                 "${context.packageName}.provider",
@@ -129,7 +131,9 @@ fun ProfileScreen(
             android.Manifest.permission.CAMERA
         )
         if (check == android.content.pm.PackageManager.PERMISSION_GRANTED) {
-            val file = java.io.File(context.cacheDir, "avatar_capture.jpg")
+            val file = java.io.File(context.cacheDir, "avatar_capture_${System.currentTimeMillis()}.jpg")
+            file.parentFile?.mkdirs()
+            file.createNewFile()
             val uri = androidx.core.content.FileProvider.getUriForFile(
                 context,
                 "${context.packageName}.provider",
