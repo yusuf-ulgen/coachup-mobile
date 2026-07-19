@@ -99,7 +99,8 @@ data class CommunityCommentInsert(
 
 data class CommunityCommentUi(
     val comment: CommunityComment,
-    val authorName: String
+    val authorName: String,
+    val authorAvatarUrl: String? = null
 )
 
 @Serializable
@@ -150,6 +151,7 @@ data class CommunityPollOptionUi(
 data class CommunityPostUi(
     val post: CommunityPost,
     val authorName: String,
+    val authorAvatarUrl: String? = null,
     val likeCount: Int,
     val likedByMe: Boolean,
     val commentCount: Int = 0,

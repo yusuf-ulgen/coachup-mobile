@@ -14,6 +14,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
+import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -69,6 +70,7 @@ fun PersonalRecordsScreen(navController: NavController) {
     var workoutExpandedIds by remember { mutableStateOf<Set<String>>(emptySet()) }
     var displayedMonth by remember { mutableStateOf(YearMonth.now()) }
     var selectedDay by remember { mutableStateOf<LocalDate?>(null) }
+    var selectedTab by remember { mutableStateOf(0) }
 
     LaunchedEffect(Unit) {
         val uid = AuthService.getCurrentUserId()
@@ -235,6 +237,36 @@ fun PersonalRecordsScreen(navController: NavController) {
             return@Column
         }
 
+        TabRow(
+            selectedTabIndex = selectedTab,
+            containerColor = MaterialTheme.colorScheme.background,
+            contentColor = Primary,
+            indicator = { tabPositions ->
+                if (selectedTab < tabPositions.size) {
+                    TabRowDefaults.SecondaryIndicator(
+                        modifier = Modifier.tabIndicatorOffset(tabPositions[selectedTab]),
+                        color = Primary
+                    )
+                }
+            },
+            modifier = Modifier.padding(horizontal = 20.dp)
+        ) {
+            listOf("Antrenmanlar", "Kişisel Rekorlar").forEachIndexed { index, title ->
+                Tab(
+                    selected = selectedTab == index,
+                    onClick = { selectedTab = index },
+                    text = {
+                        Text(
+                            title,
+                            fontWeight = if (selectedTab == index) FontWeight.SemiBold else FontWeight.Normal,
+                            color = if (selectedTab == index) Primary else MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
 
         // ── Scrollable content ───────────────────────────────────────────────
         LazyColumn(
@@ -261,60 +293,66 @@ fun PersonalRecordsScreen(navController: NavController) {
                 )
             }
 
-            if (selectedDay != null) {
+            if (selectedTab == 0) {
+                if (selectedDay != null) {
+                    item {
+                        SelectedDaySection(
+                            date = selectedDay!!,
+                            workouts = filteredWorkouts,
+                            attempts = dayAttempts,
+                            exerciseNames = exerciseNames,
+                            expandedWorkoutIds = workoutExpandedIds,
+                            onToggleWorkoutExpand = { id ->
+                                workoutExpandedIds = if (workoutExpandedIds.contains(id)) {
+                                    workoutExpandedIds - id
+                                } else {
+                                    workoutExpandedIds + id
+                                }
+                            },
+                            modifier = Modifier.padding(horizontal = 20.dp)
+                        )
+                    }
+                }
+
+                if (selectedDay == null) {
+                    item {
+                        WorkoutHistorySection(
+                            workouts = filteredWorkouts,
+                            selectedFilter = workoutFilter,
+                            onFilterChange = { workoutFilter = it },
+                            daySelected = false,
+                            expandedIds = workoutExpandedIds,
+                            onToggleExpand = { id ->
+                                workoutExpandedIds = if (workoutExpandedIds.contains(id)) {
+                                    workoutExpandedIds - id
+                                } else {
+                                    workoutExpandedIds + id
+                                }
+                            },
+                            modifier = Modifier.padding(horizontal = 20.dp)
+                        )
+                    }
+                }
+            }
+
+            if (selectedTab == 1) {
+                // Personal Records section
                 item {
-                    SelectedDaySection(
-                        date = selectedDay!!,
-                        workouts = filteredWorkouts,
-                        attempts = dayAttempts,
-                        exerciseNames = exerciseNames,
-                        expandedWorkoutIds = workoutExpandedIds,
-                        onToggleWorkoutExpand = { id ->
-                            workoutExpandedIds = if (workoutExpandedIds.contains(id)) {
-                                workoutExpandedIds - id
-                            } else {
-                                workoutExpandedIds + id
-                            }
+                    PersonalRecordsSection(
+                        records = filteredRecords,
+                        selectedFilter = if (selectedDay != null) {
+                            selectedDay!!.format(DateTimeFormatter.ofPattern("d MMM", Locale("tr")))
+                        } else selectedFilter,
+                        onFilterChange = { if (selectedDay == null) selectedFilter = it },
+                        filterEnabled = selectedDay == null,
+                        expandedIds = expandedIds,
+                        onToggleExpand = { id ->
+                            expandedIds = if (expandedIds.contains(id))
+                                expandedIds - id else expandedIds + id
                         },
                         modifier = Modifier.padding(horizontal = 20.dp)
                     )
                 }
-            }
-
-            item {
-                WorkoutHistorySection(
-                    workouts = filteredWorkouts,
-                    selectedFilter = workoutFilter,
-                    onFilterChange = { workoutFilter = it },
-                    daySelected = selectedDay != null,
-                    expandedIds = workoutExpandedIds,
-                    onToggleExpand = { id ->
-                        workoutExpandedIds = if (workoutExpandedIds.contains(id)) {
-                            workoutExpandedIds - id
-                        } else {
-                            workoutExpandedIds + id
-                        }
-                    },
-                    modifier = Modifier.padding(horizontal = 20.dp)
-                )
-            }
-
-            // Personal Records section
-            item {
-                PersonalRecordsSection(
-                    records = filteredRecords,
-                    selectedFilter = if (selectedDay != null) {
-                        selectedDay!!.format(DateTimeFormatter.ofPattern("d MMM", Locale("tr")))
-                    } else selectedFilter,
-                    onFilterChange = { if (selectedDay == null) selectedFilter = it },
-                    filterEnabled = selectedDay == null,
-                    expandedIds = expandedIds,
-                    onToggleExpand = { id ->
-                        expandedIds = if (expandedIds.contains(id))
-                            expandedIds - id else expandedIds + id
-                    },
-                    modifier = Modifier.padding(horizontal = 20.dp)
-                )
             }
         }
     }
@@ -357,7 +395,7 @@ private data class ActivityDay(
 )
 
 private fun parseActivityDate(iso: String?): LocalDate? = runCatching {
-    Instant.parse(iso).atZone(ZoneOffset.UTC).toLocalDate()
+    Instant.parse(iso).atZone(ZoneId.systemDefault()).toLocalDate()
 }.getOrNull()
 
 @Composable
@@ -674,16 +712,142 @@ private fun SelectedDaySection(
         }
         attempts.forEach { attempt ->
             val name = exerciseNames[attempt.exerciseId] ?: "Rekor denemesi"
-            Row(
-                modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(MaterialTheme.colorScheme.surface).padding(10.dp),
-                horizontalArrangement = Arrangement.SpaceBetween
+            AttemptSessionCard(
+                attempt = attempt,
+                exerciseName = name,
+                isExpanded = expandedWorkoutIds.contains(attempt.id),
+                onTap = { onToggleWorkoutExpand(attempt.id) }
+            )
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Attempt Session Card — expandable, mirrors WorkoutSessionCard layout
+// ---------------------------------------------------------------------------
+
+@Composable
+private fun AttemptSessionCard(
+    attempt: RecordAttempt,
+    exerciseName: String,
+    isExpanded: Boolean,
+    onTap: () -> Unit
+) {
+    val dateText = remember(attempt.completedAt) { formatWorkoutDateText(attempt.completedAt) }
+    val durationText = remember(attempt.startedAt, attempt.completedAt) {
+        if (!attempt.startedAt.isNullOrBlank() && !attempt.completedAt.isNullOrBlank()) {
+            runCatching {
+                val start = Instant.parse(attempt.startedAt)
+                val end = Instant.parse(attempt.completedAt)
+                val seconds = java.time.Duration.between(start, end).seconds.toInt()
+                if (seconds < 60) {
+                    "$seconds sn"
+                } else {
+                    "${seconds / 60} dk"
+                }
+            }.getOrNull()
+        } else null
+    }
+
+    val details = remember(attempt.id, attempt.completedAt, attempt.success) {
+        buildList {
+            durationText?.let { add(WorkoutDetailRow("Süre", it)) }
+            add(WorkoutDetailRow("Kalori", "0 kcal"))
+            add(WorkoutDetailRow("Ort. Nabız", "0 bpm"))
+            formatCompletionClockTime(attempt.completedAt)?.let {
+                add(WorkoutDetailRow("Bitiş saati", it))
+            }
+            add(WorkoutDetailRow("Sonuç", if (attempt.success) "Başarılı" else "Başarısız"))
+        }
+    }
+
+    val headerShape = if (isExpanded) {
+        RoundedCornerShape(topStart = 12.dp, topEnd = 12.dp)
+    } else {
+        RoundedCornerShape(12.dp)
+    }
+    val bodyShape = RoundedCornerShape(bottomStart = 12.dp, bottomEnd = 12.dp)
+
+    Column {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(headerShape)
+                .background(Purple100)
+                .clickable { onTap() }
+                .padding(horizontal = 16.dp, vertical = 14.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
-                Text(name, fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurface)
                 Text(
-                    if (attempt.success) "Başarılı" else "Deneme",
-                    fontSize = 12.sp,
-                    color = if (attempt.success) Color(0xFF4CAF50) else MaterialTheme.colorScheme.onSurfaceVariant
+                    exerciseName,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = Color.White,
+                    maxLines = 1
                 )
+                Text(dateText, fontSize = 12.sp, color = Color.White.copy(alpha = 0.7f))
+            }
+
+            if (!isExpanded) {
+                if (durationText != null) {
+                    Text(
+                        durationText,
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Primary,
+                        modifier = Modifier.padding(horizontal = 8.dp)
+                    )
+                }
+            }
+
+            Icon(
+                if (isExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                contentDescription = null,
+                tint = Color.White.copy(alpha = 0.7f),
+                modifier = Modifier.size(18.dp)
+            )
+        }
+
+        AnimatedVisibility(
+            visible = isExpanded,
+            enter = expandVertically(animationSpec = tween(200)),
+            exit = shrinkVertically(animationSpec = tween(200))
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(bodyShape)
+                    .background(PurpleSecondary)
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                details.forEach { row ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            row.label,
+                            fontSize = 13.sp,
+                            color = Color.White.copy(alpha = 0.75f)
+                        )
+                        Text(
+                            row.value,
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = if (row.label == "Sonuç") {
+                                if (attempt.success) Color(0xFF4CAF50) else Color(0xFFF44336)
+                            } else {
+                                Color.White
+                            }
+                        )
+                    }
+                }
             }
         }
     }

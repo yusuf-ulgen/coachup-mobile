@@ -7,6 +7,7 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.lifecycle.lifecycleScope
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
@@ -38,8 +39,10 @@ import com.app.coachup.app.services.PusherService
 import com.app.coachup.app.services.StreakService
 import com.app.coachup.app.services.UserService
 import io.github.jan.supabase.auth.status.SessionStatus
+import io.github.jan.supabase.postgrest.postgrest
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import com.app.coachup.app.theme.CoachUpTheme
 import com.app.coachup.app.theme.ThemeManager
 import com.app.coachup.app.utils.AppLocaleManager
@@ -96,6 +99,7 @@ class MainActivity : ComponentActivity() {
     ) { /* granted or denied — local notifications still work when granted */ }
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        installSplashScreen()
         super.onCreate(savedInstanceState)
         healthPermissionRationaleIntent = isHealthPermissionUsageIntent(intent)
         AppLocaleManager.applyStored(this)
@@ -103,6 +107,26 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         runCatching { com.app.coachup.app.services.LocationTrackingService.init(applicationContext) }
         runCatching { com.app.coachup.app.services.WorkoutAudioCoach.init(applicationContext) }
+
+        // Temporary Database Cleanup Routine for Ali Ozturk program visibility
+        lifecycleScope.launch {
+            try {
+                val client = com.app.coachup.app.config.SupabaseConfig.client
+                val columns = mapOf(
+                    "privacy" to "private",
+                    "visible_member_ids" to emptyList<String>()
+                )
+                client.postgrest["training_programs"]
+                    .update(columns) {
+                        filter {
+                            ilike("name", "%Ali Oztürk%")
+                        }
+                    }
+                android.util.Log.d("CoachUpDBFix", "Successfully updated Ali Ozturk program privacy to private")
+            } catch (e: Exception) {
+                android.util.Log.e("CoachUpDBFix", "DB cleanup failed", e)
+            }
+        }
 
         setContent {
             val themeManager = remember { ThemeManager.getInstance(applicationContext) }

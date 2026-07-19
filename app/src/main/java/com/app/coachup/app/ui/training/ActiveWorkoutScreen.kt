@@ -79,6 +79,9 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import androidx.activity.compose.BackHandler
 import com.app.coachup.app.services.ActiveWorkoutManager
+import com.app.coachup.app.config.SupabaseConfig
+import io.github.jan.supabase.postgrest.from
+import java.time.Instant
 
 // ---------------------------------------------------------------------------
 // Summary data — replaces the old Triple so GPS fields can be passed through
@@ -165,10 +168,151 @@ class ActiveWorkoutViewModel : ViewModel() {
         return if (idx < exercises.size) exercises[idx] else null
     }
 
+    private suspend fun checkAndInsertMissingExercises(userId: String, programId: String) {
+        val client = SupabaseConfig.client
+        // 1. Check if "Warm-up - Light Cardio" exists
+        val existingCardio = client.from("exercises").select {
+            filter { eq("name", "Warm-up - Light Cardio") }
+        }.decodeList<Exercise>()
+
+        val cardioId = if (existingCardio.isEmpty()) {
+            val newId = java.util.UUID.randomUUID().toString()
+            val newCardio = Exercise(
+                id = newId,
+                name = "Warm-up - Light Cardio",
+                category = "cardio",
+                equipment = "Treadmill",
+                description = "5 minutes light cardio to warm up."
+            )
+            client.from("exercises").insert(newCardio)
+            newId
+        } else {
+            existingCardio.first().id
+        }
+
+        val existingCooldown = client.from("exercises").select {
+            filter { eq("name", "Cool-down Stretch") }
+        }.decodeList<Exercise>()
+
+        val cooldownId = if (existingCooldown.isEmpty()) {
+            val newId = java.util.UUID.randomUUID().toString()
+            val newCooldown = Exercise(
+                id = newId,
+                name = "Cool-down Stretch",
+                category = "stretching",
+                equipment = "Bodyweight",
+                description = "Static stretches for chest, shoulders, back, and legs."
+            )
+            client.from("exercises").insert(newCooldown)
+            newId
+        } else {
+            existingCooldown.first().id
+        }
+
+        // 2. Fetch all program exercises for the active program
+        val currentPE = WorkoutService.fetchExercises(programId)
+        val currentOrderIndexes = currentPE.map { it.orderIndex }
+
+        val targetInserts = mutableListOf<ProgramExercise>()
+
+        // Helper to check and add
+        fun addIfMissing(orderIndex: Int, exerciseId: String, sets: Int, reps: Int, restSeconds: Int, notes: String) {
+            if (orderIndex !in currentOrderIndexes) {
+                targetInserts.add(
+                    ProgramExercise(
+                        id = java.util.UUID.randomUUID().toString(),
+                        programId = programId,
+                        exerciseId = exerciseId,
+                        sets = sets,
+                        reps = reps,
+                        restSeconds = restSeconds,
+                        orderIndex = orderIndex,
+                        notes = notes,
+                        createdAt = java.time.Instant.now().toString()
+                    )
+                )
+            }
+        }
+
+        if (programId == "faa92b2c-2a26-41e1-a763-4f5402242888") {
+            // Ahmet Balaban Antrenman Programı
+            val yogaId = "73fff0b1-340c-4d4e-92e4-01a85137ae9f"
+            val kurekId = "2a93bb71-9ae5-479a-9f72-20a719907388"
+            val foamId = "50586c31-4428-4b8f-88c7-edada71d460b"
+            val bisikletId = "e24e77f3-4eed-43ab-8072-f6925ed97f35"
+
+            // Day 1
+            addIfMissing(101, cardioId, 1, 1, 0, "Day 1 | Warm-up - Light Cardio (5 min) — 5 minutes light treadmill or bike to elevate heart rate and prepare joints.")
+            addIfMissing(102, yogaId, 1, 5, 0, "Day 1 | Yoga Sun Salutation (5 reps) — Dynamic mobility for shoulders and back. Prepare upper body for heavy pulling movements.")
+            addIfMissing(105, kurekId, 4, 8, 90, "Day 1 | Kürek Çekme (Barbell Row) (4x8-10 · rest 90s) — Drive elbows back, retract scapula fully. Keep bar close to body, chest up throughout.")
+            addIfMissing(106, foamId, 1, 1, 0, "Day 1 | Foam Roll - Sırt (Back) (2 min) — Release tension in lats and thoracic spine. Improves mobility for next session.")
+
+            // Day 2
+            addIfMissing(200, cardioId, 1, 1, 0, "Day 2 | Warm-up - Light Cardio (5 min) — 5 minutes light treadmill or bike to warm up entire body.")
+            addIfMissing(204, yogaId, 1, 3, 0, "Day 2 | Yoga Sun Salutation (3 reps) — Cool-down with dynamic stretching for chest and shoulders. Promote recovery.")
+
+            // Day 3
+            addIfMissing(300, cardioId, 1, 1, 0, "Day 3 | Warm-up - Light Cardio (5 min) — 5 minutes bike or treadmill to prepare lower body joints.")
+            addIfMissing(305, bisikletId, 1, 1, 0, "Day 3 | Bisiklet Fartlek (Bike Intervals) (1x10 min total · rest -) — 3 min easy, then 6x(30s hard/30s easy). Active recovery finisher targeting cardiovascular endurance.")
+        } else if (programId == "4e5ee1cb-c9ee-44ae-96d7-fc00a7b25e5a" || programId == "a9502421-fb90-4526-8089-ace1bd670bf4") {
+            // Ali Öztürk Antrenman Programı
+            val benchId = "4448257e-00bc-47dc-ad4d-a8077635be8c"
+            val shoulderId = "f582aff8-d031-4d63-9c30-121a96680fb1"
+            val kurekId = "2a93bb71-9ae5-479a-9f72-20a719907388"
+            val plankId = "60fbac8c-433d-4484-ac1c-069a05129f69"
+            val pullupId = "7fc786a1-49e1-4aee-a6b4-57c06b7f1cb1"
+            val deadliftId = "702deb94-327b-48c4-8888-005b6befb68e"
+            val rdlId = "011de9f1-ef1e-410c-bb38-6c16f5f405db"
+            val foamId = "50586c31-4428-4b8f-88c7-edada71d460b"
+            val squatId = "f91ed3ca-7520-4475-8c95-eced766cfe20"
+            val boxjumpId = "bcb90587-bff7-45f1-9e78-4e60cb63af03"
+            val battleropeId = "80fbe411-6355-4ee3-bea1-a8589ac60da4"
+
+            // Day 1
+            addIfMissing(101, cardioId, 1, 1, 0, "Day 1 | Warm-up - Light Cardio (5 min)")
+            addIfMissing(102, benchId, 4, 8, 90, "Day 1 | Bench Press (4x8-10 · rest 90s)")
+            addIfMissing(103, shoulderId, 3, 10, 75, "Day 1 | Shoulder Press (3x10-12 · rest 75s)")
+            addIfMissing(104, kurekId, 3, 8, 90, "Day 1 | Kürek Çekme (Barbell Row) (3x8-10 · rest 90s)")
+            addIfMissing(105, plankId, 3, 30, 60, "Day 1 | Plank (3x30-45s · rest 60s)")
+            addIfMissing(106, cooldownId, 1, 1, 0, "Day 1 | Cool-down Stretch (5 min)")
+
+            // Day 2
+            addIfMissing(201, cardioId, 1, 1, 0, "Day 2 | Warm-up - Light Cardio (5 min)")
+            addIfMissing(202, pullupId, 4, 6, 90, "Day 2 | Pull-Up (4x6-10 · rest 90s)")
+            addIfMissing(203, deadliftId, 3, 6, 120, "Day 2 | Deadlift (3x6-8 · rest 120s)")
+            addIfMissing(204, rdlId, 3, 10, 75, "Day 2 | Romanian Deadlift (3x10-12 · rest 75s)")
+            addIfMissing(205, foamId, 1, 1, 0, "Day 2 | Foam Roll - Sırt (Back) (1x2 min)")
+            addIfMissing(206, cooldownId, 1, 1, 0, "Day 2 | Cool-down Stretch (5 min)")
+
+            // Day 3
+            addIfMissing(301, cardioId, 1, 1, 0, "Day 3 | Warm-up - Light Cardio (5 min)")
+            addIfMissing(302, squatId, 4, 8, 90, "Day 3 | Squat (4x8-10 · rest 90s)")
+            addIfMissing(303, boxjumpId, 3, 6, 90, "Day 3 | Box Jump (3x6-8 · rest 90s)")
+            addIfMissing(304, battleropeId, 3, 30, 90, "Day 3 | Battle Rope (3x30s · rest 90s)")
+            addIfMissing(305, plankId, 3, 30, 60, "Day 3 | Plank (3x30-45s · rest 60s)")
+            addIfMissing(306, cooldownId, 1, 1, 0, "Day 3 | Cool-down Stretch (5 min)")
+        }
+
+        if (targetInserts.isNotEmpty()) {
+            for (pe in targetInserts) {
+                client.from("program_exercises").insert(pe)
+            }
+        }
+    }
+
     fun loadWorkout(sessionId: String, programId: String, userId: String) {
         viewModelScope.launch {
             _isLoading.value = true
             try {
+                val migratePrograms = listOf(
+                    "faa92b2c-2a26-41e1-a763-4f5402242888",
+                    "4e5ee1cb-c9ee-44ae-96d7-fc00a7b25e5a",
+                    "a9502421-fb90-4526-8089-ace1bd670bf4"
+                )
+                if (programId in migratePrograms) {
+                    runCatching { checkAndInsertMissingExercises(userId, programId) }
+                }
+
                 if (programId.startsWith("builtin_")) {
                     _programExercises.value = emptyList()
                     _workoutSets.value = emptyList()
@@ -177,15 +321,28 @@ class ActiveWorkoutViewModel : ViewModel() {
                 }
 
                 val exercises = WorkoutService.fetchExercises(programId)
-                _programExercises.value = exercises
-                if (exercises.isEmpty()) { _isLoading.value = false; return@launch }
+                if (exercises.isEmpty()) {
+                    _programExercises.value = emptyList()
+                    _workoutSets.value = emptyList()
+                    _isLoading.value = false
+                    return@launch
+                }
 
                 val existing = WorkoutService.fetchWorkoutSets(sessionId)
-                if (existing.isEmpty()) {
-                    WorkoutService.createWorkoutSet(sessionId, userId, exercises)
-                    _workoutSets.value = WorkoutService.fetchWorkoutSets(sessionId)
-                } else {
+                if (existing.isNotEmpty()) {
+                    val existingExerciseIds = existing.map { it.exerciseId }.distinct()
+                    _programExercises.value = exercises.filter { it.exerciseId in existingExerciseIds }
                     _workoutSets.value = existing
+                } else {
+                    val days = exercises.map { it.orderIndex / 100 }.filter { it > 0 }.distinct()
+                    if (days.size > 1) {
+                        _programExercises.value = exercises
+                        _workoutSets.value = emptyList()
+                    } else {
+                        _programExercises.value = exercises
+                        WorkoutService.createWorkoutSet(sessionId, userId, exercises)
+                        _workoutSets.value = WorkoutService.fetchWorkoutSets(sessionId)
+                    }
                 }
             } catch (e: CancellationException) {
                 throw e
@@ -194,6 +351,22 @@ class ActiveWorkoutViewModel : ViewModel() {
             }
             _isLoading.value = false
         }
+    }
+
+    suspend fun startWorkoutForDay(sessionId: String, userId: String, dayNumber: Int) {
+        _isLoading.value = true
+        try {
+            val allExercises = _programExercises.value
+            val filtered = allExercises.filter { (it.orderIndex / 100) == dayNumber }
+            if (filtered.isNotEmpty()) {
+                WorkoutService.createWorkoutSet(sessionId, userId, filtered)
+                _programExercises.value = filtered
+                _workoutSets.value = WorkoutService.fetchWorkoutSets(sessionId)
+            }
+        } catch (_: Exception) {
+            _error.value = "Antrenman başlatılamadı"
+        }
+        _isLoading.value = false
     }
 
     fun initSession(training: Training, sessionId: String) {
@@ -396,6 +569,7 @@ fun ActiveWorkoutScreen(
     vm: ActiveWorkoutViewModel = viewModel()
 ) {
     val isOutdoor = training.category.isOutdoor
+    val coroutineScope = rememberCoroutineScope()
 
     // Sync state with ActiveWorkoutManager
     val isSessionAlreadyActive = remember(sessionId) {
@@ -517,52 +691,63 @@ fun ActiveWorkoutScreen(
     fun confirmFinishWorkout(effort: String? = null) {
         showCompleteDialog = false
         showEffortDialog = false
+        val duration = elapsedSeconds
+        val dist = if (isOutdoor) LocationTrackingService.distanceKm.value else 0.0
         val completionNotes = SessionWorkoutMeta.encodeCompletionNotes(
             categoryDbValue = if (training.isBuiltIn) training.category.dbValue else null,
-            durationSeconds = elapsedSeconds,
-            distanceKm = if (isOutdoor) LocationTrackingService.distanceKm.value else 0.0
+            durationSeconds = duration,
+            distanceKm = dist
         )
         // Capture Health Connect values — null if unavailable or no wearable (<= 0)
         val hcAvail = HealthConnectService.isAvailable.value
         val hcAvgHR = if (hcAvail) HealthConnectService.averageHeartRate.value.takeIf { it > 0 } else null
         val hcMaxHR = if (hcAvail) HealthConnectService.maxHeartRate.value.takeIf { it > 0 } else null
-        // No fake calorie estimates — only null from Health Connect (not implemented yet)
-        val hcCalories: Int? = null
 
-        pendingSummaryData = WorkoutCompletionData(
-            durationSeconds = elapsedSeconds,
-            completedSets = vm.completedSetsCount,
-            totalSets = vm.totalSetsCount,
-            distanceKm = if (isOutdoor) LocationTrackingService.distanceKm.value else 0.0,
-            avgPaceMinPerKm = if (isOutdoor) LocationTrackingService.paceMinPerKm.value else 0.0,
-            avgSpeedKmh = if (isOutdoor) LocationTrackingService.averageSpeedKmh.value else 0.0,
-            altitudeGainM = if (isOutdoor) LocationTrackingService.altitudeGainM.value else 0.0,
-            splits = if (isOutdoor) LocationTrackingService.splits.value else emptyList(),
-            routePoints = if (isOutdoor) LocationTrackingService.routePoints.value else emptyList(),
-            avgHeartRate = hcAvgHR,
-            maxHeartRate = hcMaxHR,
-            calories = hcCalories,
-            perceivedEffort = effort
-        )
-        showFinishCelebration = true
         if (isOutdoor) LocationTrackingService.stopTracking()
-        val uid = userId?.id ?: return
-        vm.completeWorkout(
-            sessionId = sessionId,
-            userId = uid,
-            activityType = training.category.dbValue,
-            durationMinutes = (elapsedSeconds / 60).coerceAtLeast(1),
-            completionNotes = completionNotes,
-            durationSeconds = elapsedSeconds,
-            distanceKm = if (isOutdoor) LocationTrackingService.distanceKm.value else null,
-            avgHeartRate = hcAvgHR,
-            maxHeartRate = hcMaxHR,
-            calories = hcCalories,
-            avgPace = if (isOutdoor) LocationTrackingService.paceMinPerKm.value.takeIf { it > 0.0 } else null,
-            avgSpeed = if (isOutdoor) LocationTrackingService.averageSpeedKmh.value.takeIf { it > 0.0 } else null,
-            altitudeGain = if (isOutdoor) LocationTrackingService.altitudeGainM.value.takeIf { it > 0.0 } else null,
-            perceivedEffort = effort
-        ) { _, _, _ -> }
+
+        coroutineScope.launch {
+            var hcCalories: Int? = null
+            if (hcAvail) {
+                val endTime = Instant.now()
+                val startTime = endTime.minusSeconds(duration.toLong())
+                hcCalories = HealthConnectService.fetchCaloriesBurned(startTime, endTime)
+            }
+
+            pendingSummaryData = WorkoutCompletionData(
+                durationSeconds = duration,
+                completedSets = vm.completedSetsCount,
+                totalSets = vm.totalSetsCount,
+                distanceKm = dist,
+                avgPaceMinPerKm = if (isOutdoor) LocationTrackingService.paceMinPerKm.value else 0.0,
+                avgSpeedKmh = if (isOutdoor) LocationTrackingService.averageSpeedKmh.value else 0.0,
+                altitudeGainM = if (isOutdoor) LocationTrackingService.altitudeGainM.value else 0.0,
+                splits = if (isOutdoor) LocationTrackingService.splits.value else emptyList(),
+                routePoints = if (isOutdoor) LocationTrackingService.routePoints.value else emptyList(),
+                avgHeartRate = hcAvgHR,
+                maxHeartRate = hcMaxHR,
+                calories = hcCalories,
+                perceivedEffort = effort
+            )
+            showFinishCelebration = true
+
+            val uid = userId?.id ?: return@launch
+            vm.completeWorkout(
+                sessionId = sessionId,
+                userId = uid,
+                activityType = training.category.dbValue,
+                durationMinutes = (duration / 60).coerceAtLeast(1),
+                completionNotes = completionNotes,
+                durationSeconds = duration,
+                distanceKm = if (isOutdoor) dist else null,
+                avgHeartRate = hcAvgHR,
+                maxHeartRate = hcMaxHR,
+                calories = hcCalories,
+                avgPace = if (isOutdoor) LocationTrackingService.paceMinPerKm.value.takeIf { it > 0.0 } else null,
+                avgSpeed = if (isOutdoor) LocationTrackingService.averageSpeedKmh.value.takeIf { it > 0.0 } else null,
+                altitudeGain = if (isOutdoor) LocationTrackingService.altitudeGainM.value.takeIf { it > 0.0 } else null,
+                perceivedEffort = effort
+            ) { _, _, _ -> }
+        }
     }
 
     if (showFinishCelebration) {
@@ -584,9 +769,8 @@ fun ActiveWorkoutScreen(
         label = "progress"
     )
 
-    // ── Preload program exercises while preview is open ───────────────────────
-    LaunchedEffect(showProgramPreview, userId?.id) {
-        if (!showProgramPreview || !needsProgramPreview) return@LaunchedEffect
+    // ── Load workout details exactly once when screen opens / sessionId changes ────
+    LaunchedEffect(sessionId, userId?.id) {
         val uid = userId?.id ?: return@LaunchedEffect
         vm.loadWorkout(sessionId, training.id, uid)
     }
@@ -594,10 +778,6 @@ fun ActiveWorkoutScreen(
     // ── Start timer after goal / preview sheets are dismissed ─────────────────
     LaunchedEffect(showGoalSheet, showProgramPreview, workoutSessionStarted) {
         if (showGoalSheet || showProgramPreview) return@LaunchedEffect
-        val uid = userId?.id ?: return@LaunchedEffect
-        if (!needsProgramPreview) {
-            vm.loadWorkout(sessionId, training.id, uid)
-        }
         if (!workoutSessionStarted) return@LaunchedEffect
         if (!timerStarted) {
             vm.startTimer()
@@ -645,9 +825,18 @@ fun ActiveWorkoutScreen(
             exercises = programExercises,
             fallbackNames = training.exerciseNames,
             isLoading = isLoading,
-            onStart = {
-                showProgramPreview = false
-                workoutSessionStarted = true
+            onStart = { selectedDay ->
+                coroutineScope.launch {
+                    val uid = userId?.id
+                    if (uid != null && vm.workoutSets.value.isEmpty()) {
+                        val days = programExercises.map { it.orderIndex / 100 }.filter { it > 0 }.distinct()
+                        if (days.size > 1) {
+                            vm.startWorkoutForDay(sessionId, uid, selectedDay)
+                        }
+                    }
+                    showProgramPreview = false
+                    workoutSessionStarted = true
+                }
             },
             onBack = onNavigateBack
         )
@@ -711,7 +900,7 @@ fun ActiveWorkoutScreen(
                         vm.pauseTimer()
                     }
                 },
-                onFinishWorkout = { confirmFinishWorkout() }
+                onFinishWorkout = { showCompleteDialog = true }
             )
         }
     } else if (useMinimalLayout && !showGoalSheet) {
@@ -742,7 +931,7 @@ fun ActiveWorkoutScreen(
             if (isPaused) {
                 WorkoutPausedOverlay(
                     onResume = { vm.resumeTimer() },
-                    onFinish = { confirmFinishWorkout() }
+                    onFinish = { showCompleteDialog = true }
                 )
             }
         }
@@ -835,7 +1024,7 @@ fun ActiveWorkoutScreen(
                                 }
 
                                 Button(
-                                    onClick = { confirmFinishWorkout() },
+                                    onClick = { showCompleteDialog = true },
                                     modifier = Modifier.weight(1.5f).height(50.dp),
                                     colors = ButtonDefaults.buttonColors(containerColor = Primary),
                                     shape = RoundedCornerShape(Radius.pill)
@@ -1044,7 +1233,7 @@ fun ActiveWorkoutScreen(
             if (isPaused) {
                 WorkoutPausedOverlay(
                     onResume = { vm.togglePause() },
-                    onFinish = { confirmFinishWorkout() }
+                    onFinish = { showCompleteDialog = true }
                 )
             }
         }
@@ -2735,12 +2924,24 @@ private fun ProgramPreviewOverlay(
     exercises: List<ProgramExercise>,
     fallbackNames: List<String>,
     isLoading: Boolean,
-    onStart: () -> Unit,
+    onStart: (Int) -> Unit,
     onBack: () -> Unit
 ) {
-    val items = remember(exercises, fallbackNames) {
-        if (exercises.isNotEmpty()) {
-            exercises.sortedBy { it.orderIndex }.map { pe ->
+    val availableDays = remember(exercises) {
+        exercises.map { it.orderIndex / 100 }.filter { it > 0 }.distinct().sorted()
+    }
+    var selectedDay by remember(availableDays) {
+        mutableStateOf(availableDays.firstOrNull() ?: 1)
+    }
+
+    val items = remember(exercises, fallbackNames, selectedDay, availableDays) {
+        val filtered = if (availableDays.size > 1) {
+            exercises.filter { (it.orderIndex / 100) == selectedDay }
+        } else {
+            exercises
+        }
+        if (filtered.isNotEmpty()) {
+            filtered.sortedBy { it.orderIndex }.map { pe ->
                 val name = pe.exercise?.name ?: "Hareket"
                 val detail = buildString {
                     append("${pe.sets} set × ${pe.reps} tekrar")
@@ -2798,6 +2999,36 @@ private fun ProgramPreviewOverlay(
                 fontSize = 14.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
+
+            if (availableDays.size > 1) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 20.dp, vertical = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    availableDays.forEach { day ->
+                        val isSelected = selectedDay == day
+                        Surface(
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(40.dp)
+                                .clickable { selectedDay = day },
+                            shape = RoundedCornerShape(20.dp),
+                            color = if (isSelected) Primary else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Text(
+                                    text = "$day. Gün",
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 14.sp,
+                                    color = if (isSelected) Color.White else MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+                }
+            }
 
             if (isLoading && items.isEmpty()) {
                 Box(modifier = Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
@@ -2857,7 +3088,7 @@ private fun ProgramPreviewOverlay(
             }
 
             Button(
-                onClick = onStart,
+                onClick = { onStart(selectedDay) },
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 20.dp, vertical = 16.dp)

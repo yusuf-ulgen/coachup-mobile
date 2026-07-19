@@ -268,7 +268,7 @@ object CommunityService {
         if (posts.isEmpty()) return emptyList()
 
         val authorIds = posts.map { it.authorId }.distinct()
-        val authors = fetchAuthorNames(authorIds)
+        val authorsMap = fetchAuthors(authorIds)
         val postIds = posts.map { it.id }
         val likes = fetchLikesForPosts(postIds)
         val likeCounts = likes.groupingBy { it.postId }.eachCount()
@@ -342,9 +342,14 @@ object CommunityService {
         }
 
         return posts.map { post ->
+            val author = authorsMap[post.authorId]
+            val authorName = author?.let {
+                listOfNotNull(it.name, it.surname).joinToString(" ").ifBlank { it.email ?: "Üye" }
+            } ?: "Üye"
             CommunityPostUi(
                 post = post,
-                authorName = authors[post.authorId] ?: "Üye",
+                authorName = authorName,
+                authorAvatarUrl = author?.profileImageUrl,
                 likeCount = likeCounts[post.id] ?: 0,
                 likedByMe = post.id in myLikes,
                 commentCount = commentCounts[post.id] ?: 0,
@@ -353,7 +358,7 @@ object CommunityService {
         }
     }
 
-    private suspend fun fetchAuthorNames(userIds: List<String>): Map<String, String> {
+    private suspend fun fetchAuthors(userIds: List<String>): Map<String, UserProfile> {
         if (userIds.isEmpty()) return emptyMap()
         return try {
             client.postgrest["users"]
@@ -361,12 +366,7 @@ object CommunityService {
                     filter { isIn("id", userIds) }
                 }
                 .decodeList<UserProfile>()
-                .associate { user ->
-                    val name = listOfNotNull(user.name, user.surname)
-                        .joinToString(" ")
-                        .ifBlank { user.email ?: "Üye" }
-                    user.id to name
-                }
+                .associateBy { it.id }
         } catch (_: Exception) {
             emptyMap()
         }
@@ -465,12 +465,17 @@ object CommunityService {
         if (comments.isEmpty()) return emptyList()
 
         val authorIds = comments.map { it.authorId }.distinct()
-        val authors = fetchAuthorNames(authorIds)
+        val authorsMap = fetchAuthors(authorIds)
 
         return comments.map { c ->
+            val author = authorsMap[c.authorId]
+            val authorName = author?.let {
+                listOfNotNull(it.name, it.surname).joinToString(" ").ifBlank { it.email ?: "Üye" }
+            } ?: "Üye"
             CommunityCommentUi(
                 comment = c,
-                authorName = authors[c.authorId] ?: "Üye"
+                authorName = authorName,
+                authorAvatarUrl = author?.profileImageUrl
             )
         }
     }

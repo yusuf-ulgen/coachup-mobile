@@ -650,7 +650,7 @@ fun CalendarScreen(
                                 it.classId == groupClass.id && GroupClassService.isJoinedStatus(it.status)
                             }
                             val isPast = isGroupClassPast(selectedDate, groupClass)
-                            val currentSeats = classSeatCounts[groupClass.id] ?: groupClass.currentParticipants
+                            val currentSeats = groupClass.currentParticipants
                             val isWaiting = booking != null && GroupClassService.isWaitingStatus(booking.status)
                             GroupClassCalendarCard(
                                 groupClass = groupClass,

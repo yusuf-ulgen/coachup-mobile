@@ -112,29 +112,7 @@ fun WorkoutSummaryScreen(
                 }
             }
 
-            // ── SETLER (varsa) ──
-            if (totalSets > 0) {
-                Spacer(modifier = Modifier.height(12.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    SummaryStatCard(
-                        icon = Icons.Default.FitnessCenter,
-                        iconColor = Purple100,
-                        value = "$completedSets/$totalSets",
-                        label = "Tamamlanan Set",
-                        modifier = Modifier.weight(1f)
-                    )
-                    SummaryStatCard(
-                        icon = Icons.Default.CheckCircle,
-                        iconColor = Color(0xFF4CAF50),
-                        value = if (totalSets > 0) "%d%%".format((completedSets * 100) / totalSets) else "—",
-                        label = "Tamamlanma",
-                        modifier = Modifier.weight(1f)
-                    )
-                }
-            }
+
 
             // ── NABIZ — sadece akıllı saatten (veri yoksa "—") ──
             if (ActivityMetric.AVG_HR in metrics || ActivityMetric.MAX_HR in metrics) {

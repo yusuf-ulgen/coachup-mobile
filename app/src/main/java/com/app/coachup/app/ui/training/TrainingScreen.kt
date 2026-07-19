@@ -172,6 +172,12 @@ fun TrainingScreen(
         if (searchText.isBlank()) gymPrograms
         else gymPrograms.filter { it.title.contains(searchText, ignoreCase = true) }
     }
+    val filteredPersonalized = remember(filteredGym, userId) {
+        filteredGym.filter { it.privacy == "private" && (userId == null || it.visibleMemberIds.contains(userId)) }
+    }
+    val filteredGymOwn = remember(filteredGym) {
+        filteredGym.filter { it.privacy != "private" }
+    }
     val filteredAi = remember(aiPrograms, searchText) {
         if (searchText.isBlank()) aiPrograms
         else aiPrograms.filter { it.title.contains(searchText, ignoreCase = true) }
@@ -276,19 +282,20 @@ fun TrainingScreen(
             }
         }
 
-        if (filteredGym.isNotEmpty()) {
+        if (filteredPersonalized.isNotEmpty()) {
             item {
                 SectionTitle(
-                    title = "Salon Programları",
-                    subtitle = "Salonunuzun tanımladığı antrenmanlar",
+                    title = "Kişiye Özel Programlar",
+                    subtitle = "Kişisel antrenörünüzün size özel hazırladığı programlar",
                     accentColor = Primary
                 )
                 Spacer(Modifier.height(12.dp))
             }
-            items(filteredGym.size, key = { filteredGym[it].id }) { index ->
+            items(filteredPersonalized.size, key = { filteredPersonalized[it].id }) { index ->
+                val training = filteredPersonalized[index]
                 ProgramTrainingCard(
-                    training = filteredGym[index],
-                    isStarting = startingId == filteredGym[index].id,
+                    training = training,
+                    isStarting = startingId == training.id,
                     onStartClick = {
                         if (activeSessionState != null) {
                             warningActiveSession = activeSessionState
@@ -302,7 +309,44 @@ fun TrainingScreen(
                                     snackbarHostState.showSnackbar("Oturum bulunamadı. Lütfen tekrar giriş yapın.")
                                     return@launch
                                 }
-                                vm.startTraining(filteredGym[index], uid)
+                                vm.startTraining(training, uid)
+                            }
+                        }
+                    }
+                )
+                Spacer(Modifier.height(14.dp))
+            }
+            item { Spacer(Modifier.height(10.dp)) }
+        }
+
+        if (filteredGymOwn.isNotEmpty()) {
+            item {
+                SectionTitle(
+                    title = "Salon Antrenmanları",
+                    subtitle = "Salonun kendi antrenmanları (CrossFit WOD, HIIT vb.)",
+                    accentColor = Primary
+                )
+                Spacer(Modifier.height(12.dp))
+            }
+            items(filteredGymOwn.size, key = { filteredGymOwn[it].id }) { index ->
+                val training = filteredGymOwn[index]
+                ProgramTrainingCard(
+                    training = training,
+                    isStarting = startingId == training.id,
+                    onStartClick = {
+                        if (activeSessionState != null) {
+                            warningActiveSession = activeSessionState
+                            showActiveWorkoutWarning = true
+                        } else {
+                            coroutineScope.launch {
+                                val uid = AuthService.getCurrentUserId()
+                                    ?: user?.id
+                                    ?: currentProfile?.id
+                                if (uid == null) {
+                                    snackbarHostState.showSnackbar("Oturum bulunamadı. Lütfen tekrar giriş yapın.")
+                                    return@launch
+                                }
+                                vm.startTraining(training, uid)
                             }
                         }
                     }
@@ -322,9 +366,10 @@ fun TrainingScreen(
                 Spacer(Modifier.height(12.dp))
             }
             items(filteredAi.size, key = { filteredAi[it].id }) { index ->
+                val training = filteredAi[index]
                 ProgramTrainingCard(
-                    training = filteredAi[index],
-                    isStarting = startingId == filteredAi[index].id,
+                    training = training,
+                    isStarting = startingId == training.id,
                     onStartClick = {
                         if (activeSessionState != null) {
                             warningActiveSession = activeSessionState
@@ -338,7 +383,7 @@ fun TrainingScreen(
                                     snackbarHostState.showSnackbar("Oturum bulunamadı. Lütfen tekrar giriş yapın.")
                                     return@launch
                                 }
-                                vm.startTraining(filteredAi[index], uid)
+                                vm.startTraining(training, uid)
                             }
                         }
                     }

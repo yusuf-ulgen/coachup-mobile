@@ -178,6 +178,7 @@ object GroupClassService {
                     }
                 }
                 .decodeList<ClassBooking>()
+                .distinctBy { it.userId }
                 .size
         } catch (e: CancellationException) {
             throw e
@@ -199,6 +200,7 @@ object GroupClassService {
                     }
                 }
                 .decodeList<ClassBooking>()
+                .distinctBy { "${it.classId}_${it.userId}" }
                 .groupingBy { it.classId }
                 .eachCount()
         } catch (e: CancellationException) {

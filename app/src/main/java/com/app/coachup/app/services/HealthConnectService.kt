@@ -5,6 +5,8 @@ import androidx.health.connect.client.HealthConnectClient
 import androidx.health.connect.client.PermissionController
 import androidx.health.connect.client.permission.HealthPermission
 import androidx.health.connect.client.records.HeartRateRecord
+import androidx.health.connect.client.records.ActiveCaloriesBurnedRecord
+import androidx.health.connect.client.records.TotalCaloriesBurnedRecord
 import androidx.health.connect.client.request.ReadRecordsRequest
 import androidx.health.connect.client.time.TimeRangeFilter
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -34,7 +36,9 @@ object HealthConnectService {
     val isAvailable: StateFlow<Boolean> = _isAvailable.asStateFlow()
 
     val permissions = setOf(
-        HealthPermission.getReadPermission(HeartRateRecord::class)
+        HealthPermission.getReadPermission(HeartRateRecord::class),
+        HealthPermission.getReadPermission(ActiveCaloriesBurnedRecord::class),
+        HealthPermission.getReadPermission(TotalCaloriesBurnedRecord::class)
     )
 
     private var client: HealthConnectClient? = null
@@ -90,6 +94,33 @@ object HealthConnectService {
             throw e
         } catch (_: Exception) {
             // Permission not granted or Health Connect unavailable — stay at 0
+        }
+    }
+
+    suspend fun fetchCaloriesBurned(startTime: Instant, endTime: Instant): Int? {
+        val c = client ?: return null
+        return try {
+            val activeRequest = ReadRecordsRequest(
+                recordType = ActiveCaloriesBurnedRecord::class,
+                timeRangeFilter = TimeRangeFilter.between(startTime, endTime)
+            )
+            val activeResponse = c.readRecords(activeRequest)
+            val activeCalories = activeResponse.records.sumOf { it.energy.inKilocalories }.toInt()
+
+            if (activeCalories > 0) {
+                activeCalories
+            } else {
+                val totalRequest = ReadRecordsRequest(
+                    recordType = TotalCaloriesBurnedRecord::class,
+                    timeRangeFilter = TimeRangeFilter.between(startTime, endTime)
+                )
+                val totalResponse = c.readRecords(totalRequest)
+                totalResponse.records.sumOf { it.energy.inKilocalories }.toInt().takeIf { it > 0 }
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            null
         }
     }
 

@@ -101,7 +101,7 @@ object TrainingService {
             .decodeSingle<TrainingProgram>()
     }
 
-    /** Salon tarafından tanımlanan programlar. Kullanıcıya atanan programları getirir. */
+    /** Salon tarafından tanımlanan programlar. Salonun tüm aktif antrenmanlarını getirir. */
     suspend fun fetchGymPrograms(
         gymId: String?,
         userId: String? = null,
@@ -112,28 +112,31 @@ object TrainingService {
         val currentUserId = userId
             ?: UserService.currentProfile.value?.id
             ?: AuthService.getCurrentUserId()
-        if (currentUserId.isNullOrBlank()) return emptyList()
 
         return try {
-            val assignments = supabase
-                .from("user_assigned_programs")
-                .select(columns = Columns.raw("*, program:training_programs(*)")) {
+            supabase
+                .from("training_programs")
+                .select {
                     filter {
-                        eq("user_id", currentUserId)
-                        eq("status", "active")
+                        eq("gym_id", gymId)
+                        eq("is_active", true)
+                        neq("category", TrainingCategory.AI_PROGRAM.dbValue)
+                        if (!currentUserId.isNullOrBlank()) {
+                            or {
+                                eq("privacy", "public")
+                                filter("visible_member_ids", FilterOperator.CS, "{\"$currentUserId\"}")
+                            }
+                        } else {
+                            eq("privacy", "public")
+                        }
+                        if (!searchText.isNullOrEmpty()) {
+                            ilike("name", "%$searchText%")
+                        }
                     }
+                    order("name", Order.ASCENDING)
                     limit(limit.toLong())
                 }
-                .decodeList<UserAssignedProgram>()
-
-            assignments.mapNotNull { assignment ->
-                val p = assignment.program ?: return@mapNotNull null
-                if (!searchText.isNullOrEmpty() && !p.name.contains(searchText, ignoreCase = true)) {
-                    null
-                } else {
-                    p
-                }
-            }
+                .decodeList<TrainingProgram>()
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {

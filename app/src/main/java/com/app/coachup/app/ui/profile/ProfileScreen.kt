@@ -152,7 +152,17 @@ fun ProfileScreen(
         surname = p.surname ?: ""
         email = p.email ?: ""
         phone = p.phone ?: ""
-        birthDate = p.birthDate ?: ""
+        val rawBirthDate = p.birthDate ?: ""
+        birthDate = if (rawBirthDate.contains("-")) {
+            val parts = rawBirthDate.split("-")
+            if (parts.size == 3) {
+                "${parts[2]}.${parts[1]}.${parts[0]}"
+            } else {
+                rawBirthDate
+            }
+        } else {
+            rawBirthDate
+        }
         height = p.height?.toInt()?.toString() ?: ""
         weight = p.weight?.toInt()?.toString() ?: ""
         selectedGender = Gender.toDisplayValue(p.gender)
@@ -423,7 +433,7 @@ fun ProfileScreen(
                             surname = surname,
                             email = email,
                             gender = Gender.toDbValue(selectedGender),
-                            birthDate = birthDate.takeIf { it.isNotBlank() },
+                            birthDate = formatBirthDateForDb(birthDate),
                             height = height.toDoubleOrNull(),
                             weight = weight.toDoubleOrNull()
                         )
@@ -488,4 +498,32 @@ private fun ProfileTextField(
             singleLine = true
         )
     }
+}
+
+private fun formatBirthDateForDb(input: String): String? {
+    if (input.isBlank()) return null
+    val trimmed = input.trim()
+    val yyyyMMddRegex = Regex("""^\d{4}-\d{2}-\d{2}$""")
+    if (yyyyMMddRegex.matches(trimmed)) {
+        return trimmed
+    }
+    val separators = listOf(".", "/", "-")
+    for (sep in separators) {
+        val parts = trimmed.split(sep)
+        if (parts.size == 3) {
+            if (parts[0].length <= 2 && parts[1].length <= 2 && parts[2].length == 4) {
+                val day = parts[0].padStart(2, '0')
+                val month = parts[1].padStart(2, '0')
+                val year = parts[2]
+                return "$year-$month-$day"
+            }
+            if (parts[0].length == 4 && parts[1].length <= 2 && parts[2].length <= 2) {
+                val year = parts[0]
+                val month = parts[1].padStart(2, '0')
+                val day = parts[2].padStart(2, '0')
+                return "$year-$month-$day"
+            }
+        }
+    }
+    return trimmed
 }

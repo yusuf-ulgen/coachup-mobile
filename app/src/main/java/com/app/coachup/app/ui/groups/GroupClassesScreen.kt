@@ -154,8 +154,7 @@ fun GroupClassesScreen(navController: NavController) {
                     val isBooked = booking != null
                     val isWaiting = booking != null && GroupClassService.isWaitingStatus(booking.status)
                     val isPast = isClassPast(groupClass)
-                    val currentSeats = seatCounts[groupClass.id]
-                        ?: groupClass.currentParticipants
+                    val currentSeats = groupClass.currentParticipants
                     GroupClassCard(
                         groupClass = groupClass,
                         currentSeats = currentSeats,

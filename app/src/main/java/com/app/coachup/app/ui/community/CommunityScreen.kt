@@ -438,11 +438,21 @@ private fun PostCard(
                     .background(Primary.copy(alpha = 0.15f)),
                 contentAlignment = Alignment.Center
             ) {
-                Text(
-                    text = item.authorName.take(1).uppercase(),
-                    fontWeight = FontWeight.Bold,
-                    color = Primary
-                )
+                val avatarUrl = item.authorAvatarUrl
+                if (!avatarUrl.isNullOrBlank()) {
+                    AsyncImage(
+                        model = avatarUrl,
+                        contentDescription = "Profil resmi",
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                } else {
+                    Text(
+                        text = item.authorName.take(1).uppercase(),
+                        fontWeight = FontWeight.Bold,
+                        color = Primary
+                    )
+                }
             }
             Column(modifier = Modifier.weight(1f)) {
                 Text(item.authorName, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onBackground)
@@ -643,20 +653,30 @@ private fun PostCard(
                             verticalAlignment = Alignment.Top,
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(28.dp)
-                                    .clip(CircleShape)
-                                    .background(Primary.copy(alpha = 0.1f)),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(
-                                    text = comm.authorName.take(1).uppercase(),
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 11.sp,
-                                    color = Primary
-                                )
-                            }
+                             Box(
+                                 modifier = Modifier
+                                     .size(28.dp)
+                                     .clip(CircleShape)
+                                     .background(Primary.copy(alpha = 0.1f)),
+                                 contentAlignment = Alignment.Center
+                             ) {
+                                 val avatarUrl = comm.authorAvatarUrl
+                                 if (!avatarUrl.isNullOrBlank()) {
+                                     AsyncImage(
+                                         model = avatarUrl,
+                                         contentDescription = "Yorum sahibi",
+                                         contentScale = ContentScale.Crop,
+                                         modifier = Modifier.fillMaxSize()
+                                     )
+                                 } else {
+                                     Text(
+                                         text = comm.authorName.take(1).uppercase(),
+                                         fontWeight = FontWeight.Bold,
+                                         fontSize = 11.sp,
+                                         color = Primary
+                                     )
+                                 }
+                             }
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(comm.authorName, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
                                 Text(comm.comment.content, fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurface, lineHeight = 16.sp)
