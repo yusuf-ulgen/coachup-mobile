@@ -24,4 +24,10 @@ claude*
 gemini*
 agy*
 codex*
+.claude/
 
+# App builds
+*.apk
+
+# Scratch and temp files
+scratch/

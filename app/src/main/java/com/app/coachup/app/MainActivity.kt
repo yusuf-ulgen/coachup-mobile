@@ -108,26 +108,6 @@ class MainActivity : ComponentActivity() {
         runCatching { com.app.coachup.app.services.LocationTrackingService.init(applicationContext) }
         runCatching { com.app.coachup.app.services.WorkoutAudioCoach.init(applicationContext) }
 
-        // Temporary Database Cleanup Routine for Ali Ozturk program visibility
-        lifecycleScope.launch {
-            try {
-                val client = com.app.coachup.app.config.SupabaseConfig.client
-                val columns = mapOf(
-                    "privacy" to "private",
-                    "visible_member_ids" to emptyList<String>()
-                )
-                client.postgrest["training_programs"]
-                    .update(columns) {
-                        filter {
-                            ilike("name", "%Ali Oztürk%")
-                        }
-                    }
-                android.util.Log.d("CoachUpDBFix", "Successfully updated Ali Ozturk program privacy to private")
-            } catch (e: Exception) {
-                android.util.Log.e("CoachUpDBFix", "DB cleanup failed", e)
-            }
-        }
-
         setContent {
             val themeManager = remember { ThemeManager.getInstance(applicationContext) }
 

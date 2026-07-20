@@ -173,10 +173,10 @@ fun TrainingScreen(
         else gymPrograms.filter { it.title.contains(searchText, ignoreCase = true) }
     }
     val filteredPersonalized = remember(filteredGym, userId) {
-        filteredGym.filter { it.privacy == "private" && (userId == null || it.visibleMemberIds.contains(userId)) }
+        filteredGym.filter { (it.privacy == "private" || it.privacy == "members") && (userId == null || it.visibleMemberIds.contains(userId)) }
     }
     val filteredGymOwn = remember(filteredGym) {
-        filteredGym.filter { it.privacy != "private" }
+        filteredGym.filter { it.privacy != "private" && it.privacy != "members" }
     }
     val filteredAi = remember(aiPrograms, searchText) {
         if (searchText.isBlank()) aiPrograms
