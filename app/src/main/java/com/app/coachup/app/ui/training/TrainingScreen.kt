@@ -176,7 +176,12 @@ fun TrainingScreen(
         filteredGym.filter { (it.privacy == "private" || it.privacy == "members") && (userId == null || it.visibleMemberIds.contains(userId)) }
     }
     val filteredGymOwn = remember(filteredGym) {
-        filteredGym.filter { it.privacy != "private" && it.privacy != "members" }
+        filteredGym
+            .filter { it.privacy != "private" && it.privacy != "members" }
+            .sortedWith { a, b ->
+                val diffComp = a.difficulty.compareTo(b.difficulty)
+                if (diffComp != 0) diffComp else a.title.compareTo(b.title, ignoreCase = true)
+            }
     }
     val filteredAi = remember(aiPrograms, searchText) {
         if (searchText.isBlank()) aiPrograms
