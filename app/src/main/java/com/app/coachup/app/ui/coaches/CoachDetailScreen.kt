@@ -173,10 +173,45 @@ fun CoachDetailScreen(
                         .padding(horizontal = Spacing.xl, vertical = 16.dp),
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    CoachStatChip(icon = Icons.Default.Star, text = String.format("%.1f", coach.rating), color = Color(0xFFFFB300))
-                    CoachStatChip(icon = Icons.Default.WorkHistory, text = "${coach.experienceYears} yıl", color = Purple100)
-                    if (!coach.specialty.isNullOrEmpty()) {
-                        CoachStatChip(icon = Icons.Default.FitnessCenter, text = coach.specialty, color = Primary)
+                    CoachStatChip(
+                        icon = Icons.Default.Star,
+                        text = String.format("%.1f", coach.rating),
+                        color = Color(0xFFFFB300),
+                        bgColor = Color(0xFFFFB300).copy(alpha = 0.2f)
+                    )
+                    CoachStatChip(
+                        icon = Icons.Default.WorkHistory,
+                        text = "${coach.experienceYears} yıl",
+                        color = Color(0xFF64B5F6),
+                        bgColor = Color(0xFF64B5F6).copy(alpha = 0.2f)
+                    )
+                }
+            }
+
+            if (coach.specializations.isNotEmpty()) {
+                item {
+                    Column(
+                        modifier = Modifier
+                            .padding(horizontal = Spacing.xl)
+                            .padding(top = 8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text("Uzmanlık Alanları", fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface)
+                        OptFlowRow(items = coach.specializations, color = Primary)
+                    }
+                }
+            }
+
+            if (coach.certifications.isNotEmpty()) {
+                item {
+                    Column(
+                        modifier = Modifier
+                            .padding(horizontal = Spacing.xl)
+                            .padding(top = 16.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text("Sertifikalar", fontSize = 16.sp, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface)
+                        OptFlowRow(items = coach.certifications, color = Color(0xFF81C784))
                     }
                 }
             }
@@ -199,6 +234,31 @@ fun CoachDetailScreen(
                 Text("Mesaj Gönder", style = AppNormalMediumStyle, color = Color.White)
             }
             Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
+        }
+    }
+}
+
+@Composable
+private fun OptFlowRow(items: List<String>, color: Color) {
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        items.forEach { item ->
+            Box(
+                modifier = Modifier
+                    .background(color.copy(alpha = 0.2f), RoundedCornerShape(8.dp))
+                    .border(1.dp, color.copy(alpha = 0.4f), RoundedCornerShape(8.dp))
+                    .padding(horizontal = 12.dp, vertical = 6.dp)
+            ) {
+                Text(
+                    text = item,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = color
+                )
+            }
         }
     }
 }
@@ -239,22 +299,20 @@ private fun DetailHeader(
                 .padding(start = 8.dp)
         )
 
-        // Gender symbol
+        // Gender symbol (High contrast badge)
+        val genderColor = if (coach.gender == CoachGender.MALE) Color(0xFF64B5F6) else Color(0xFFFF4081)
         Box(
             modifier = Modifier
-                .size(28.dp)
-                .border(
-                    1.5.dp,
-                    if (coach.gender == CoachGender.MALE) Purple100 else Primary,
-                    CircleShape
-                ),
+                .size(32.dp)
+                .background(genderColor.copy(alpha = 0.2f), CircleShape)
+                .border(1.5.dp, genderColor, CircleShape),
             contentAlignment = Alignment.Center
         ) {
             Text(
                 text = if (coach.gender == CoachGender.MALE) "♂" else "♀",
-                fontSize = 14.sp,
-                fontWeight = FontWeight.Medium,
-                color = if (coach.gender == CoachGender.MALE) Purple100 else Primary
+                fontSize = 16.sp,
+                fontWeight = FontWeight.Bold,
+                color = genderColor
             )
         }
     }
@@ -278,7 +336,7 @@ private fun CoachProfileSection(
         Box(
             modifier = Modifier
                 .size(60.dp)
-                .background(Purple100, CircleShape),
+                .background(Primary, CircleShape),
             contentAlignment = Alignment.Center
         ) {
             if (coach.profileImageUrl != null) {
@@ -300,22 +358,20 @@ private fun CoachProfileSection(
 
         Spacer(Modifier.weight(1f))
 
-        // Gender symbol (large)
+        // Gender symbol (large high contrast badge)
+        val genderColor = if (coach.gender == CoachGender.MALE) Color(0xFF64B5F6) else Color(0xFFFF4081)
         Box(
             modifier = Modifier
-                .size(32.dp)
-                .border(
-                    1.5.dp,
-                    if (coach.gender == CoachGender.MALE) Purple100 else Primary,
-                    CircleShape
-                ),
+                .size(36.dp)
+                .background(genderColor.copy(alpha = 0.2f), CircleShape)
+                .border(1.5.dp, genderColor, CircleShape),
             contentAlignment = Alignment.Center
         ) {
             Text(
                 text = if (coach.gender == CoachGender.MALE) "♂" else "♀",
-                fontSize = 16.sp,
-                fontWeight = FontWeight.Medium,
-                color = if (coach.gender == CoachGender.MALE) Purple100 else Primary
+                fontSize = 18.sp,
+                fontWeight = FontWeight.Bold,
+                color = genderColor
             )
         }
     }
@@ -329,16 +385,18 @@ private fun CoachProfileSection(
 private fun CoachStatChip(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     text: String,
-    color: Color
+    color: Color,
+    bgColor: Color = color.copy(alpha = 0.15f)
 ) {
     Row(
         modifier = Modifier
-            .background(color.copy(alpha = 0.1f), RoundedCornerShape(8.dp))
-            .padding(horizontal = 10.dp, vertical = 6.dp),
-        horizontalArrangement = Arrangement.spacedBy(4.dp),
+            .background(bgColor, RoundedCornerShape(8.dp))
+            .border(1.dp, color.copy(alpha = 0.3f), RoundedCornerShape(8.dp))
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Icon(imageVector = icon, contentDescription = null, tint = color, modifier = Modifier.size(12.dp))
-        Text(text = text, fontSize = 12.sp, fontWeight = FontWeight.Medium, color = color, maxLines = 1)
+        Icon(imageVector = icon, contentDescription = null, tint = color, modifier = Modifier.size(14.dp))
+        Text(text = text, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = color, maxLines = 1)
     }
 }

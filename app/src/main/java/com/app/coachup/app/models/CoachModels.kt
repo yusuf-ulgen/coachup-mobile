@@ -11,7 +11,7 @@ enum class CoachGender(val dbValue: String, val label: String) {
 
     companion object {
         fun fromDbValue(v: String?): CoachGender =
-            if (v == "Kadın") FEMALE else MALE
+            if (v?.lowercase() == "kadın" || v?.lowercase() == "female") FEMALE else MALE
     }
 }
 
@@ -32,6 +32,8 @@ data class LocalCoach(
     val surname: String,
     val gender: CoachGender,
     val specialty: String?,
+    val specializations: List<String>,
+    val certifications: List<String>,
     val bio: String?,
     val rating: Double,
     val experienceYears: Int,
@@ -46,6 +48,8 @@ data class LocalCoach(
             surname = c.surname,
             gender = CoachGender.fromDbValue(c.gender),
             specialty = c.specialty,
+            specializations = c.specializations ?: c.specialty?.let { listOf(it) } ?: emptyList(),
+            certifications = c.certifications ?: emptyList(),
             bio = c.bio,
             rating = c.rating,
             experienceYears = c.experienceYears,

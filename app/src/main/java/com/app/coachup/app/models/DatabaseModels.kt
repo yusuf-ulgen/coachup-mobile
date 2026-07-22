@@ -168,6 +168,8 @@ data class Coach(
     @SerialName("phone")             val phone: String? = null,
     @SerialName("gender")            val gender: String,
     @SerialName("specialty")         val specialty: String? = null,
+    @SerialName("specializations")   val specializations: List<String>? = null,
+    @SerialName("certifications")    val certifications: List<String>? = null,
     @SerialName("bio")               val bio: String? = null,
     @SerialName("profile_image_url") val profileImageUrl: String? = null,
     @SerialName("rating")            val rating: Double = 0.0,
