@@ -30,7 +30,8 @@ object ActiveWorkoutManager {
         val session = ActiveSession(training, sessionId, programId)
         _activeSession.value = session
         _showFloatingOverlay.value = false
-        startTimer()
+        // Timer is NOT started here — it starts explicitly when the user presses "Başlat"
+        // via startTimer(). This prevents the elapsed time from counting before the workout begins.
     }
 
     fun startTimer() {

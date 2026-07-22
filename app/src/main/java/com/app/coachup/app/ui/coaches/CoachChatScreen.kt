@@ -120,9 +120,9 @@ class CoachChatViewModel : ViewModel() {
                 _messages.value = _messages.value.filter { it.id != optimistic.id }
                 throw e
             } catch (e: Exception) {
-                // Remove optimistic message on failure and restore text
+                android.util.Log.e("CoachChatVM", "sendMessage error", e)
                 _messages.value = _messages.value.filter { it.id != optimistic.id }
-                _error.value = "Mesaj gönderilemedi"
+                _error.value = "Mesaj gönderilemedi: ${e.localizedMessage ?: "Bilinmeyen hata"}"
             } finally {
                 _isSending.value = false
             }

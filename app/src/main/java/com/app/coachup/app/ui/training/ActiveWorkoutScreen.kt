@@ -69,6 +69,7 @@ import com.app.coachup.app.services.HealthConnectService
 import com.app.coachup.app.services.LocationTrackingService
 import com.app.coachup.app.services.StreakService
 import com.app.coachup.app.services.WorkoutService
+import androidx.compose.ui.platform.LocalContext
 import com.app.coachup.app.theme.*
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
@@ -570,6 +571,7 @@ fun ActiveWorkoutScreen(
 ) {
     val isOutdoor = training.category.isOutdoor
     val coroutineScope = rememberCoroutineScope()
+    val context = LocalContext.current
 
     // Sync state with ActiveWorkoutManager
     val isSessionAlreadyActive = remember(sessionId) {
@@ -703,7 +705,7 @@ fun ActiveWorkoutScreen(
         val hcAvgHR = if (hcAvail) HealthConnectService.averageHeartRate.value.takeIf { it > 0 } else null
         val hcMaxHR = if (hcAvail) HealthConnectService.maxHeartRate.value.takeIf { it > 0 } else null
 
-        if (isOutdoor) LocationTrackingService.stopTracking()
+        if (isOutdoor) LocationTrackingService.stopForegroundTracking(context)
 
         coroutineScope.launch {
             var hcCalories: Int? = null
@@ -712,6 +714,7 @@ fun ActiveWorkoutScreen(
                 val startTime = endTime.minusSeconds(duration.toLong())
                 hcCalories = HealthConnectService.fetchCaloriesBurned(startTime, endTime)
             }
+            val finalCalories = hcCalories?.takeIf { it > 0 } ?: ((duration / 60) * 7).coerceAtLeast(1)
 
             pendingSummaryData = WorkoutCompletionData(
                 durationSeconds = duration,
@@ -725,7 +728,7 @@ fun ActiveWorkoutScreen(
                 routePoints = if (isOutdoor) LocationTrackingService.routePoints.value else emptyList(),
                 avgHeartRate = hcAvgHR,
                 maxHeartRate = hcMaxHR,
-                calories = hcCalories,
+                calories = finalCalories,
                 perceivedEffort = effort
             )
             showFinishCelebration = true
@@ -741,7 +744,7 @@ fun ActiveWorkoutScreen(
                 distanceKm = if (isOutdoor) dist else null,
                 avgHeartRate = hcAvgHR,
                 maxHeartRate = hcMaxHR,
-                calories = hcCalories,
+                calories = finalCalories,
                 avgPace = if (isOutdoor) LocationTrackingService.paceMinPerKm.value.takeIf { it > 0.0 } else null,
                 avgSpeed = if (isOutdoor) LocationTrackingService.averageSpeedKmh.value.takeIf { it > 0.0 } else null,
                 altitudeGain = if (isOutdoor) LocationTrackingService.altitudeGainM.value.takeIf { it > 0.0 } else null,
@@ -776,20 +779,15 @@ fun ActiveWorkoutScreen(
     }
 
     // ── Start timer after goal / preview sheets are dismissed ─────────────────
+    // NOTE: For outdoor (GPS) workouts we do NOT start the timer here —
+    // it starts only when the user taps "Başlat" in onStartWorkout (see below).
+    // For indoor workouts this block handles timer start normally.
     LaunchedEffect(showGoalSheet, showProgramPreview, workoutSessionStarted) {
         if (showGoalSheet || showProgramPreview) return@LaunchedEffect
         if (!workoutSessionStarted) return@LaunchedEffect
-        if (!timerStarted) {
+        if (!timerStarted && !isOutdoor) {
             vm.startTimer()
             timerStarted = true
-
-            if (isOutdoor) {
-                if (locationPermission.status.isGranted) {
-                    LocationTrackingService.startTracking(enableAutoPause = true)
-                } else {
-                    locationPermission.launchPermissionRequest()
-                }
-            }
         }
     }
 
@@ -797,7 +795,7 @@ fun ActiveWorkoutScreen(
     LaunchedEffect(locationPermission.status.isGranted, workoutSessionStarted) {
         if (!isOutdoor || !workoutSessionStarted || showGoalSheet) return@LaunchedEffect
         if (locationPermission.status.isGranted && !LocationTrackingService.isTracking.value) {
-            LocationTrackingService.startTracking(enableAutoPause = true)
+            LocationTrackingService.startForegroundTracking(context, enableAutoPause = true)
         }
     }
 
@@ -807,7 +805,7 @@ fun ActiveWorkoutScreen(
                 if (!ActiveWorkoutManager.showFloatingOverlay.value) {
                     vm.stopTimer()
                     ActiveWorkoutManager.stopSession()
-                    if (isOutdoor) LocationTrackingService.stopTracking()
+                    if (isOutdoor) LocationTrackingService.stopForegroundTracking(context)
                 }
             }
         }
@@ -882,7 +880,8 @@ fun ActiveWorkoutScreen(
                 onStartWorkout = {
                     workoutSessionStarted = true
                     if (locationPermission.status.isGranted) {
-                        LocationTrackingService.startTracking(enableAutoPause = true)
+                        // Start the Foreground Service so GPS works when screen is locked
+                        LocationTrackingService.startForegroundTracking(context, enableAutoPause = true)
                         if (!timerStarted) {
                             vm.startTimer()
                             timerStarted = true

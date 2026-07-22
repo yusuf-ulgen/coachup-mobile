@@ -105,7 +105,6 @@ class MainActivity : ComponentActivity() {
         AppLocaleManager.applyStored(this)
         requestNotificationPermissionIfNeeded()
         enableEdgeToEdge()
-        runCatching { com.app.coachup.app.services.LocationTrackingService.init(applicationContext) }
         runCatching { com.app.coachup.app.services.WorkoutAudioCoach.init(applicationContext) }
 
         setContent {

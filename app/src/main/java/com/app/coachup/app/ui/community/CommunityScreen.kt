@@ -41,8 +41,8 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
 private enum class CommunityScopeTab(val label: String, val scope: String) {
-    SALON("Salon", "gym"),
-    GENEL("Genel", "general")
+    GENEL("Genel", "general"),
+    SALON("Salon", "gym")
 }
 
 @Composable
@@ -81,12 +81,22 @@ fun CommunityScreen() {
                     }
                     if (allowed && gymId != null) {
                         groups = CommunityService.fetchGroups("gym", gymId)
-                        posts = CommunityService.fetchFeed(
-                            userId = userId,
-                            scope = "gym",
-                            gymId = gymId,
-                            groupId = selectedGroupId
-                        )
+                        val isGroupMember = if (selectedGroupId != null) {
+                            CommunityService.isGroupMember(selectedGroupId!!, userId)
+                        } else true
+
+                        if (!isGroupMember) {
+                            canAccess = false
+                            accessMessage = "Bu özel gruba erişim yetkiniz yok. Sadece işletmenin eklediği üyeler görebilir."
+                            posts = emptyList()
+                        } else {
+                            posts = CommunityService.fetchFeed(
+                                userId = userId,
+                                scope = "gym",
+                                gymId = gymId,
+                                groupId = selectedGroupId
+                            )
+                        }
                     } else {
                         groups = emptyList()
                         posts = emptyList()

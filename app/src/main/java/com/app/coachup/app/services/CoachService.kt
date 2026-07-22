@@ -300,16 +300,9 @@ object CoachService {
             message = message,
             sentAt = sentAt
         )
-        supabase.from("coach_messages").insert(msg)
-        return CoachMessage(
-            id = UUID.randomUUID().toString(),
-            userId = userId,
-            coachId = coachId,
-            message = message,
-            isFromCoach = false,
-            isRead = false,
-            sentAt = sentAt
-        )
+        return supabase.from("coach_messages").insert(msg) {
+            select()
+        }.decodeSingle<CoachMessage>()
     }
 
     /**

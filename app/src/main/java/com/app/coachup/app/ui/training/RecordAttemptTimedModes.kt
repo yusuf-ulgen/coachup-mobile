@@ -72,6 +72,8 @@ import com.google.accompanist.permissions.ExperimentalPermissionsApi
 import com.google.accompanist.permissions.isGranted
 import com.google.accompanist.permissions.rememberPermissionState
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
@@ -165,8 +167,7 @@ fun RecordTimedAttemptSession(
         hasAutoFinished = false
         if (isRunningMode) {
             try {
-                LocationTrackingService.init(context.applicationContext)
-                LocationTrackingService.startTracking(enableAutoPause = true)
+                LocationTrackingService.startForegroundTracking(context.applicationContext, enableAutoPause = true)
             } catch (_: Exception) {
             }
         }
@@ -851,58 +852,10 @@ private suspend fun finishTimed(
     }
     onSets(updated)
 
-    var newPR = false
-    try {
-        if (main != null) {
-            RecordAttemptService.saveSet(
-                setId = main.id,
-                actualWeight = weight,
-                actualReps = reps,
-                rpe = null,
-                restSeconds = elapsedSeconds,
-                notes = if (isAmrap) "AMRAP rounds=$reps" else null
-            )
-        }
-        RecordAttemptService.completeAttempt(
-            attemptId = attempt.id,
-            success = success,
-            notes = null,
-            userId = attempt.userId
-        )
-        if (success) {
-            try {
-                ResultsService.upsertExerciseResult(
-                    userId = attempt.userId,
-                    exerciseId = attempt.exerciseId,
-                    weight = weight,
-                    reps = reps
-                )
-            } catch (_: Exception) {
-            }
-            newPR = try {
-                RecordAttemptService.updatePersonalRecordIfNeeded(
-                    userId = attempt.userId,
-                    exerciseId = attempt.exerciseId,
-                    weight = weight,
-                    reps = reps,
-                    notes = if (isAmrap) "AMRAP" else null,
-                    measureType = prType
-                )
-            } catch (_: Exception) {
-                false
-            }
-        }
-    } catch (e: CancellationException) {
-        throw e
-    } catch (e: Exception) {
-        android.util.Log.e("RecordTimed", "finish error", e)
-    } finally {
-        setFinishing(false)
-    }
     onNavigateToSummary(
         SummaryResult(
             success = success,
-            newPersonalRecord = newPR,
+            newPersonalRecord = false,
             overrideMeasureType = prType,
             overrideWeight = weight,
             overrideReps = reps,
@@ -910,4 +863,55 @@ private suspend fun finishTimed(
         ),
         updated
     )
+
+    // Save attempt data asynchronously in background so screen opens instantly
+    CoroutineScope(Dispatchers.IO).launch {
+        var newPR = false
+        try {
+            if (main != null) {
+                RecordAttemptService.saveSet(
+                    setId = main.id,
+                    actualWeight = weight,
+                    actualReps = reps,
+                    rpe = null,
+                    restSeconds = elapsedSeconds,
+                    notes = if (isAmrap) "AMRAP rounds=$reps" else null
+                )
+            }
+            RecordAttemptService.completeAttempt(
+                attemptId = attempt.id,
+                success = success,
+                notes = null,
+                userId = attempt.userId
+            )
+            if (success) {
+                try {
+                    ResultsService.upsertExerciseResult(
+                        userId = attempt.userId,
+                        exerciseId = attempt.exerciseId,
+                        weight = weight,
+                        reps = reps
+                    )
+                } catch (_: Exception) {}
+                newPR = try {
+                    RecordAttemptService.updatePersonalRecordIfNeeded(
+                        userId = attempt.userId,
+                        exerciseId = attempt.exerciseId,
+                        weight = weight,
+                        reps = reps,
+                        notes = if (isAmrap) "AMRAP" else null,
+                        measureType = prType
+                    )
+                } catch (_: Exception) {
+                    false
+                }
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            android.util.Log.e("RecordTimed", "finish background error", e)
+        } finally {
+            setFinishing(false)
+        }
+    }
 }

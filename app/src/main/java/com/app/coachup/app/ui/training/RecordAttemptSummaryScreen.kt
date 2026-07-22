@@ -109,12 +109,14 @@ fun RecordAttemptSummaryScreen(
                                 icon = Icons.Filled.ShowChart
                             )
                         }
-                        StatTile(
-                            modifier = if (measureType == RecordMeasureType.WEIGHT) Modifier.weight(1f) else Modifier.fillMaxWidth(),
-                            label = "RPE",
-                            value = if (rpeValues.isEmpty()) "—" else "%.1f".format(rpeValues.average()),
-                            icon = Icons.Filled.Speed
-                        )
+                        if (rpeValues.isNotEmpty()) {
+                            StatTile(
+                                modifier = if (measureType == RecordMeasureType.WEIGHT) Modifier.weight(1f) else Modifier.fillMaxWidth(),
+                                label = "Zorluk Derecesi",
+                                value = "%.1f / 10".format(rpeValues.average()),
+                                icon = Icons.Filled.Speed
+                            )
+                        }
                     }
 
                     // RPE sparkline (if available)

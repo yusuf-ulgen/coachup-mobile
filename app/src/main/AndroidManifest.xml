@@ -72,6 +72,13 @@
         </activity>
 
         <!-- Health Connect: permission usage rationale (Google Play requirement) -->
+        <!-- GPS workout foreground service — tracks location when screen is locked -->
+        <service
+            android:name=".services.LocationTrackingService"
+            android:enabled="true"
+            android:exported="false"
+            android:foregroundServiceType="location" />
+
         <activity-alias
             android:name="ViewPermissionUsageActivity"
             android:exported="true"
