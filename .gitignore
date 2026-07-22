@@ -26,8 +26,17 @@ agy*
 codex*
 .claude/
 
-# App builds
+# App builds & keys
 *.apk
+*.aab
+*.jks
+*.keystore
+*.pem
+
+# Kotlin & IDE
+.kotlin/
+.idea/
 
 # Scratch and temp files
 scratch/
+
