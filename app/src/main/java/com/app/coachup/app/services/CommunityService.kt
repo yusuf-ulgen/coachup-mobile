@@ -118,6 +118,15 @@ object CommunityService {
         if (!global.gymFeedEnabled) return false
         val gymSettings = fetchGymSettings(gymId)
         if (!gymSettings.gymFeedEnabled) return false
+
+        // Check if the user is staff (admin/gym_manager) to bypass membership check
+        try {
+            val profile = UserService.currentProfile.value ?: UserService.fetchProfile(userId)
+            if (profile?.role == "admin" || profile?.role == "gym_manager" || profile?.isAdmin == true || profile?.isGymManager == true) {
+                return true
+            }
+        } catch (_: Exception) {}
+
         if (!MembershipService.isMembershipActive(userId)) return false
         val membership = MembershipService.fetchCurrentMembership(userId) ?: return false
         val membershipGym = membership.plan?.gymId

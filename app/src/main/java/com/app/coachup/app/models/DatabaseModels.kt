@@ -102,6 +102,8 @@ data class UserProfile(
     @SerialName("weight")                 val weight: Double? = null,
     @SerialName("profile_image_url")      val profileImageUrl: String? = null,
     @SerialName("role")                   val role: String? = null,
+    @SerialName("is_admin")               val isAdmin: Boolean = false,
+    @SerialName("is_gym_manager")         val isGymManager: Boolean = false,
     @SerialName("notifications_enabled") val notificationsEnabled: Boolean = true,
     @SerialName("biometric_enabled")      val biometricEnabled: Boolean = false,
     @SerialName("default_screen")         val defaultScreen: String = "home",

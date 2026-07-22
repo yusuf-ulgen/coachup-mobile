@@ -82,7 +82,8 @@ fun CommunityScreen() {
                     if (allowed && gymId != null) {
                         groups = CommunityService.fetchGroups("gym", gymId)
                         val isGroupMember = if (selectedGroupId != null) {
-                            CommunityService.isGroupMember(selectedGroupId!!, userId)
+                            val isStaff = currentProfile?.role == "admin" || currentProfile?.role == "gym_manager" || currentProfile?.isAdmin == true || currentProfile?.isGymManager == true
+                            isStaff || CommunityService.isGroupMember(selectedGroupId!!, userId)
                         } else true
 
                         if (!isGroupMember) {
