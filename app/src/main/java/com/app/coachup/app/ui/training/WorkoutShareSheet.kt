@@ -366,6 +366,13 @@ private fun ShareCardContent(
                     contentScale = ContentScale.Crop,
                     modifier = Modifier.fillMaxSize()
                 )
+                if (hasRoute) {
+                    ShareRouteCanvas(
+                        routePoints = routePoints,
+                        modifier = Modifier.fillMaxSize(),
+                        transparentBackground = true
+                    )
+                }
             }
             hasRoute -> {
                 ShareRouteCanvas(
@@ -664,30 +671,35 @@ private fun ShareMetricChip(value: String, label: String, modifier: Modifier = M
 @Composable
 private fun ShareRouteCanvas(
     routePoints: List<Pair<Double, Double>>,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    transparentBackground: Boolean = false
 ) {
     val routeColor = Primary
     val points = remember(routePoints) {
         routePoints.map { Offset(it.second.toFloat(), it.first.toFloat()) }
     }
 
-    Canvas(modifier = modifier.background(Color(0xFF121218))) {
+    val canvasModifier = if (transparentBackground) modifier else modifier.background(Color(0xFF121218))
+
+    Canvas(modifier = canvasModifier) {
         val normalized = normalizeRouteForCanvas(points, size.width, size.height, 56f)
         if (normalized.size < 2) return@Canvas
 
-        for (x in 0..size.width.toInt() step 44) {
-            drawLine(
-                color = Color.White.copy(alpha = 0.04f),
-                start = Offset(x.toFloat(), 0f),
-                end = Offset(x.toFloat(), size.height)
-            )
-        }
-        for (y in 0..size.height.toInt() step 44) {
-            drawLine(
-                color = Color.White.copy(alpha = 0.04f),
-                start = Offset(0f, y.toFloat()),
-                end = Offset(size.width, y.toFloat())
-            )
+        if (!transparentBackground) {
+            for (x in 0..size.width.toInt() step 44) {
+                drawLine(
+                    color = Color.White.copy(alpha = 0.04f),
+                    start = Offset(x.toFloat(), 0f),
+                    end = Offset(x.toFloat(), size.height)
+                )
+            }
+            for (y in 0..size.height.toInt() step 44) {
+                drawLine(
+                    color = Color.White.copy(alpha = 0.04f),
+                    start = Offset(0f, y.toFloat()),
+                    end = Offset(size.width, y.toFloat())
+                )
+            }
         }
 
         // Glow line
@@ -743,8 +755,11 @@ private object ShareCardBitmapRenderer {
         if (bg != null) {
             canvas.drawBitmap(bg, 0f, 0f, null)
             if (bg !== bitmap) bg.recycle()
+            if (routePoints.size >= 2) {
+                drawRoutePathOnCanvas(canvas, routePoints, drawBackground = false)
+            }
         } else if (routePoints.size >= 2) {
-            drawRouteBackground(canvas, routePoints)
+            drawRoutePathOnCanvas(canvas, routePoints, drawBackground = true)
         } else {
             drawDefaultGradient(canvas)
         }
@@ -1014,20 +1029,26 @@ private object ShareCardBitmapRenderer {
         }
     }
 
-    private fun drawRouteBackground(canvas: Canvas, routePoints: List<Pair<Double, Double>>) {
-        val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFF121218.toInt() }
-        canvas.drawRect(0f, 0f, WIDTH.toFloat(), HEIGHT.toFloat(), paint)
+    private fun drawRoutePathOnCanvas(
+        canvas: Canvas,
+        routePoints: List<Pair<Double, Double>>,
+        drawBackground: Boolean = true
+    ) {
+        if (drawBackground) {
+            val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = 0xFF121218.toInt() }
+            canvas.drawRect(0f, 0f, WIDTH.toFloat(), HEIGHT.toFloat(), paint)
 
-        val gridPaint = Paint().apply { color = 0x0AFFFFFF }
-        var x = 0f
-        while (x < WIDTH) {
-            canvas.drawLine(x, 0f, x, HEIGHT.toFloat(), gridPaint)
-            x += 44f
-        }
-        var y = 0f
-        while (y < HEIGHT) {
-            canvas.drawLine(0f, y, WIDTH.toFloat(), y, gridPaint)
-            y += 44f
+            val gridPaint = Paint().apply { color = 0x0AFFFFFF }
+            var x = 0f
+            while (x < WIDTH) {
+                canvas.drawLine(x, 0f, x, HEIGHT.toFloat(), gridPaint)
+                x += 44f
+            }
+            var y = 0f
+            while (y < HEIGHT) {
+                canvas.drawLine(0f, y, WIDTH.toFloat(), y, gridPaint)
+                y += 44f
+            }
         }
 
         val offsets = routePoints.map { Offset(it.second.toFloat(), it.first.toFloat()) }

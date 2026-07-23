@@ -27,6 +27,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
 import com.app.coachup.app.models.PersonalRecord
+import com.app.coachup.app.models.RecordAttemptCategories
+import com.app.coachup.app.models.RecordMeasureType
 import com.app.coachup.app.models.TrainingSession
 import com.app.coachup.app.navigation.Routes
 import com.app.coachup.app.services.AuthService
@@ -148,11 +150,13 @@ fun PersonalRecordsScreen(navController: NavController) {
                     d.month == today.month && d.year == today.year
                 } == true
             }
+            "Tüm zamanlar" -> workoutSessions
             else -> {
                 val monday = today.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY))
+                val sunday = monday.plusDays(6)
                 workoutSessions.filter {
                     parseActivityDate(it.completedAt)?.let { d ->
-                        !d.isBefore(monday) && !d.isAfter(today)
+                        !d.isBefore(monday) && !d.isAfter(sunday)
                     } == true
                 }
             }
@@ -394,9 +398,16 @@ private data class ActivityDay(
     val isSelected: Boolean
 )
 
-private fun parseActivityDate(iso: String?): LocalDate? = runCatching {
-    Instant.parse(iso).atZone(ZoneId.systemDefault()).toLocalDate()
-}.getOrNull()
+private fun parseActivityDate(iso: String?): LocalDate? {
+    if (iso.isNullOrBlank()) return null
+    return runCatching {
+        Instant.parse(iso).atZone(ZoneId.systemDefault()).toLocalDate()
+    }.getOrElse {
+        runCatching {
+            if (iso.length >= 10) LocalDate.parse(iso.take(10)) else null
+        }.getOrNull()
+    }
+}
 
 @Composable
 private fun ActivityCalendarSection(
@@ -636,7 +647,7 @@ private fun WorkoutHistorySection(
     modifier: Modifier = Modifier
 ) {
     var showFilterMenu by remember { mutableStateOf(false) }
-    val filters = listOf("Bu hafta", "Bu ay")
+    val filters = listOf("Bu hafta", "Bu ay", "Tüm zamanlar")
 
     Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -1014,6 +1025,43 @@ private fun WorkoutSessionCard(
 // Record Card — expandable, mirrors iOS RecordCard exactly
 // ---------------------------------------------------------------------------
 
+private fun formatRecordDetailText(record: PersonalRecord): String {
+    val catalogEx = RecordAttemptCategories.all
+        .flatMap { it.exercises }
+        .firstOrNull { it.id == record.exerciseId || it.name.equals(record.exercise?.name, ignoreCase = true) }
+
+    val measureType = catalogEx?.measureType ?: when {
+        record.reps > 1 && record.weight == 0.0 -> RecordMeasureType.REPS
+        record.weight > 0.0 && (
+            record.exerciseId.contains("run") || record.exerciseId.contains("row") ||
+            record.exerciseId.contains("swim") || record.exerciseId.contains("ski") ||
+            record.exerciseId.contains("wod") || record.exerciseId.contains("murph") ||
+            record.exerciseId.contains("cindy") || record.exerciseId.contains("fran")
+        ) -> RecordMeasureType.TIME
+        else -> RecordMeasureType.WEIGHT
+    }
+
+    return when (measureType) {
+        RecordMeasureType.WEIGHT -> {
+            if (record.reps > 1) "${record.reps} x ${record.weight.toInt()} kg"
+            else "${record.weight.toInt()} kg"
+        }
+        RecordMeasureType.REPS -> {
+            "${record.reps} tekrar"
+        }
+        RecordMeasureType.TIME -> {
+            val seconds = record.weight.toInt()
+            if (seconds > 0) FormatHelpers.formatDuration(seconds) else "${record.reps} tekrar"
+        }
+        RecordMeasureType.CALORIES -> {
+            "${record.weight.toInt()} kcal"
+        }
+        RecordMeasureType.DISTANCE -> {
+            "%.2f km".format(record.weight)
+        }
+    }
+}
+
 @Composable
 private fun RecordCard(
     record: PersonalRecord,
@@ -1036,7 +1084,7 @@ private fun RecordCard(
         }
     }
 
-    val details = "${record.reps} x 1 / ${record.weight.toInt()} kg"
+    val details = remember(record) { formatRecordDetailText(record) }
 
     val topShape = RoundedCornerShape(12.dp)
     val headerShape = if (isExpanded)

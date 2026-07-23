@@ -74,7 +74,6 @@ private data class MenuItemData(
 )
 
 private val menuItems = listOf(
-    MenuItemData("Sonuçlar",       Icons.Filled.ShowChart,      Routes.RESULTS),
     MenuItemData("Aktivite Geçmişi", Icons.Filled.BarChart,       Routes.PERSONAL_RECORDS),
     MenuItemData("Randevular",     Icons.Filled.CalendarToday,  Routes.APPOINTMENTS),
     MenuItemData("Takvim",         Icons.Filled.CalendarMonth,  Routes.CALENDAR),
