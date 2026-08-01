@@ -32,7 +32,7 @@ android {
 
     buildTypes {
         release {
-            isMinifyEnabled = false
+            isMinifyEnabled = true
             signingConfig = signingConfigs.getByName("release")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
@@ -130,7 +130,7 @@ dependencies {
     implementation("com.google.android.gms:play-services-maps:19.0.0")
 
     // Health Connect (real-time heart rate on Android 13+)
-    implementation("androidx.health.connect:connect-client:1.1.0-alpha09")
+    implementation("androidx.health.connect:connect-client:1.1.0-alpha10")
 
     // Pusher
     implementation(libs.pusher.channels)

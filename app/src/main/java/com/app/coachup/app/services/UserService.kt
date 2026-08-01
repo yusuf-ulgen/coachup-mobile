@@ -435,13 +435,23 @@ object UserService {
         return publicUrl
     }
 
-    private fun compressUriToJpeg(context: android.content.Context, uri: android.net.Uri): ByteArray {
-        val input = context.contentResolver.openInputStream(uri)
-            ?: throw IllegalStateException("Görsel okunamadı")
-        val bitmap = input.use { BitmapFactory.decodeStream(it) }
-            ?: throw IllegalStateException("Görsel çözümlenemedi")
-        val maxSide = 1000
-        val scale = maxOf(bitmap.width, bitmap.height).toFloat() / maxSide
+    private fun compressUriToJpeg(context: android.content.Context, uri: android.net.Uri, maxEdge: Int = 1000, quality: Int = 80): ByteArray {
+        // 1. Aşama: Sadece boyutları oku — belleğe bitmap yükleme
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        context.contentResolver.openFileDescriptor(uri, "r")?.use { pfd ->
+            BitmapFactory.decodeFileDescriptor(pfd.fileDescriptor, null, bounds)
+        }
+        if (bounds.outWidth <= 0 || bounds.outHeight <= 0) {
+            throw IllegalStateException("Görsel okunamadı")
+        }
+        // 2. Aşama: inSampleSize ile küçültülmüş decode
+        val sampleSize = calculateInSampleSize(bounds.outWidth, bounds.outHeight, maxEdge)
+        val decodeOpts = BitmapFactory.Options().apply { inSampleSize = sampleSize }
+        val bitmap = context.contentResolver.openFileDescriptor(uri, "r")?.use { pfd ->
+            BitmapFactory.decodeFileDescriptor(pfd.fileDescriptor, null, decodeOpts)
+        } ?: throw IllegalStateException("Görsel çözümlenemedi")
+        // 3. Aşama: İnce ölçekleme + sıkıştırma
+        val scale = maxOf(bitmap.width, bitmap.height).toFloat() / maxEdge
         val scaled = if (scale > 1f) {
             Bitmap.createScaledBitmap(
                 bitmap,
@@ -450,14 +460,19 @@ object UserService {
                 true
             )
         } else bitmap
-
         val out = java.io.ByteArrayOutputStream()
-        scaled.compress(Bitmap.CompressFormat.JPEG, 80, out)
+        scaled.compress(Bitmap.CompressFormat.JPEG, quality, out)
         if (scaled != bitmap) {
             scaled.recycle()
         }
         bitmap.recycle()
         return out.toByteArray()
+    }
+
+    private fun calculateInSampleSize(width: Int, height: Int, maxEdge: Int): Int {
+        var size = 1
+        while (maxOf(width, height) / (size * 2) > maxEdge) size *= 2
+        return size
     }
 
     // -----------------------------------------------------------------------

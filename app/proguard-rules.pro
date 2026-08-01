@@ -12,10 +12,13 @@
 #   public *;
 #}
 
-# Uncomment this to preserve the line number information for
-# debugging stack traces.
-#-keepattributes SourceFile,LineNumberTable
+# ── Pusher ──────────────────────────────────────────────────────────────────
+# Pusher reflection ile çalışır; tüm client sınıfları korunmalı
+-keep class com.pusher.client.** { *; }
 
-# If you keep the line number information, uncomment this to
-# hide the original source file name.
-#-renamesourcefileattribute SourceFile
+# ── Health Connect (ihtiyatlı) ───────────────────────────────────────────────
+-keep class androidx.health.connect.client.** { *; }
+
+# ── Stack trace okunabilirliği ───────────────────────────────────────────────
+-keepattributes SourceFile,LineNumberTable
+-renamesourcefileattribute SourceFile
