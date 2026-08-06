@@ -1,42 +1,44 @@
-*.iml
-.gradle
-/local.properties
-/.idea/caches
-/.idea/libraries
-/.idea/modules.xml
-/.idea/workspace.xml
-/.idea/navEditor.xml
-/.idea/assetWizardSettings.xml
-.DS_Store
-/build
-/captures
-.externalNativeBuild
-.cxx
-local.properties
+# Learn more https://docs.github.com/en/get-started/getting-started-with-git/ignoring-files
 
-# Supabase CLI local
-supabase/.temp/
+# dependencies
+node_modules/
 
-# AI agent workspace config and logs
-.gemini/
-*.txt
-claude*
-gemini*
-agy*
-codex*
-.claude/
+# Expo
+.expo/
+dist/
+web-build/
+expo-env.d.ts
 
-# App builds & keys
-*.apk
-*.aab
+# Native
+.kotlin/
+*.orig.*
 *.jks
-*.keystore
+*.p8
+*.p12
+*.key
+*.mobileprovision
+
+# Metro
+.metro-health-check*
+
+# debug
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+
+# macOS
+.DS_Store
 *.pem
 
-# Kotlin & IDE
-.kotlin/
-.idea/
+# local env files
+.env*.local
 
-# Scratch and temp files
-scratch/
+# typescript
+*.tsbuildinfo
+
+# generated native folders
+/ios
+/android
+rn-temp/
+.rn-gitignore
 

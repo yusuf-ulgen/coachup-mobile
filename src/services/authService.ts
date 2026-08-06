@@ -1,0 +1,86 @@
+import { supabase } from './supabaseClient';
+import { GYM_CONFIG } from '../config/gym';
+
+export const AuthService = {
+  async signUp(
+    email: string,
+    password: string,
+    name: string,
+    gender: string,
+    isIndividual: boolean = true,
+    gymId: string = GYM_CONFIG.GYM_ID
+  ) {
+    if (!email || !email.includes('@')) {
+      throw new Error('Geçersiz email adresi');
+    }
+    if (password.length < 6) {
+      throw new Error('Şifre en az 6 karakter olmalıdır');
+    }
+
+    const { data, error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: {
+        data: {
+          name,
+          gender,
+          account_type: isIndividual ? 'individual' : 'gym',
+          role: isIndividual ? 'individual' : 'member',
+          gym_id: gymId,
+          gym_name: GYM_CONFIG.GYM_NAME,
+          default_location: GYM_CONFIG.DEFAULT_LOCATION,
+        },
+      },
+    });
+
+    if (error) {
+      throw new Error(`Kayıt başarısız: ${error.message}`);
+    }
+
+    return data;
+  },
+
+  async signIn(email: string, password: string) {
+    if (!email || !email.includes('@')) {
+      throw new Error('Geçersiz email adresi');
+    }
+    if (!password) {
+      throw new Error('Şifre boş olamaz');
+    }
+
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    });
+
+    if (error) {
+      throw new Error(`Giriş başarısız: ${error.message}`);
+    }
+
+    return data;
+  },
+
+  async signOut() {
+    const { error } = await supabase.auth.signOut();
+    if (error) {
+      throw new Error(`Çıkış başarısız: ${error.message}`);
+    }
+  },
+
+  async getCurrentUser() {
+    const { data } = await supabase.auth.getUser();
+    return data.user;
+  },
+
+  async getSession() {
+    const { data } = await supabase.auth.getSession();
+    return data.session;
+  },
+
+  async resetPasswordForEmail(email: string) {
+    const { error } = await supabase.auth.resetPasswordForEmail(email);
+    if (error) {
+      throw new Error(`Şifre sıfırlama başarısız: ${error.message}`);
+    }
+  },
+};
