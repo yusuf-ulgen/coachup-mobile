@@ -9,6 +9,11 @@ export interface TrainingProgram {
   is_active: boolean;
   privacy?: string;
   exercises_count?: number;
+  program_text?: string;
+  exercise_names?: string[];
+  difficulty?: 'beginner' | 'intermediate' | 'advanced' | string;
+  visible_member_ids?: string[];
+  source?: 'gym' | 'ai' | 'builtin';
 }
 
 export interface TrainingSession {
@@ -40,9 +45,28 @@ export const TrainingService = {
 
       const { data, error } = await query.order('name', { ascending: true });
       if (error) throw error;
-      return data || [];
+      return (data || []).map((p: any) => ({ ...p, source: 'gym' }));
     } catch (e) {
       console.error('Error fetching gym programs:', e);
+      return [];
+    }
+  },
+
+  async fetchAiPrograms(searchText?: string): Promise<TrainingProgram[]> {
+    try {
+      let query = supabase
+        .from('ai_programs')
+        .select('*');
+
+      if (searchText) {
+        query = query.ilike('name', `%${searchText}%`);
+      }
+
+      const { data, error } = await query;
+      if (error) throw error;
+      return (data || []).map((p: any) => ({ ...p, source: 'ai' }));
+    } catch (e) {
+      console.error('Error fetching AI programs:', e);
       return [];
     }
   },

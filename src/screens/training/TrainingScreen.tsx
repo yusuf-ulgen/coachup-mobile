@@ -8,6 +8,7 @@ import {
   TextInput,
   ActivityIndicator,
   FlatList,
+  Alert,
 } from 'react-native';
 import {
   BarChart2,
@@ -17,6 +18,7 @@ import {
   Dumbbell,
   ChevronDown,
   ChevronUp,
+  XCircle,
 } from 'lucide-react-native';
 import { Colors } from '../../theme/colors';
 import { AuthService } from '../../services/authService';
@@ -24,6 +26,7 @@ import { TrainingService, TrainingProgram } from '../../services/trainingService
 import { WorkoutGoalSheet, WorkoutGoal } from '../../components/WorkoutGoalSheet';
 import { Header } from '../../components/Header';
 import { SideMenu } from '../../components/SideMenu';
+import { supabase } from '../../services/supabaseClient';
 
 interface TrainingScreenProps {
   navigation?: any;
@@ -44,6 +47,7 @@ export const TrainingScreen: React.FC<TrainingScreenProps> = ({ navigation }) =>
   const [searchText, setSearchText] = useState('');
   const [userProfile, setUserProfile] = useState<any>(null);
   const [gymPrograms, setGymPrograms] = useState<TrainingProgram[]>([]);
+  const [aiPrograms, setAiPrograms] = useState<TrainingProgram[]>([]);
   const [loading, setLoading] = useState(false);
   const [expandedProgramId, setExpandedProgramId] = useState<string | null>(null);
 
@@ -57,8 +61,12 @@ export const TrainingScreen: React.FC<TrainingScreenProps> = ({ navigation }) =>
       try {
         const profile = await AuthService.getCurrentProfile();
         setUserProfile(profile);
-        const programs = await TrainingService.fetchGymPrograms(profile?.gym_id);
+        const [programs, aiProgs] = await Promise.all([
+          TrainingService.fetchGymPrograms(profile?.gym_id),
+          TrainingService.fetchAiPrograms(),
+        ]);
         setGymPrograms(programs);
+        setAiPrograms(aiProgs);
       } catch (e) {
         console.error('Error loading training programs:', e);
       } finally {
@@ -68,9 +76,184 @@ export const TrainingScreen: React.FC<TrainingScreenProps> = ({ navigation }) =>
     loadProfileAndPrograms();
   }, []);
 
-  const filteredPrograms = gymPrograms.filter((p) =>
+  const userId = userProfile?.id || userProfile?.user_id;
+
+  const filteredGym = gymPrograms.filter((p) =>
     p.name.toLowerCase().includes(searchText.toLowerCase())
   );
+
+  const personalizedPrograms = filteredGym.filter(
+    (p) =>
+      (p.privacy === 'private' || p.privacy === 'members') &&
+      (userId ? p.visible_member_ids?.includes(userId) : true)
+  );
+
+  const regularGymPrograms = filteredGym.filter(
+    (p) => p.privacy !== 'private' && p.privacy !== 'members'
+  );
+
+  const filteredAiPrograms = aiPrograms.filter((p) =>
+    p.name.toLowerCase().includes(searchText.toLowerCase())
+  );
+
+  const [startingProgramId, setStartingProgramId] = useState<string | null>(null);
+
+  const handleStartProgram = async (prog: TrainingProgram) => {
+    const uid = userProfile?.id || userProfile?.user_id;
+    if (!uid) return;
+
+    setStartingProgramId(prog.id);
+    try {
+      // Check active in_progress session
+      const { data: activeData } = await supabase
+        .from('training_sessions')
+        .select('*')
+        .eq('user_id', uid)
+        .eq('status', 'in_progress')
+        .maybeSingle();
+
+      if (activeData) {
+        Alert.alert(
+          'Aktif Antrenman Mevcut',
+          'Zaten devam eden bir antrenmanınız var. Lütfen önce mevcut antrenmanı bitirin veya antrenmana dönün.',
+          [
+            { text: 'Vazgeç', style: 'cancel' },
+            {
+              text: 'Antrenmana Dön',
+              onPress: () =>
+                navigation?.navigate('ActiveWorkout', {
+                  sessionId: activeData.id,
+                  programId: activeData.program_id,
+                  title: prog.name,
+                }),
+            },
+          ]
+        );
+        return;
+      }
+
+      // Create new session via TrainingService
+      const session = await TrainingService.startSession(uid, prog.id, prog.gym_id);
+      navigation?.navigate('ActiveWorkout', {
+        sessionId: session.id,
+        programId: prog.id,
+        title: prog.name,
+        category: prog.category || 'Salon',
+      });
+    } catch (e: any) {
+      console.error('Start program error:', e);
+      Alert.alert('Hata', 'Antrenman başlatılamadı: ' + (e?.message || e));
+    } finally {
+      setStartingProgramId(null);
+    }
+  };
+
+  const renderProgramCard = (prog: TrainingProgram) => {
+    const isExpanded = expandedProgramId === prog.id;
+    const isStarting = startingProgramId === prog.id;
+    const accentColor = prog.source === 'ai' ? '#7B1FA2' : Colors.primary;
+    const difficultyMap: Record<string, { label: string; color: string }> = {
+      beginner: { label: 'Başlangıç', color: '#4CAF50' },
+      intermediate: { label: 'Orta', color: '#FF9800' },
+      advanced: { label: 'İleri', color: '#F44336' },
+    };
+    const diffInfo = prog.difficulty ? difficultyMap[prog.difficulty] : null;
+
+    return (
+      <View
+        key={prog.id}
+        style={[
+          styles.programCard,
+          { borderLeftWidth: 4, borderLeftColor: accentColor },
+        ]}
+      >
+        <View style={styles.cardHeaderRow}>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.progTitle}>{prog.name}</Text>
+            <View style={styles.badgeRow}>
+              <View
+                style={[
+                  styles.badge,
+                  { backgroundColor: `${accentColor}26` },
+                ]}
+              >
+                <Text style={[styles.badgeText, { color: accentColor }]}>
+                  {prog.source === 'ai' ? 'AI Program' : 'Salon'}
+                </Text>
+              </View>
+              {diffInfo && (
+                <Text style={{ color: diffInfo.color, fontSize: 12, fontWeight: '600' }}>
+                  {diffInfo.label}
+                </Text>
+              )}
+              {prog.category && (
+                <Text style={styles.categoryText}>{prog.category}</Text>
+              )}
+            </View>
+          </View>
+          <TouchableOpacity
+            style={styles.startButton}
+            activeOpacity={0.8}
+            disabled={isStarting}
+            onPress={() => handleStartProgram(prog)}
+          >
+            {isStarting ? (
+              <ActivityIndicator size="small" color={Colors.allWhite} />
+            ) : (
+              <Text style={styles.startButtonText}>Başlat</Text>
+            )}
+          </TouchableOpacity>
+        </View>
+
+        {prog.description ? (
+          <Text style={styles.progDescription}>{prog.description}</Text>
+        ) : null}
+
+        <TouchableOpacity
+          style={styles.expandRow}
+          onPress={() => setExpandedProgramId(isExpanded ? null : prog.id)}
+          activeOpacity={0.7}
+        >
+          <Text style={styles.expandText}>Program Detayı</Text>
+          {isExpanded ? (
+            <ChevronUp size={18} color={Colors.textSecondaryDark} />
+          ) : (
+            <ChevronDown size={18} color={Colors.textSecondaryDark} />
+          )}
+        </TouchableOpacity>
+
+        {isExpanded && (
+          <View style={{ marginTop: 10, paddingHorizontal: 4, gap: 6 }}>
+            {prog.program_text ? (
+              <Text style={{ fontSize: 13, color: Colors.textDark }}>
+                {prog.program_text}
+              </Text>
+            ) : prog.exercise_names && prog.exercise_names.length > 0 ? (
+              <View style={{ gap: 4 }}>
+                {prog.exercise_names.slice(0, 12).map((exName, i) => (
+                  <Text key={i} style={{ fontSize: 13, color: Colors.textDark }}>
+                    <Text style={{ fontWeight: '700', color: accentColor }}>
+                      {i + 1}.{' '}
+                    </Text>
+                    {exName}
+                  </Text>
+                ))}
+                {prog.exercise_names.length > 12 && (
+                  <Text style={{ fontSize: 12, color: Colors.textSecondaryDark, marginTop: 4 }}>
+                    +{prog.exercise_names.length - 12} hareket daha
+                  </Text>
+                )}
+              </View>
+            ) : (
+              <Text style={{ fontSize: 12, color: Colors.textSecondaryDark }}>
+                Egzersiz detayları bulunmuyor
+              </Text>
+            )}
+          </View>
+        )}
+      </View>
+    );
+  };
 
   const [menuVisible, setMenuVisible] = useState(false);
 
@@ -105,6 +288,11 @@ export const TrainingScreen: React.FC<TrainingScreenProps> = ({ navigation }) =>
             value={searchText}
             onChangeText={setSearchText}
           />
+          {searchText.length > 0 && (
+            <TouchableOpacity onPress={() => setSearchText('')} activeOpacity={0.7}>
+              <XCircle size={18} color={Colors.textSecondaryDark} />
+            </TouchableOpacity>
+          )}
         </View>
 
         {/* Rekor Denemesi Card Button */}
@@ -143,70 +331,56 @@ export const TrainingScreen: React.FC<TrainingScreenProps> = ({ navigation }) =>
           ))}
         </View>
 
+        {/* Kişiye Özel Programlar Section */}
+        {personalizedPrograms.length > 0 && (
+          <View style={{ marginTop: 24 }}>
+            <View style={styles.sectionHeaderRow}>
+              <View style={styles.sectionAccentLine} />
+              <Text style={styles.sectionTitle}>Kişiye Özel Programlar</Text>
+            </View>
+            <Text style={styles.sectionSubtitle}>
+              Kişisel antrenörünüzün size özel hazırladığı programlar
+            </Text>
+            <View style={styles.programList}>
+              {personalizedPrograms.map(renderProgramCard)}
+            </View>
+          </View>
+        )}
+
         {/* Salon Antrenmanları Section */}
         <View style={[styles.sectionHeaderRow, { marginTop: 24 }]}>
           <View style={styles.sectionAccentLine} />
           <Text style={styles.sectionTitle}>Salon Antrenmanları</Text>
         </View>
-        <Text style={styles.sectionSubtitle}>Salonun kendi antrenmanları (CrossFit WOD, HIIT vb.)</Text>
+        <Text style={styles.sectionSubtitle}>
+          Salonun kendi antrenmanları (CrossFit WOD, HIIT vb.)
+        </Text>
 
         {loading ? (
           <ActivityIndicator size="large" color={Colors.primary} style={{ marginTop: 20 }} />
-        ) : filteredPrograms.length === 0 ? (
+        ) : regularGymPrograms.length === 0 ? (
           <View style={styles.emptyCard}>
             <Text style={styles.emptyText}>Salon antrenmanı bulunamadı</Text>
           </View>
         ) : (
           <View style={styles.programList}>
-            {filteredPrograms.map((prog) => {
-              const isExpanded = expandedProgramId === prog.id;
-              return (
-                <View key={prog.id} style={styles.programCard}>
-                  <View style={styles.cardHeaderRow}>
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.progTitle}>{prog.name}</Text>
-                      <View style={styles.badgeRow}>
-                        <View style={styles.badge}>
-                          <Text style={styles.badgeText}>Salon</Text>
-                        </View>
-                        {prog.category && (
-                          <Text style={styles.categoryText}>{prog.category}</Text>
-                        )}
-                      </View>
-                    </View>
-                    <TouchableOpacity
-                      style={styles.startButton}
-                      activeOpacity={0.8}
-                      onPress={() =>
-                        navigation?.navigate('ActiveWorkout', {
-                          title: prog.name,
-                          category: prog.category || 'Salon',
-                        })
-                      }
-                    >
-                      <Text style={styles.startButtonText}>Başlat</Text>
-                    </TouchableOpacity>
-                  </View>
+            {regularGymPrograms.map(renderProgramCard)}
+          </View>
+        )}
 
-                  {prog.description ? (
-                    <Text style={styles.progDescription}>{prog.description}</Text>
-                  ) : null}
-
-                  <TouchableOpacity
-                    style={styles.expandRow}
-                    onPress={() => setExpandedProgramId(isExpanded ? null : prog.id)}
-                    activeOpacity={0.7}
-                  >
-                    <Text style={styles.expandText}>Program Detayı</Text>
-                    {isExpanded ? (
-                      <ChevronUp size={18} color={Colors.textSecondaryDark} />
-                    ) : (
-                      <ChevronDown size={18} color={Colors.textSecondaryDark} />
-                    )}
-                  </TouchableOpacity>
-                </View>
-              );
-            })}
+        {/* AI Programları Section */}
+        {filteredAiPrograms.length > 0 && (
+          <View style={{ marginTop: 24 }}>
+            <View style={styles.sectionHeaderRow}>
+              <View style={[styles.sectionAccentLine, { backgroundColor: '#7B1FA2' }]} />
+              <Text style={styles.sectionTitle}>AI Programları</Text>
+            </View>
+            <Text style={styles.sectionSubtitle}>
+              Kişisel yapay zeka programların
+            </Text>
+            <View style={styles.programList}>
+              {filteredAiPrograms.map(renderProgramCard)}
+            </View>
           </View>
         )}
       </ScrollView>
@@ -242,7 +416,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 20,
-    paddingTop: 50,
+    paddingTop: 8,
     paddingBottom: 16,
     backgroundColor: Colors.backgroundDark,
   },
@@ -263,6 +437,11 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.cardDark,
     justifyContent: 'center',
     alignItems: 'center',
+    elevation: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
   },
   scrollContent: {
     paddingHorizontal: 20,
@@ -315,7 +494,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.primary,
   },
   sectionTitle: {
-    fontSize: 18,
+    fontSize: 17,
     fontWeight: '700',
     color: Colors.textDark,
   },

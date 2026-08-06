@@ -14,6 +14,7 @@ import {
 import { useAuth } from '../context/AuthContext';
 import { Colors } from '../theme/colors';
 import { SplashView } from '../components/SplashView';
+import { AuthService } from '../services/authService';
 
 import { LoginScreen } from '../screens/auth/LoginScreen';
 import { RegisterScreen } from '../screens/auth/RegisterScreen';
@@ -40,10 +41,24 @@ const Tab = createBottomTabNavigator();
 const Stack = createNativeStackNavigator();
 
 const CustomTabBar = ({ state, descriptors, navigation }: any) => {
+  const [hasActiveGym, setHasActiveGym] = useState(true);
+
+  useEffect(() => {
+    AuthService.getCurrentProfile()
+      .then((p) => {
+        setHasActiveGym(Boolean(p?.gym_id));
+      })
+      .catch(() => setHasActiveGym(true));
+  }, []);
+
   return (
     <View style={styles.customTabBarContainer}>
       <View style={styles.customTabBarRow}>
         {state.routes.map((route: any, index: number) => {
+          if (route.name === 'QRTab' && !hasActiveGym) {
+            return null;
+          }
+
           const { options } = descriptors[route.key];
           const isFocused = state.index === index;
 
@@ -245,7 +260,7 @@ const styles = StyleSheet.create({
   },
   iconBox: {
     width: 50,
-    height: 38,
+    height: 46,
     borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',

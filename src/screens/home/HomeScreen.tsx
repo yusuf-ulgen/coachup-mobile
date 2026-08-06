@@ -27,6 +27,9 @@ import { ScheduleService, ScheduledProgram } from '../../services/scheduleServic
 import { TrainingService, TrainingSession } from '../../services/trainingService';
 import { GroupClassService, ClassBooking } from '../../services/groupClassService';
 import { GoalService, UserGoal } from '../../services/goalService';
+import { UserService } from '../../services/userService';
+
+import { HomeTabState } from '../../navigation/HomeTabState';
 
 interface HomeScreenProps {
   navigation: any;
@@ -42,9 +45,14 @@ interface WeekDay {
 export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
   const [menuVisible, setMenuVisible] = useState(false);
   const [userProfile, setUserProfile] = useState<any>(null);
-  const [selectedDate, setSelectedDate] = useState<string>(
-    new Date().toISOString().split('T')[0]
+  const [selectedDate, setSelectedDateState] = useState<string>(
+    HomeTabState.selectedDate || new Date().toISOString().split('T')[0]
   );
+
+  const setSelectedDate = (dateStr: string) => {
+    HomeTabState.selectedDate = dateStr;
+    setSelectedDateState(dateStr);
+  };
   const [weekDays, setWeekDays] = useState<WeekDay[]>([]);
   const [loading, setLoading] = useState(false);
 
@@ -54,19 +62,23 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
   const [groupBookings, setGroupBookings] = useState<ClassBooking[]>([]);
   const [userGoals, setUserGoals] = useState<UserGoal[]>([]);
 
+  const [availableMemberships, setAvailableMemberships] = useState<any[]>([]);
+  const [showMembershipPicker, setShowMembershipPicker] = useState(false);
+
   useEffect(() => {
     // Generate 60 days range (30 days past + today + 29 days future)
     const days: WeekDay[] = [];
     const today = new Date();
     const todayStr = today.toISOString().split('T')[0];
-    const dayNames = ['Paz', 'Pzt', 'Sal', 'Çar', 'Per', 'Cm', 'Cts'];
+    const dayNames = ['Pzt', 'Sal', 'Çar', 'Per', 'Cm', 'Cts', 'Paz'];
 
     for (let i = -30; i < 30; i++) {
       const d = new Date();
       d.setDate(today.getDate() + i);
       const dateStr = d.toISOString().split('T')[0];
+      const nameIndex = (d.getDay() + 6) % 7;
       days.push({
-        name: dayNames[d.getDay()],
+        name: dayNames[nameIndex],
         dateString: dateStr,
         dayOfMonth: d.getDate(),
         isToday: dateStr === todayStr,
@@ -79,6 +91,27 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
       try {
         const profile = await AuthService.getCurrentProfile();
         setUserProfile(profile);
+        if (profile) {
+          const uid = profile.id || profile.user_id;
+          const memberships = await UserService.fetchAvailableMemberships(uid);
+          setAvailableMemberships(memberships);
+          if (memberships.length > 1 && !profile.gym_id) {
+            setShowMembershipPicker(true);
+          }
+          if (profile.default_screen && !HomeTabState.hasAppliedDefaultTab) {
+            HomeTabState.hasAppliedDefaultTab = true;
+            const tabMap: Record<string, string> = {
+              calendar: 'CalendarTab',
+              training: 'TrainingTab',
+              community: 'CommunityTab',
+              qr: 'QRTab',
+            };
+            const targetTab = tabMap[profile.default_screen];
+            if (targetTab) {
+              navigation?.navigate(targetTab);
+            }
+          }
+        }
       } catch (e) {
         console.error('Error fetching profile:', e);
       }
@@ -90,14 +123,17 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
   const fetchLiveData = useCallback(async () => {
     if (!userProfile?.id && !userProfile?.user_id) return;
     const userId = userProfile?.id || userProfile?.user_id;
+    const isIndividualUser = !userProfile?.gym_id;
 
     setLoading(true);
     try {
       const [programs, sessions, bookings, goals] = await Promise.all([
         ScheduleService.fetchScheduledPrograms(userId, selectedDate),
         TrainingService.fetchCompletedSessionsForDate(userId, selectedDate),
-        GroupClassService.fetchBookingsForDate(userId, selectedDate),
-        GoalService.fetchGoalsForUser(userId),
+        isIndividualUser
+          ? Promise.resolve([])
+          : GroupClassService.fetchBookingsForDate(userId, selectedDate),
+        GoalService.fetchGoalsForDate(userId, selectedDate),
       ]);
 
       setScheduledPrograms(programs);
@@ -157,10 +193,19 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
         {/* Welcome Section */}
         <View style={styles.welcomeSection}>
           <View style={{ flex: 1 }}>
-            <Text style={styles.welcomeTitle}>
-              Merhaba, {userProfile?.name || 'Sporcu'}!
-            </Text>
-            <Text style={styles.welcomeSubtitle}>Hadi Başlayalım!</Text>
+            {userProfile?.name ? (
+              <>
+                <Text style={styles.welcomeTitle}>
+                  Merhaba, {userProfile.name}!
+                </Text>
+                <Text style={styles.welcomeSubtitle}>Hadi Başlayalım!</Text>
+              </>
+            ) : (
+              <>
+                <Text style={styles.welcomeTitleBig}>Hadi</Text>
+                <Text style={styles.welcomeTitleBig}>Başlayalım!</Text>
+              </>
+            )}
           </View>
 
           {/* Streak Counter */}
@@ -169,7 +214,20 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
             onPress={() => navigation.navigate('Streak')}
             activeOpacity={0.7}
           >
-            <Flame size={24} color={Colors.primary} />
+            <Flame
+              size={24}
+              color={
+                streakCount >= 30
+                  ? '#E91E63'
+                  : streakCount >= 14
+                  ? '#FF5722'
+                  : streakCount >= 7
+                  ? '#FF9800'
+                  : streakCount > 0
+                  ? '#FFC107'
+                  : '#9E9E9E'
+              }
+            />
             <Text style={styles.streakCount}>{streakCount}</Text>
             <Text style={styles.streakArrow}>›</Text>
           </TouchableOpacity>
@@ -183,7 +241,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
             keyExtractor={(item) => item.dateString}
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={styles.daySelectorList}
-            initialScrollIndex={30}
+            initialScrollIndex={28}
             getItemLayout={(_, index) => ({
               length: 64,
               offset: 64 * index,
@@ -239,7 +297,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
             <View style={styles.emptyProgramCard}>
               <CalendarIcon size={40} color={Colors.textSecondaryDark} />
               <Text style={styles.emptyProgramText}>
-                Bu gün için henüz program bulunmuyor
+                Bu gün için program bulunmuyor
               </Text>
             </View>
           ) : (
@@ -277,9 +335,9 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
                       </Text>
                     </View>
                     <View style={styles.timeRow}>
-                      <Clock size={14} color="rgba(255,255,255,0.7)" />
+                      <CalendarIcon size={14} color="rgba(255,255,255,0.7)" />
                       <Text style={styles.timeText}>
-                        {prog.start_time} - {prog.end_time}
+                        {prog.start_time} / {prog.end_time}
                       </Text>
                     </View>
                   </View>
@@ -287,22 +345,79 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
               ))}
 
               {/* Completed Sessions */}
-              {completedSessions.map((session) => (
-                <View key={session.id} style={styles.completedCard}>
-                  <View style={styles.completedIconBox}>
-                    <Dumbbell size={22} color={Colors.primary} />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.cardTitle}>
-                      {session.program?.name || 'Antrenman Oturumu'}
-                    </Text>
-                    <View style={styles.statusRow}>
-                      <CheckCircle size={14} color="#4CAF50" />
-                      <Text style={styles.completedStatusText}>Tamamlandı</Text>
+              {completedSessions.map((session: any) => {
+                const completionTime = session.completed_at
+                  ? (() => {
+                      try {
+                        const d = new Date(session.completed_at);
+                        return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+                      } catch {
+                        return null;
+                      }
+                    })()
+                  : null;
+                const durationText =
+                  session.started_at && session.completed_at
+                    ? (() => {
+                        try {
+                          const mins = Math.floor(
+                            (new Date(session.completed_at).getTime() -
+                              new Date(session.started_at).getTime()) /
+                              60000
+                          );
+                          return mins > 0 ? `${mins} dk` : null;
+                        } catch {
+                          return null;
+                        }
+                      })()
+                    : null;
+
+                const categoryEmojis: Record<string, string> = {
+                  running: '🏃',
+                  walking: '🚶',
+                  cycling: '🚴',
+                  swimming: '🏊',
+                  crossfit: '🏋️',
+                  hiit: '⚡',
+                  yoga: '🧘',
+                  custom: '💪',
+                };
+                const emoji =
+                  categoryEmojis[session.category] ||
+                  session.emoji ||
+                  session.program?.emoji;
+
+                return (
+                  <View key={session.id} style={styles.completedCard}>
+                    <View style={styles.completedIconBox}>
+                      {emoji ? (
+                        <Text style={{ fontSize: 24 }}>{emoji}</Text>
+                      ) : (
+                        <Dumbbell size={22} color={Colors.primary} />
+                      )}
                     </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.cardTitle}>
+                        {session.program?.name || session.title || 'Antrenman Oturumu'}
+                      </Text>
+                      <View style={styles.statusRow}>
+                        <CheckCircle size={14} color="#4CAF50" />
+                        <Text style={styles.completedStatusText}>Tamamlandı</Text>
+                      </View>
+                    </View>
+                    {(completionTime || durationText) && (
+                      <View style={{ alignItems: 'flex-end', gap: 2 }}>
+                        {completionTime && (
+                          <Text style={styles.completionTimeText}>{completionTime}</Text>
+                        )}
+                        {durationText && (
+                          <Text style={styles.durationText}>{durationText}</Text>
+                        )}
+                      </View>
+                    )}
                   </View>
-                </View>
-              ))}
+                );
+              })}
             </View>
           )}
         </View>
@@ -315,6 +430,41 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
         userProfile={userProfile}
         onNavigate={(route) => navigation.navigate(route)}
       />
+
+      {/* Membership Picker Modal */}
+      {showMembershipPicker && (
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>Üyelik Seçin</Text>
+            {availableMemberships.map((m: any) => (
+              <TouchableOpacity
+                key={m.id}
+                style={styles.membershipOption}
+                onPress={async () => {
+                  const uid = userProfile?.id || userProfile?.user_id;
+                  const gymId = m.gym?.id || m.plan?.gym_id;
+                  const gymName = m.gym?.name || m.plan?.name || 'Salon';
+                  if (uid && gymId) {
+                    await UserService.selectMembership(uid, gymId, gymName);
+                    setShowMembershipPicker(false);
+                    const updated = await AuthService.getCurrentProfile();
+                    setUserProfile(updated);
+                  }
+                }}
+              >
+                <Text style={{ fontSize: 16, fontWeight: '600', color: Colors.textDark }}>
+                  {m.plan?.name || 'Üyelik'}
+                </Text>
+                {m.gym?.name && (
+                  <Text style={{ fontSize: 13, color: Colors.textSecondaryDark, marginTop: 2 }}>
+                    {m.gym.name}
+                  </Text>
+                )}
+              </TouchableOpacity>
+            ))}
+          </View>
+        </View>
+      )}
     </View>
   );
 };
@@ -331,7 +481,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingTop: 50,
     paddingBottom: 12,
-    backgroundColor: Colors.backgroundDark,
+    backgroundColor: 'transparent',
   },
   circleIconButton: {
     width: 44,
@@ -360,12 +510,17 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   welcomeTitle: {
-    fontSize: 26,
+    fontSize: 28,
+    fontWeight: '700',
+    color: Colors.textDark,
+  },
+  welcomeTitleBig: {
+    fontSize: 32,
     fontWeight: '700',
     color: Colors.textDark,
   },
   welcomeSubtitle: {
-    fontSize: 22,
+    fontSize: 24,
     fontWeight: '500',
     color: Colors.textSecondaryDark,
     marginTop: 2,
@@ -526,6 +681,20 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     padding: 14,
     gap: 12,
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+  },
+  completionTimeText: {
+    fontSize: 13,
+    fontWeight: '500',
+    color: Colors.textDark,
+  },
+  durationText: {
+    fontSize: 12,
+    color: Colors.textSecondaryDark,
   },
   completedIconBox: {
     width: 50,
@@ -545,5 +714,32 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#4CAF50',
     fontWeight: '500',
+  },
+  modalOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.65)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+    zIndex: 999,
+  },
+  modalCard: {
+    width: '100%',
+    backgroundColor: Colors.cardDark,
+    borderRadius: 24,
+    padding: 24,
+    borderWidth: 1,
+    borderColor: Colors.borderDark,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: Colors.textDark,
+    marginBottom: 16,
+  },
+  membershipOption: {
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.borderDark,
   },
 });

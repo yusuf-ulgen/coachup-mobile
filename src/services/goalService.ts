@@ -27,6 +27,25 @@ export const GoalService = {
     }
   },
 
+  async fetchGoalsForDate(userId: string, dateStr: string): Promise<UserGoal[]> {
+    try {
+      const { data, error } = await supabase
+        .from('user_goals')
+        .select('*')
+        .eq('user_id', userId)
+        .or(`target_date.eq.${dateStr},created_at.gte.${dateStr}T00:00:00,created_at.lte.${dateStr}T23:59:59`);
+
+      if (error) throw error;
+      return data || [];
+    } catch (e) {
+      // Fallback: fetch user goals and filter locally if RPC/OR fails
+      const all = await this.fetchGoalsForUser(userId);
+      return all.filter(
+        (g) => g.target_date === dateStr || g.created_at?.startsWith(dateStr)
+      );
+    }
+  },
+
   async createGoal(userId: string, title: string, targetDate?: string) {
     const { data, error } = await supabase.from('user_goals').insert({
       user_id: userId,

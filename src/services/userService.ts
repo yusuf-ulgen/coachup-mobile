@@ -60,4 +60,26 @@ export const UserService = {
     if (error) throw error;
     return data;
   },
+
+  async fetchAvailableMemberships(userId: string) {
+    try {
+      const { data, error } = await supabase
+        .from('user_memberships')
+        .select('*, plan:membership_plans(*), gym:gyms(*)')
+        .eq('user_id', userId);
+
+      if (error) throw error;
+      return data || [];
+    } catch (e) {
+      console.error('Error fetching memberships:', e);
+      return [];
+    }
+  },
+
+  async selectMembership(userId: string, gymId: string, gymName: string) {
+    return this.updateUserProfile(userId, {
+      gym_id: gymId,
+      gym_name: gymName,
+    });
+  },
 };

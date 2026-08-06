@@ -18,6 +18,9 @@ import {
   Users,
   Flag,
   CheckCircle,
+  Edit3,
+  Trash2,
+  Star,
 } from 'lucide-react-native';
 import { Colors } from '../../theme/colors';
 import { Header } from '../../components/Header';
@@ -27,6 +30,7 @@ import { ScheduleService, ScheduledProgram } from '../../services/scheduleServic
 import { TrainingService, TrainingSession } from '../../services/trainingService';
 import { GroupClassService, ClassBooking } from '../../services/groupClassService';
 import { GoalService, UserGoal } from '../../services/goalService';
+import { GymEventService, GymEvent, EventParticipant } from '../../services/gymEventService';
 import { supabase } from '../../services/supabaseClient';
 import { TextInput } from 'react-native';
 
@@ -52,15 +56,76 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({ navigation }) =>
   const [newEventStartTime, setNewEventStartTime] = useState('09:00');
   const [newEventEndTime, setNewEventEndTime] = useState('10:00');
 
+  const [eventDays, setEventDays] = useState<Set<number>>(new Set());
+
   const [scheduledPrograms, setScheduledPrograms] = useState<ScheduledProgram[]>([]);
   const [completedSessions, setCompletedSessions] = useState<TrainingSession[]>([]);
   const [groupBookings, setGroupBookings] = useState<ClassBooking[]>([]);
   const [userGoals, setUserGoals] = useState<UserGoal[]>([]);
+  const [userEvents, setUserEvents] = useState<any[]>([]);
+  const [editingEventId, setEditingEventId] = useState<string | null>(null);
+  const [gymEvents, setGymEvents] = useState<GymEvent[]>([]);
+  const [eventParticipations, setEventParticipations] = useState<EventParticipant[]>([]);
 
   const year = currentDate.getFullYear();
   const month = currentDate.getMonth();
+  const yearMonthPrefix = `${year}-${String(month + 1).padStart(2, '0')}`;
 
-  const selectedDateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(selectedDay).padStart(2, '0')}`;
+  const selectedDateStr = `${yearMonthPrefix}-${String(selectedDay).padStart(2, '0')}`;
+
+  const loadMonthEventDays = useCallback(async () => {
+    if (!userProfile?.id && !userProfile?.user_id) return;
+    const userId = userProfile?.id || userProfile?.user_id;
+    try {
+      const [eventsRes, programsRes, goalsRes] = await Promise.all([
+        supabase
+          .from('user_events')
+          .select('event_date')
+          .eq('user_id', userId)
+          .gte('event_date', `${yearMonthPrefix}-01`)
+          .lte('event_date', `${yearMonthPrefix}-31`),
+        supabase
+          .from('scheduled_programs')
+          .select('scheduled_date')
+          .eq('user_id', userId)
+          .gte('scheduled_date', `${yearMonthPrefix}-01`)
+          .lte('scheduled_date', `${yearMonthPrefix}-31`),
+        supabase
+          .from('user_goals')
+          .select('target_date, created_at')
+          .eq('user_id', userId),
+      ]);
+
+      const daysSet = new Set<number>();
+      eventsRes.data?.forEach((item: any) => {
+        if (item.event_date) {
+          const d = parseInt(item.event_date.split('-')[2], 10);
+          if (!isNaN(d)) daysSet.add(d);
+        }
+      });
+      programsRes.data?.forEach((item: any) => {
+        if (item.scheduled_date) {
+          const d = parseInt(item.scheduled_date.split('-')[2], 10);
+          if (!isNaN(d)) daysSet.add(d);
+        }
+      });
+      goalsRes.data?.forEach((item: any) => {
+        const dateStr = item.target_date || item.created_at;
+        if (dateStr && dateStr.startsWith(yearMonthPrefix)) {
+          const d = parseInt(dateStr.split('-')[2], 10);
+          if (!isNaN(d)) daysSet.add(d);
+        }
+      });
+
+      setEventDays(daysSet);
+    } catch (e) {
+      console.error('Error loading month event days:', e);
+    }
+  }, [userProfile, yearMonthPrefix]);
+
+  useEffect(() => {
+    loadMonthEventDays();
+  }, [loadMonthEventDays]);
 
   useEffect(() => {
     const loadProfile = async () => {
@@ -73,24 +138,34 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({ navigation }) =>
     };
     loadProfile();
   }, []);
-
   const loadCalendarContent = useCallback(async () => {
     if (!userProfile?.id && !userProfile?.user_id) return;
     const userId = userProfile?.id || userProfile?.user_id;
 
     setLoading(true);
     try {
-      const [programs, sessions, bookings, goals] = await Promise.all([
-        ScheduleService.fetchScheduledPrograms(userId, selectedDateStr),
-        TrainingService.fetchCompletedSessionsForDate(userId, selectedDateStr),
-        GroupClassService.fetchBookingsForDate(userId, selectedDateStr),
-        GoalService.fetchGoalsForUser(userId),
-      ]);
+      const [programs, sessions, bookings, goals, eventsRes, gymEventsData, participationsData] =
+        await Promise.all([
+          ScheduleService.fetchScheduledPrograms(userId, selectedDateStr),
+          TrainingService.fetchCompletedSessionsForDate(userId, selectedDateStr),
+          GroupClassService.fetchBookingsForDate(userId, selectedDateStr),
+          GoalService.fetchGoalsForDate(userId, selectedDateStr),
+          supabase
+            .from('user_events')
+            .select('*')
+            .eq('user_id', userId)
+            .eq('event_date', selectedDateStr),
+          GymEventService.fetchEventsForDate(selectedDateStr),
+          GymEventService.fetchParticipationsForDate(userId, selectedDateStr),
+        ]);
 
       setScheduledPrograms(programs);
       setCompletedSessions(sessions);
       setGroupBookings(bookings);
       setUserGoals(goals);
+      setUserEvents(eventsRes.data || []);
+      setGymEvents(gymEventsData);
+      setEventParticipations(participationsData);
     } catch (e) {
       console.error('Error loading calendar content:', e);
     } finally {
@@ -128,7 +203,9 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({ navigation }) =>
     scheduledPrograms.length > 0 ||
     completedSessions.length > 0 ||
     groupBookings.length > 0 ||
-    userGoals.length > 0;
+    userGoals.length > 0 ||
+    userEvents.length > 0 ||
+    gymEvents.length > 0;
 
   const [menuVisible, setMenuVisible] = useState(false);
 
@@ -136,9 +213,11 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({ navigation }) =>
     <View style={styles.container}>
       <Header navigation={navigation} onOpenDrawer={() => setMenuVisible(true)} />
       <SideMenu visible={menuVisible} onClose={() => setMenuVisible(false)} navigation={navigation} />
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>Takvim</Text>
-      </View>
+      {navigation?.canGoBack && navigation.canGoBack() && (
+        <View style={styles.header}>
+          <Text style={styles.headerTitle}>Takvim</Text>
+        </View>
+      )}
 
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         {/* Month Header Navigation */}
@@ -198,6 +277,14 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({ navigation }) =>
                 >
                   {dayNum}
                 </Text>
+                {eventDays.has(dayNum) && (
+                  <View
+                    style={[
+                      styles.eventDot,
+                      isSelected && { backgroundColor: Colors.allWhite },
+                    ]}
+                  />
+                )}
               </TouchableOpacity>
             );
           })}
@@ -207,11 +294,13 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({ navigation }) =>
         <View style={styles.scheduleSection}>
           <View style={styles.sectionTitleRow}>
             <CalendarIcon size={20} color={Colors.primary} />
-            <Text style={styles.sectionTitle}>Günün Programı</Text>
+            <Text style={styles.sectionTitle}>
+              {!userProfile?.gym_id ? 'Katıldığım Etkinlikler' : 'Günün Programı'}
+            </Text>
           </View>
 
           {loading ? (
-            <ActivityIndicator size="large" color={Colors.primary} style={{ marginTop: 24 }} />
+            <ActivityIndicator size="small" color={Colors.primary} style={{ marginTop: 24 }} />
           ) : !hasContent ? (
             <View style={styles.emptyCard}>
               <CalendarIcon size={36} color={Colors.textSecondaryDark} />
@@ -220,19 +309,29 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({ navigation }) =>
           ) : (
             <View style={styles.contentList}>
               {/* Goals */}
-              {userGoals.map((goal) => (
-                <View key={goal.id} style={styles.cardItem}>
-                  <View style={styles.goalIconBox}>
-                    <Flag size={20} color="#FF9800" />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.cardTitle}>{goal.title}</Text>
-                    <Text style={styles.cardSubtitle}>
-                      Hedef · {goal.progress_percentage}% tamamlandı
+              {userGoals.length > 0 && (
+                <View style={{ gap: 8, marginBottom: 8 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4 }}>
+                    <Flag size={16} color="#FF9800" />
+                    <Text style={{ fontSize: 16, fontWeight: '600', color: Colors.textDark }}>
+                      Hedefler
                     </Text>
                   </View>
+                  {userGoals.map((goal) => (
+                    <View key={goal.id} style={styles.cardItem}>
+                      <View style={styles.goalIconBox}>
+                        <Flag size={20} color="#FF9800" />
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.cardTitle}>{goal.title}</Text>
+                        <Text style={styles.cardSubtitle}>
+                          Hedef · {goal.progress_percentage}% tamamlandı
+                        </Text>
+                      </View>
+                    </View>
+                  ))}
                 </View>
-              ))}
+              )}
 
               {/* Scheduled Programs */}
               {scheduledPrograms.map((prog) => (
@@ -252,9 +351,9 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({ navigation }) =>
                       </Text>
                     </View>
                     <View style={styles.timeRow}>
-                      <Clock size={14} color="rgba(255,255,255,0.7)" />
+                      <CalendarIcon size={14} color="rgba(255,255,255,0.7)" />
                       <Text style={styles.timeText}>
-                        {prog.start_time} - {prog.end_time}
+                        {prog.start_time} / {prog.end_time}
                       </Text>
                     </View>
                   </View>
@@ -273,8 +372,25 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({ navigation }) =>
                     </Text>
                     <Text style={styles.cardSubtitle}>
                       {booking.group_class?.instructor_name || 'Eğitmen'}
+                      {booking.group_class?.start_time ? ` · ${booking.group_class.start_time}` : ''}
                     </Text>
                   </View>
+                  <TouchableOpacity
+                    style={[styles.joinButton, styles.joinedButton]}
+                    onPress={async () => {
+                      try {
+                        await GroupClassService.cancelBooking(booking.id);
+                        loadCalendarContent();
+                      } catch (e) {
+                        console.error('Error cancelling class booking:', e);
+                      }
+                    }}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={[styles.joinButtonText, styles.joinedButtonText]}>
+                      Ayrıl
+                    </Text>
+                  </TouchableOpacity>
                 </View>
               ))}
 
@@ -295,6 +411,117 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({ navigation }) =>
                   </View>
                 </View>
               ))}
+
+              {/* User Events */}
+              {userEvents.length > 0 && (
+                <View style={{ gap: 8, marginTop: 8 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                    <CalendarIcon size={16} color={Colors.primary} />
+                    <Text style={{ fontSize: 16, fontWeight: '600', color: Colors.textDark }}>
+                      Etkinliklerim
+                    </Text>
+                  </View>
+                  {userEvents.map((evt) => (
+                    <View key={evt.id} style={styles.cardItem}>
+                      <View style={styles.iconBox}>
+                        <CalendarIcon size={20} color={Colors.primary} />
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.cardTitle}>{evt.title}</Text>
+                        <Text style={styles.cardSubtitle}>
+                          {evt.start_time} / {evt.end_time}
+                        </Text>
+                      </View>
+                      <TouchableOpacity
+                        onPress={() => {
+                          setEditingEventId(evt.id);
+                          setNewEventTitle(evt.title);
+                          setNewEventStartTime(evt.start_time || '09:00');
+                          setNewEventEndTime(evt.end_time || '10:00');
+                          setShowAddEventModal(true);
+                        }}
+                        style={{ padding: 6 }}
+                        activeOpacity={0.7}
+                      >
+                        <Edit3 size={18} color={Colors.textSecondaryDark} />
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        onPress={async () => {
+                          try {
+                            await supabase.from('user_events').delete().eq('id', evt.id);
+                            loadCalendarContent();
+                            loadMonthEventDays();
+                          } catch (e) {
+                            console.error('Error deleting event:', e);
+                          }
+                        }}
+                        style={{ padding: 6 }}
+                        activeOpacity={0.7}
+                      >
+                        <Trash2 size={18} color="#F44336" />
+                      </TouchableOpacity>
+                    </View>
+                  ))}
+                </View>
+              )}
+              {/* Gym Events */}
+              {gymEvents.length > 0 && (
+                <View style={{ gap: 8, marginTop: 8 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                    <Star size={16} color={Colors.primary} />
+                    <Text style={{ fontSize: 16, fontWeight: '600', color: Colors.textDark }}>
+                      Salon Etkinlikleri
+                    </Text>
+                  </View>
+                  {gymEvents.map((evt) => {
+                    const participation = eventParticipations.find((p) => p.event_id === evt.id);
+                    const isJoined = Boolean(participation);
+                    return (
+                      <View key={evt.id} style={styles.cardItem}>
+                        <View style={styles.iconBox}>
+                          <Star size={20} color={Colors.primary} />
+                        </View>
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.cardTitle}>{evt.title}</Text>
+                          {evt.description ? (
+                            <Text style={styles.cardSubtitle}>{evt.description}</Text>
+                          ) : null}
+                          <Text style={styles.cardSubtitle}>
+                            {evt.start_time} / {evt.end_time}
+                          </Text>
+                        </View>
+                        <TouchableOpacity
+                          style={[styles.joinButton, isJoined && styles.joinedButton]}
+                          onPress={async () => {
+                            const uid = userProfile?.id || userProfile?.user_id;
+                            if (!uid) return;
+                            try {
+                              if (isJoined && participation) {
+                                await GymEventService.leaveEvent(participation.id);
+                              } else {
+                                await GymEventService.joinEvent(uid, evt.id);
+                              }
+                              loadCalendarContent();
+                            } catch (e) {
+                              console.error('Error toggling gym event participation:', e);
+                            }
+                          }}
+                          activeOpacity={0.8}
+                        >
+                          <Text
+                            style={[
+                              styles.joinButtonText,
+                              isJoined && styles.joinedButtonText,
+                            ]}
+                          >
+                            {isJoined ? 'Ayrıl' : 'Katıl'}
+                          </Text>
+                        </TouchableOpacity>
+                      </View>
+                    );
+                  })}
+                </View>
+              )}
             </View>
           )}
         </View>
@@ -309,11 +536,13 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({ navigation }) =>
         <Plus size={24} color={Colors.allWhite} />
       </TouchableOpacity>
 
-      {/* Add User Event Modal */}
+      {/* Add / Edit User Event Modal */}
       {showAddEventModal && (
         <View style={styles.modalOverlay}>
           <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>Etkinlik Ekle ({selectedDateStr})</Text>
+            <Text style={styles.modalTitle}>
+              {editingEventId ? 'Etkinliği Düzenle' : `Etkinlik Ekle (${selectedDateStr})`}
+            </Text>
 
             <TextInput
               style={styles.modalInput}
@@ -350,7 +579,11 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({ navigation }) =>
             <View style={styles.modalActions}>
               <TouchableOpacity
                 style={styles.modalCancelBtn}
-                onPress={() => setShowAddEventModal(false)}
+                onPress={() => {
+                  setEditingEventId(null);
+                  setNewEventTitle('');
+                  setShowAddEventModal(false);
+                }}
               >
                 <Text style={styles.modalCancelText}>İptal</Text>
               </TouchableOpacity>
@@ -363,16 +596,29 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({ navigation }) =>
                   if (!userId) return;
 
                   try {
-                    await supabase.from('user_events').insert({
-                      user_id: userId,
-                      title: newEventTitle.trim(),
-                      event_date: selectedDateStr,
-                      start_time: newEventStartTime,
-                      end_time: newEventEndTime,
-                    });
+                    if (editingEventId) {
+                      await supabase
+                        .from('user_events')
+                        .update({
+                          title: newEventTitle.trim(),
+                          start_time: newEventStartTime,
+                          end_time: newEventEndTime,
+                        })
+                        .eq('id', editingEventId);
+                    } else {
+                      await supabase.from('user_events').insert({
+                        user_id: userId,
+                        title: newEventTitle.trim(),
+                        event_date: selectedDateStr,
+                        start_time: newEventStartTime,
+                        end_time: newEventEndTime,
+                      });
+                    }
+                    setEditingEventId(null);
                     setNewEventTitle('');
                     setShowAddEventModal(false);
                     loadCalendarContent();
+                    loadMonthEventDays();
                   } catch (e) {
                     console.error('Error saving user event:', e);
                   }
@@ -397,7 +643,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingTop: 50,
     paddingBottom: 16,
-    backgroundColor: Colors.cardDark,
+    backgroundColor: Colors.backgroundDark,
   },
   headerTitle: {
     fontSize: 22,
@@ -431,7 +677,7 @@ const styles = StyleSheet.create({
   weekdayText: {
     flex: 1,
     textAlign: 'center',
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '600',
     color: Colors.textSecondaryDark,
   },
@@ -468,6 +714,13 @@ const styles = StyleSheet.create({
   },
   dayCellTextToday: {
     color: Colors.primary,
+  },
+  eventDot: {
+    width: 4,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: Colors.primary,
+    marginTop: 2,
   },
   scheduleSection: {
     paddingHorizontal: 20,
@@ -532,6 +785,25 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: Colors.textSecondaryDark,
     marginTop: 2,
+  },
+  joinButton: {
+    backgroundColor: Colors.primary,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 10,
+  },
+  joinedButton: {
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    borderWidth: 1,
+    borderColor: Colors.borderDark,
+  },
+  joinButtonText: {
+    color: Colors.allWhite,
+    fontWeight: '600',
+    fontSize: 12,
+  },
+  joinedButtonText: {
+    color: Colors.textSecondaryDark,
   },
   programCardRow: {
     flexDirection: 'row',

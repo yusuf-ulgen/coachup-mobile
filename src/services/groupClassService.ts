@@ -63,4 +63,14 @@ export const GroupClassService = {
     if (error) throw error;
     return data;
   },
+
+  async cancelBooking(bookingId: string) {
+    const { data, error } = await supabase
+      .from('class_bookings')
+      .delete()
+      .eq('id', bookingId);
+
+    if (error) throw error;
+    return data;
+  },
 };
