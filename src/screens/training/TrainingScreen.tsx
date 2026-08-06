@@ -1,35 +1,232 @@
-import React from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import {
+  View,
+  Text,
+  TouchableOpacity,
+  StyleSheet,
+  ScrollView,
+  TextInput,
+  ActivityIndicator,
+  FlatList,
+} from 'react-native';
+import {
+  BarChart2,
+  Search,
+  Flame,
+  ChevronRight,
+  Dumbbell,
+  ChevronDown,
+  ChevronUp,
+} from 'lucide-react-native';
 import { Colors } from '../../theme/colors';
+import { AuthService } from '../../services/authService';
+import { TrainingService, TrainingProgram } from '../../services/trainingService';
+import { WorkoutGoalSheet, WorkoutGoal } from '../../components/WorkoutGoalSheet';
+import { Header } from '../../components/Header';
+import { SideMenu } from '../../components/SideMenu';
 
-const SAMPLE_PROGRAMS = [
-  { id: '1', title: 'Powerlifting - Basit Güç Programı', level: 'Orta Seviye', weeks: '8 Hafta' },
-  { id: '2', title: 'Hypertrophy Bodybuilding A', level: 'İleri Seviye', weeks: '12 Hafta' },
-  { id: '3', title: 'Yeni Başlayanlar İçin Full Body', level: 'Başlangıç', weeks: '4 Hafta' },
+interface TrainingScreenProps {
+  navigation?: any;
+}
+
+const BUILTIN_ACTIVITIES = [
+  { id: 'running', title: 'Koşu', emoji: '🏃', hint: 'Süre · Mesafe · Tempo' },
+  { id: 'walking', title: 'Yürüyüş', emoji: '🚶', hint: 'Süre · Mesafe · Tempo' },
+  { id: 'cycling', title: 'Bisiklet', emoji: '🚴', hint: 'Süre · Mesafe · Hız' },
+  { id: 'swimming', title: 'Yüzme', emoji: '🏊', hint: 'Süre · Mesafe' },
+  { id: 'crossfit', title: 'CrossFit WOD', emoji: '🏋️', hint: 'Süre · Nabız' },
+  { id: 'hiit', title: 'HIIT', emoji: '⚡', hint: 'Süre · Nabız' },
+  { id: 'yoga', title: 'Yoga', emoji: '🧘', hint: 'Süre · Nabız' },
+  { id: 'custom', title: 'Serbest Antrenman', emoji: '💪', hint: 'Serbest kayıt' },
 ];
 
-export const TrainingScreen: React.FC = () => {
+export const TrainingScreen: React.FC<TrainingScreenProps> = ({ navigation }) => {
+  const [searchText, setSearchText] = useState('');
+  const [userProfile, setUserProfile] = useState<any>(null);
+  const [gymPrograms, setGymPrograms] = useState<TrainingProgram[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [expandedProgramId, setExpandedProgramId] = useState<string | null>(null);
+
+  // Goal Sheet State
+  const [selectedActivity, setSelectedActivity] = useState<any>(null);
+  const [showGoalSheet, setShowGoalSheet] = useState(false);
+
+  useEffect(() => {
+    const loadProfileAndPrograms = async () => {
+      setLoading(true);
+      try {
+        const profile = await AuthService.getCurrentProfile();
+        setUserProfile(profile);
+        const programs = await TrainingService.fetchGymPrograms(profile?.gym_id);
+        setGymPrograms(programs);
+      } catch (e) {
+        console.error('Error loading training programs:', e);
+      } finally {
+        setLoading(false);
+      }
+    };
+    loadProfileAndPrograms();
+  }, []);
+
+  const filteredPrograms = gymPrograms.filter((p) =>
+    p.name.toLowerCase().includes(searchText.toLowerCase())
+  );
+
+  const [menuVisible, setMenuVisible] = useState(false);
+
   return (
     <View style={styles.container}>
-      <Text style={styles.headerTitle}>Antrenman Programları</Text>
+      <Header navigation={navigation} onOpenDrawer={() => setMenuVisible(true)} />
+      <SideMenu visible={menuVisible} onClose={() => setMenuVisible(false)} navigation={navigation} />
 
-      <FlatList
-        data={SAMPLE_PROGRAMS}
-        keyExtractor={(item) => item.id}
-        contentContainerStyle={styles.listContent}
-        renderItem={({ item }) => (
-          <View style={styles.programCard}>
-            <View style={styles.badgeRow}>
-              <Text style={styles.levelBadge}>{item.level}</Text>
-              <Text style={styles.weeksText}>{item.weeks}</Text>
-            </View>
-            <Text style={styles.cardTitle}>{item.title}</Text>
+      {/* Screen Sub-header */}
+      <View style={styles.header}>
+        <View>
+          <Text style={styles.headerTitle}>Antrenman</Text>
+          <Text style={styles.headerSubtitle}>Aktivite kaydet veya programını başlat</Text>
+        </View>
+        <TouchableOpacity
+          style={styles.statsButton}
+          onPress={() => navigation?.navigate('PersonalRecords')}
+          activeOpacity={0.8}
+        >
+          <BarChart2 size={20} color={Colors.primary} />
+        </TouchableOpacity>
+      </View>
 
-            <TouchableOpacity style={styles.detailButton}>
-              <Text style={styles.detailButtonText}>Programı İncele</Text>
+      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+        {/* Search Bar */}
+        <View style={styles.searchBar}>
+          <Search size={18} color={Colors.textSecondaryDark} />
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Program ara..."
+            placeholderTextColor={Colors.textSecondaryDark}
+            value={searchText}
+            onChangeText={setSearchText}
+          />
+        </View>
+
+        {/* Rekor Denemesi Card Button */}
+        <TouchableOpacity
+          style={styles.rekorCard}
+          onPress={() => navigation?.navigate('PersonalRecords')}
+          activeOpacity={0.8}
+        >
+          <Flame size={20} color={Colors.primary} />
+          <Text style={styles.rekorCardText}>Rekor Denemesi</Text>
+          <ChevronRight size={18} color={Colors.textSecondaryDark} />
+        </TouchableOpacity>
+
+        {/* Aktiviteler Grid */}
+        <View style={styles.sectionHeaderRow}>
+          <View style={styles.sectionAccentLine} />
+          <Text style={styles.sectionTitle}>Aktiviteler</Text>
+        </View>
+        <Text style={styles.sectionSubtitle}>Saatinden veya manuel olarak kaydet</Text>
+
+        <View style={styles.activityGrid}>
+          {BUILTIN_ACTIVITIES.map((act) => (
+            <TouchableOpacity
+              key={act.id}
+              style={styles.activityCard}
+              activeOpacity={0.8}
+              onPress={() => {
+                setSelectedActivity(act);
+                setShowGoalSheet(true);
+              }}
+            >
+              <Text style={styles.activityEmoji}>{act.emoji}</Text>
+              <Text style={styles.activityTitle}>{act.title}</Text>
+              <Text style={styles.activityHint}>{act.hint}</Text>
             </TouchableOpacity>
+          ))}
+        </View>
+
+        {/* Salon Antrenmanları Section */}
+        <View style={[styles.sectionHeaderRow, { marginTop: 24 }]}>
+          <View style={styles.sectionAccentLine} />
+          <Text style={styles.sectionTitle}>Salon Antrenmanları</Text>
+        </View>
+        <Text style={styles.sectionSubtitle}>Salonun kendi antrenmanları (CrossFit WOD, HIIT vb.)</Text>
+
+        {loading ? (
+          <ActivityIndicator size="large" color={Colors.primary} style={{ marginTop: 20 }} />
+        ) : filteredPrograms.length === 0 ? (
+          <View style={styles.emptyCard}>
+            <Text style={styles.emptyText}>Salon antrenmanı bulunamadı</Text>
+          </View>
+        ) : (
+          <View style={styles.programList}>
+            {filteredPrograms.map((prog) => {
+              const isExpanded = expandedProgramId === prog.id;
+              return (
+                <View key={prog.id} style={styles.programCard}>
+                  <View style={styles.cardHeaderRow}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.progTitle}>{prog.name}</Text>
+                      <View style={styles.badgeRow}>
+                        <View style={styles.badge}>
+                          <Text style={styles.badgeText}>Salon</Text>
+                        </View>
+                        {prog.category && (
+                          <Text style={styles.categoryText}>{prog.category}</Text>
+                        )}
+                      </View>
+                    </View>
+                    <TouchableOpacity
+                      style={styles.startButton}
+                      activeOpacity={0.8}
+                      onPress={() =>
+                        navigation?.navigate('ActiveWorkout', {
+                          title: prog.name,
+                          category: prog.category || 'Salon',
+                        })
+                      }
+                    >
+                      <Text style={styles.startButtonText}>Başlat</Text>
+                    </TouchableOpacity>
+                  </View>
+
+                  {prog.description ? (
+                    <Text style={styles.progDescription}>{prog.description}</Text>
+                  ) : null}
+
+                  <TouchableOpacity
+                    style={styles.expandRow}
+                    onPress={() => setExpandedProgramId(isExpanded ? null : prog.id)}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={styles.expandText}>Program Detayı</Text>
+                    {isExpanded ? (
+                      <ChevronUp size={18} color={Colors.textSecondaryDark} />
+                    ) : (
+                      <ChevronDown size={18} color={Colors.textSecondaryDark} />
+                    )}
+                  </TouchableOpacity>
+                </View>
+              );
+            })}
           </View>
         )}
+      </ScrollView>
+
+      {/* Workout Goal Selection Sheet */}
+      <WorkoutGoalSheet
+        visible={showGoalSheet}
+        onClose={() => setShowGoalSheet(false)}
+        onSelectGoal={(goal: WorkoutGoal) => {
+          if (selectedActivity) {
+            navigation?.navigate('ActiveWorkout', {
+              title: selectedActivity.title,
+              category: selectedActivity.id,
+              goalLabel: goal.label,
+              goalType: goal.type,
+              distanceKm: goal.distanceKm,
+              durationSeconds: goal.durationSeconds,
+            });
+          }
+        }}
       />
     </View>
   );
@@ -39,60 +236,201 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: Colors.backgroundDark,
-    paddingTop: 60,
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     paddingHorizontal: 20,
+    paddingTop: 50,
+    paddingBottom: 16,
+    backgroundColor: Colors.backgroundDark,
   },
   headerTitle: {
-    fontSize: 24,
-    fontWeight: '800',
+    fontSize: 26,
+    fontWeight: '700',
     color: Colors.textDark,
-    marginBottom: 20,
   },
-  listContent: {
-    paddingBottom: 24,
+  headerSubtitle: {
+    fontSize: 13,
+    color: Colors.textSecondaryDark,
+    marginTop: 2,
   },
-  programCard: {
+  statsButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     backgroundColor: Colors.cardDark,
-    borderRadius: 20,
-    padding: 20,
-    marginBottom: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  scrollContent: {
+    paddingHorizontal: 20,
+    paddingBottom: 100,
+  },
+  searchBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.cardDark,
+    borderRadius: 14,
     borderWidth: 1,
     borderColor: Colors.borderDark,
+    paddingHorizontal: 14,
+    height: 46,
+    marginBottom: 16,
+    gap: 10,
   },
-  badgeRow: {
+  searchInput: {
+    flex: 1,
+    color: Colors.textDark,
+    fontSize: 15,
+  },
+  rekorCard: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 12,
+    alignItems: 'center',
+    backgroundColor: Colors.cardDark,
+    borderRadius: 14,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 96, 71, 0.25)',
+    marginBottom: 20,
   },
-  levelBadge: {
-    backgroundColor: Colors.primaryLight,
-    color: Colors.primary,
-    fontWeight: '700',
-    fontSize: 12,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 12,
+  rekorCardText: {
+    flex: 1,
+    fontSize: 15,
+    fontWeight: '600',
+    color: Colors.textDark,
+    marginLeft: 10,
   },
-  weeksText: {
-    color: Colors.textSecondaryDark,
-    fontSize: 13,
+  sectionHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
   },
-  cardTitle: {
+  sectionAccentLine: {
+    width: 4,
+    height: 18,
+    borderRadius: 2,
+    backgroundColor: Colors.primary,
+  },
+  sectionTitle: {
     fontSize: 18,
     fontWeight: '700',
     color: Colors.textDark,
-    marginBottom: 16,
   },
-  detailButton: {
-    backgroundColor: Colors.backgroundDark,
-    borderRadius: 12,
-    paddingVertical: 12,
-    alignItems: 'center',
+  sectionSubtitle: {
+    fontSize: 12,
+    color: Colors.textSecondaryDark,
+    marginTop: 2,
+    marginBottom: 14,
+  },
+  activityGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 12,
+  },
+  activityCard: {
+    width: '48%',
+    backgroundColor: Colors.cardDark,
+    borderRadius: 16,
+    padding: 14,
     borderWidth: 1,
     borderColor: Colors.borderDark,
   },
-  detailButtonText: {
-    color: Colors.textDark,
+  activityEmoji: {
+    fontSize: 28,
+    marginBottom: 8,
+  },
+  activityTitle: {
+    fontSize: 15,
     fontWeight: '600',
+    color: Colors.textDark,
+  },
+  activityHint: {
+    fontSize: 11,
+    color: Colors.textSecondaryDark,
+    marginTop: 4,
+  },
+  emptyCard: {
+    backgroundColor: Colors.cardDark,
+    borderRadius: 16,
+    padding: 24,
+    alignItems: 'center',
+  },
+  emptyText: {
+    color: Colors.textSecondaryDark,
+    fontSize: 14,
+  },
+  programList: {
+    gap: 14,
+  },
+  programCard: {
+    backgroundColor: Colors.cardDark,
+    borderRadius: 16,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: Colors.borderDark,
+  },
+  cardHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  progTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: Colors.textDark,
+  },
+  badgeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 4,
+  },
+  badge: {
+    backgroundColor: 'rgba(255, 96, 71, 0.15)',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  badgeText: {
+    color: Colors.primary,
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  categoryText: {
+    color: Colors.textSecondaryDark,
+    fontSize: 12,
+  },
+  startButton: {
+    backgroundColor: Colors.primary,
+    borderRadius: 10,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+  },
+  startButtonText: {
+    color: Colors.allWhite,
+    fontWeight: '600',
+    fontSize: 13,
+  },
+  progDescription: {
+    fontSize: 13,
+    color: Colors.textSecondaryDark,
+    marginTop: 10,
+  },
+  expandRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    marginTop: 12,
+  },
+  expandText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: Colors.textDark,
   },
 });

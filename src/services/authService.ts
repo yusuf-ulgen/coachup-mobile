@@ -83,4 +83,33 @@ export const AuthService = {
       throw new Error(`Şifre sıfırlama başarısız: ${error.message}`);
     }
   },
+
+  async resendConfirmationEmail(email: string) {
+    const { error } = await supabase.auth.resend({
+      type: 'signup',
+      email,
+    });
+    if (error) {
+      throw new Error(`Doğrulama e-postası gönderilemedi: ${error.message}`);
+    }
+  },
+
+  async getCurrentProfile() {
+    const { data: userData } = await supabase.auth.getUser();
+    if (!userData?.user) return null;
+    const { data: profile } = await supabase
+      .from('users')
+      .select('*')
+      .eq('id', userData.user.id)
+      .single();
+
+    if (profile) return profile;
+
+    return {
+      id: userData.user.id,
+      email: userData.user.email,
+      name: userData.user.user_metadata?.name || 'Kullanıcı',
+      ...userData.user.user_metadata,
+    };
+  },
 };

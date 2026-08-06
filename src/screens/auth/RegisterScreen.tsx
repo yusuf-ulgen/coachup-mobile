@@ -10,35 +10,96 @@ import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
+  Image,
+  Dimensions,
 } from 'react-native';
+import { Eye, EyeOff } from 'lucide-react-native';
 import { Colors } from '../../theme/colors';
 import { AuthService } from '../../services/authService';
+import { GYM_CONFIG } from '../../config/gym';
+
+const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 interface RegisterScreenProps {
-  onNavigateToLogin: () => Unit | any;
+  onNavigateToLogin: () => void;
+  onRegisterSuccess?: () => void;
 }
 
-export const RegisterScreen: React.FC<RegisterScreenProps> = ({ onNavigateToLogin }) => {
+export const RegisterScreen: React.FC<RegisterScreenProps> = ({
+  onNavigateToLogin,
+  onRegisterSuccess,
+}) => {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [gender, setGender] = useState<'male' | 'female'>('male');
+  const [gender, setGender] = useState<'male' | 'female' | null>(null);
   const [loading, setLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
   const handleRegister = async () => {
-    if (!name || !email || !password) {
-      Alert.alert('Hata', 'Lütfen tüm alanları doldurun.');
+    if (!name.trim()) {
+      Alert.alert('Hata', 'Lütfen isminizi girin');
+      return;
+    }
+    if (!gender) {
+      Alert.alert('Hata', 'Lütfen cinsiyetinizi seçin');
+      return;
+    }
+    if (!email.trim() || !password) {
+      Alert.alert('Hata', 'Lütfen tüm alanları doldurun');
+      return;
+    }
+    if (password.length < 6) {
+      Alert.alert('Hata', 'Şifre en az 6 karakter olmalıdır');
       return;
     }
 
     try {
       setLoading(true);
-      await AuthService.signUp(email.trim(), password, name.trim(), gender);
-      Alert.alert('Başarılı', 'Kayıt işlemi tamamlandı! Giriş yapabilirsiniz.', [
-        { text: 'Tamam', onPress: onNavigateToLogin },
-      ]);
+      const emailConfirmed = await AuthService.signUp(
+        email.trim(),
+        password,
+        name.trim(),
+        gender,
+        true
+      );
+
+      if (emailConfirmed) {
+        if (onRegisterSuccess) {
+          onRegisterSuccess();
+        } else {
+          onNavigateToLogin();
+        }
+      } else {
+        Alert.alert(
+          'E-posta Doğrulama',
+          'Kayıt oluşturuldu. Giriş yapmadan önce e-posta adresinize gelen doğrulama linkine tıklayın.',
+          [
+            {
+              text: 'Giriş Ekranına Dön',
+              onPress: onNavigateToLogin,
+            },
+            {
+              text: 'Tekrar Gönder',
+              onPress: async () => {
+                try {
+                  await AuthService.resendConfirmationEmail(email.trim());
+                  Alert.alert('Bilgi', 'Doğrulama e-postası gönderildi.');
+                } catch (e: any) {
+                  Alert.alert('Hata', e.message || 'Gönderilemedi.');
+                }
+              },
+            },
+          ]
+        );
+      }
     } catch (error: any) {
-      Alert.alert('Kayıt Başarısız', error.message || 'Bilinmeyen bir hata oluştu');
+      const msg = error.message || '';
+      if (msg.includes('already registered')) {
+        Alert.alert('Hata', 'Bu e-posta adresi zaten kayıtlı.');
+      } else {
+        Alert.alert('Hata', msg || 'Kayıt başarısız. Lütfen tekrar deneyin.');
+      }
     } finally {
       setLoading(false);
     }
@@ -47,103 +108,165 @@ export const RegisterScreen: React.FC<RegisterScreenProps> = ({ onNavigateToLogi
   return (
     <KeyboardAvoidingView
       style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
-      <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
-        <View style={styles.card}>
-          <Text style={styles.title}>Hesap Oluştur</Text>
-          <Text style={styles.description}>Aramıza katılmak için bilgilerinizi girin</Text>
+      <ScrollView
+        contentContainerStyle={styles.scrollContent}
+        keyboardShouldPersistTaps="handled"
+        bounces={false}
+      >
+        {/* Top Hero Section */}
+        <View style={styles.heroSection}>
+          <Image
+            source={GYM_CONFIG.LOGIN_HERO}
+            style={styles.heroImage}
+            resizeMode="cover"
+          />
+          <Image
+            source={GYM_CONFIG.LOGIN_LOGO}
+            style={styles.logoImage}
+            resizeMode="contain"
+          />
+        </View>
 
-          <View style={styles.inputGroup}>
-            <Text style={styles.label}>Ad Soyad</Text>
+        {/* Sliding Form Card */}
+        <View style={styles.cardContainer}>
+          <Text style={styles.title}>Kayıt Ol</Text>
+          <Text style={styles.subtitle}>
+            Bireysel hesabınızı oluşturun,{'\n'}salon üyeliği gerekmez.
+          </Text>
+
+          {/* Name Input */}
+          <View style={styles.inputWrapper}>
             <TextInput
-              style={styles.input}
-              placeholder="Ahmet Yılmaz"
+              style={styles.pillInput}
+              placeholder="İsim"
               placeholderTextColor={Colors.textSecondaryDark}
               value={name}
               onChangeText={setName}
+              autoCapitalize="words"
             />
           </View>
 
-          <View style={styles.inputGroup}>
-            <Text style={styles.label}>E-Posta Adresi</Text>
+          {/* Email Input */}
+          <View style={styles.inputWrapper}>
             <TextInput
-              style={styles.input}
-              placeholder="ornek@email.com"
+              style={styles.pillInput}
+              placeholder="Email adresinizi girin"
               placeholderTextColor={Colors.textSecondaryDark}
               value={email}
               onChangeText={setEmail}
               keyboardType="email-address"
               autoCapitalize="none"
+              autoCorrect={false}
             />
           </View>
 
-          <View style={styles.inputGroup}>
-            <Text style={styles.label}>Şifre</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="******"
-              placeholderTextColor={Colors.textSecondaryDark}
-              value={password}
-              onChangeText={setPassword}
-              secureTextEntry
-            />
-          </View>
-
-          <View style={styles.inputGroup}>
-            <Text style={styles.label}>Cinsiyet</Text>
-            <View style={styles.genderRow}>
+          {/* Password Input */}
+          <View style={styles.inputWrapper}>
+            <View style={styles.passwordRow}>
+              <TextInput
+                style={[styles.pillInput, { flex: 1 }]}
+                placeholder="Şifre"
+                placeholderTextColor={Colors.textSecondaryDark}
+                value={password}
+                onChangeText={setPassword}
+                secureTextEntry={!showPassword}
+                autoCapitalize="none"
+              />
               <TouchableOpacity
-                style={[
-                  styles.genderOption,
-                  gender === 'male' && styles.genderOptionSelected,
-                ]}
-                onPress={() => setGender('male')}
+                onPress={() => setShowPassword(!showPassword)}
+                style={styles.eyeIconContainer}
+                activeOpacity={0.7}
               >
-                <Text
-                  style={[
-                    styles.genderText,
-                    gender === 'male' && styles.genderTextSelected,
-                  ]}
-                >
-                  Erkek
-                </Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[
-                  styles.genderOption,
-                  gender === 'female' && styles.genderOptionSelected,
-                ]}
-                onPress={() => setGender('female')}
-              >
-                <Text
-                  style={[
-                    styles.genderText,
-                    gender === 'female' && styles.genderTextSelected,
-                  ]}
-                >
-                  Kadın
-                </Text>
+                {showPassword ? (
+                  <Eye size={20} color={Colors.textSecondaryDark} />
+                ) : (
+                  <EyeOff size={20} color={Colors.textSecondaryDark} />
+                )}
               </TouchableOpacity>
             </View>
           </View>
 
+          {/* Gender Selector Row */}
+          <View style={styles.genderRow}>
+            <TouchableOpacity
+              style={[
+                styles.genderOption,
+                gender === 'male' && styles.genderOptionSelected,
+              ]}
+              onPress={() => setGender('male')}
+              activeOpacity={0.7}
+            >
+              <Text
+                style={[
+                  styles.genderText,
+                  gender === 'male' && styles.genderTextSelected,
+                ]}
+              >
+                Erkek
+              </Text>
+              <View
+                style={[
+                  styles.radioButton,
+                  gender === 'male' && styles.radioButtonSelected,
+                ]}
+              />
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[
+                styles.genderOption,
+                gender === 'female' && styles.genderOptionSelected,
+              ]}
+              onPress={() => setGender('female')}
+              activeOpacity={0.7}
+            >
+              <Text
+                style={[
+                  styles.genderText,
+                  gender === 'female' && styles.genderTextSelected,
+                ]}
+              >
+                Kadın
+              </Text>
+              <View
+                style={[
+                  styles.radioButton,
+                  gender === 'female' && styles.radioButtonSelected,
+                ]}
+              />
+            </TouchableOpacity>
+          </View>
+
+          {/* Register Pill Button with Arrow Circle */}
           <TouchableOpacity
-            style={styles.submitButton}
+            style={[styles.primaryButton, loading && styles.buttonDisabled]}
             onPress={handleRegister}
             disabled={loading}
+            activeOpacity={0.85}
           >
             {loading ? (
               <ActivityIndicator color={Colors.allWhite} />
             ) : (
-              <Text style={styles.submitButtonText}>Kayıt Ol</Text>
+              <>
+                <Text style={styles.buttonText}>Kayıt Ol</Text>
+                <View style={styles.arrowCircle}>
+                  <Text style={styles.arrowText}>→</Text>
+                </View>
+              </>
             )}
           </TouchableOpacity>
 
-          <TouchableOpacity style={styles.loginLink} onPress={onNavigateToLogin}>
-            <Text style={styles.loginLinkText}>
-              Zaten hesabınız var mı? <Text style={styles.loginHighlight}>Giriş Yapın</Text>
+          {/* Back to Login Link */}
+          <TouchableOpacity
+            style={styles.loginLink}
+            onPress={onNavigateToLogin}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.loginText}>
+              Hesabınız var mı?{' '}
+              <Text style={styles.loginHighlight}>Giriş yapın.</Text>
             </Text>
           </TouchableOpacity>
         </View>
@@ -159,80 +282,139 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     flexGrow: 1,
-    justifyContent: 'center',
-    padding: 24,
   },
-  card: {
+  heroSection: {
+    height: SCREEN_HEIGHT * 0.38,
+    width: '100%',
+    position: 'relative',
+    alignItems: 'center',
+  },
+  heroImage: {
+    width: '100%',
+    height: '100%',
+  },
+  logoImage: {
+    position: 'absolute',
+    top: 56,
+    width: 140,
+    height: 70,
+  },
+  cardContainer: {
+    flex: 1,
+    marginTop: -30,
     backgroundColor: Colors.cardDark,
-    borderRadius: 24,
-    padding: 24,
-    borderWidth: 1,
-    borderColor: Colors.borderDark,
+    borderTopLeftRadius: 30,
+    borderTopRightRadius: 30,
+    paddingHorizontal: 24,
+    paddingTop: 28,
+    paddingBottom: 40,
   },
   title: {
-    fontSize: 22,
+    fontSize: 32,
     fontWeight: '700',
     color: Colors.textDark,
-    marginBottom: 6,
   },
-  description: {
-    fontSize: 14,
-    color: Colors.textSecondaryDark,
-    marginBottom: 24,
-  },
-  inputGroup: {
-    marginBottom: 16,
-  },
-  label: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: Colors.textDark,
-    marginBottom: 8,
-  },
-  input: {
-    backgroundColor: Colors.backgroundDark,
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
+  subtitle: {
     fontSize: 15,
-    color: Colors.textDark,
+    color: Colors.textSecondaryDark,
+    marginTop: 8,
+    lineHeight: 22,
+    marginBottom: 20,
+  },
+  inputWrapper: {
+    marginBottom: 12,
+  },
+  pillInput: {
+    height: 54,
     borderWidth: 1,
     borderColor: Colors.borderDark,
+    borderRadius: 100,
+    paddingHorizontal: 20,
+    fontSize: 15,
+    color: Colors.textDark,
+    backgroundColor: Colors.cardDark,
+  },
+  passwordRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    position: 'relative',
+  },
+  eyeIconContainer: {
+    position: 'absolute',
+    right: 18,
+    height: '100%',
+    justifyContent: 'center',
   },
   genderRow: {
     flexDirection: 'row',
     gap: 12,
+    marginTop: 4,
+    marginBottom: 16,
   },
   genderOption: {
     flex: 1,
-    paddingVertical: 14,
-    backgroundColor: Colors.backgroundDark,
-    borderRadius: 12,
-    alignItems: 'center',
+    height: 54,
     borderWidth: 1,
     borderColor: Colors.borderDark,
+    borderRadius: 100,
+    paddingHorizontal: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: Colors.cardDark,
   },
   genderOptionSelected: {
     borderColor: Colors.primary,
-    backgroundColor: Colors.primaryLight,
+    borderWidth: 2,
   },
   genderText: {
+    fontSize: 15,
     color: Colors.textSecondaryDark,
-    fontWeight: '600',
   },
   genderTextSelected: {
-    color: Colors.primary,
-    fontWeight: '700',
+    color: Colors.textDark,
+    fontWeight: '600',
   },
-  submitButton: {
+  radioButton: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    borderWidth: 1,
+    borderColor: Colors.borderDark,
+  },
+  radioButtonSelected: {
+    borderWidth: 6,
+    borderColor: Colors.primary,
+  },
+  primaryButton: {
+    height: 56,
     backgroundColor: Colors.primary,
-    borderRadius: 14,
-    paddingVertical: 16,
+    borderRadius: 100,
+    flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 12,
+    justifyContent: 'space-between',
+    paddingLeft: 24,
+    paddingRight: 10,
+    marginTop: 8,
   },
-  submitButtonText: {
+  buttonDisabled: {
+    opacity: 0.6,
+  },
+  buttonText: {
     color: Colors.allWhite,
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  arrowCircle: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: Colors.allWhite,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  arrowText: {
+    color: Colors.primary,
     fontSize: 16,
     fontWeight: '700',
   },
@@ -240,12 +422,13 @@ const styles = StyleSheet.create({
     marginTop: 20,
     alignItems: 'center',
   },
-  loginLinkText: {
-    color: Colors.textSecondaryDark,
+  loginText: {
     fontSize: 14,
+    color: Colors.textSecondaryDark,
   },
   loginHighlight: {
     color: Colors.primary,
-    fontWeight: '700',
+    fontWeight: '600',
+    textDecorationLine: 'underline',
   },
 });

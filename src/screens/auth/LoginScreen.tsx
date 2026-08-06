@@ -10,32 +10,68 @@ import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
+  Image,
+  Dimensions,
 } from 'react-native';
+import { Eye, EyeOff } from 'lucide-react-native';
 import { Colors } from '../../theme/colors';
 import { AuthService } from '../../services/authService';
 import { GYM_CONFIG } from '../../config/gym';
 
+const { height: SCREEN_HEIGHT } = Dimensions.get('window');
+
 interface LoginScreenProps {
-  onNavigateToRegister: () => Unit | any;
+  onNavigateToRegister: () => void;
+  onLoginSuccess?: () => void;
 }
 
-export const LoginScreen: React.FC<LoginScreenProps> = ({ onNavigateToRegister }) => {
+export const LoginScreen: React.FC<LoginScreenProps> = ({
+  onNavigateToRegister,
+  onLoginSuccess,
+}) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
 
   const handleLogin = async () => {
-    if (!email || !password) {
-      Alert.alert('Hata', 'Lütfen e-posta ve şifrenizi girin.');
+    if (!email.trim() || !password) {
+      Alert.alert('Hata', 'Lütfen tüm alanları doldurun');
       return;
     }
 
     try {
       setLoading(true);
       await AuthService.signIn(email.trim(), password);
+      if (onLoginSuccess) {
+        onLoginSuccess();
+      }
     } catch (error: any) {
-      Alert.alert('Giriş Başarısız', error.message || 'Bilinmeyen bir hata oluştu');
+      const msg = error.message || '';
+      if (msg.includes('invalid_credentials') || msg.includes('E-posta veya şifre hatalı')) {
+        Alert.alert('Giriş Başarısız', 'E-posta veya şifre hatalı.');
+      } else if (msg.includes('email_not_confirmed')) {
+        Alert.alert(
+          'E-posta Doğrulama Gerekli',
+          'E-posta adresinizi doğrulamadınız. Gelen kutunuzu kontrol edin.',
+          [
+            { text: 'Tamam' },
+            {
+              text: 'Tekrar Gönder',
+              onPress: async () => {
+                try {
+                  await AuthService.resendConfirmationEmail(email.trim());
+                  Alert.alert('Bilgi', 'Doğrulama e-postası tekrar gönderildi.');
+                } catch (e: any) {
+                  Alert.alert('Hata', e.message || 'Gönderilemedi.');
+                }
+              },
+            },
+          ]
+        );
+      } else {
+        Alert.alert('Hata', msg || 'Giriş yapılamadı. Lütfen tekrar deneyin.');
+      }
     } finally {
       setLoading(false);
     }
@@ -44,28 +80,39 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onNavigateToRegister }
   return (
     <KeyboardAvoidingView
       style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
-      <ScrollView contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
-        {/* Header Hero Section */}
-        <View style={styles.header}>
-          <View style={styles.logoBadge}>
-            <Text style={styles.logoBadgeText}>CUP</Text>
-          </View>
-          <Text style={styles.gymTitle}>{GYM_CONFIG.GYM_NAME}</Text>
-          <Text style={styles.subtitle}>Antrenman Takibi & Üye Paneli</Text>
+      <ScrollView
+        contentContainerStyle={styles.scrollContent}
+        keyboardShouldPersistTaps="handled"
+        bounces={false}
+      >
+        {/* Top Hero Image & Logo */}
+        <View style={styles.heroSection}>
+          <Image
+            source={GYM_CONFIG.LOGIN_HERO}
+            style={styles.heroImage}
+            resizeMode="cover"
+          />
+          <Image
+            source={GYM_CONFIG.LOGIN_LOGO}
+            style={styles.logoImage}
+            resizeMode="contain"
+          />
         </View>
 
-        {/* Login Form Card */}
-        <View style={styles.card}>
-          <Text style={styles.title}>Hoş Geldiniz</Text>
-          <Text style={styles.description}>Devam etmek için hesabınıza giriş yapın</Text>
+        {/* Sliding Card Container */}
+        <View style={styles.cardContainer}>
+          <Text style={styles.title}>Giriş Yap</Text>
+          <Text style={styles.subtitle}>
+            Kaldığın yerden devam etmek için{'\n'}giriş yap.
+          </Text>
 
-          <View style={styles.inputGroup}>
-            <Text style={styles.label}>E-Posta Adresi</Text>
+          {/* Email Input */}
+          <View style={styles.inputWrapper}>
             <TextInput
-              style={styles.input}
-              placeholder="ornek@email.com"
+              style={styles.pillInput}
+              placeholder="Email adresinizi girin"
               placeholderTextColor={Colors.textSecondaryDark}
               value={email}
               onChangeText={setEmail}
@@ -75,12 +122,12 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onNavigateToRegister }
             />
           </View>
 
-          <View style={styles.inputGroup}>
-            <Text style={styles.label}>Şifre</Text>
-            <View style={styles.passwordContainer}>
+          {/* Password Input */}
+          <View style={styles.inputWrapper}>
+            <View style={styles.passwordRow}>
               <TextInput
-                style={[styles.input, { flex: 1 }]}
-                placeholder="******"
+                style={[styles.pillInput, { flex: 1 }]}
+                placeholder="Şifre"
                 placeholderTextColor={Colors.textSecondaryDark}
                 value={password}
                 onChangeText={setPassword}
@@ -89,31 +136,46 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onNavigateToRegister }
               />
               <TouchableOpacity
                 onPress={() => setShowPassword(!showPassword)}
-                style={styles.eyeButton}
+                style={styles.eyeIconContainer}
+                activeOpacity={0.7}
               >
-                <Text style={styles.eyeText}>{showPassword ? 'Gizle' : 'Göster'}</Text>
+                {showPassword ? (
+                  <Eye size={20} color={Colors.textSecondaryDark} />
+                ) : (
+                  <EyeOff size={20} color={Colors.textSecondaryDark} />
+                )}
               </TouchableOpacity>
             </View>
           </View>
 
+          {/* Primary Pill Button with Arrow Circle */}
           <TouchableOpacity
-            style={styles.submitButton}
+            style={[styles.primaryButton, loading && styles.buttonDisabled]}
             onPress={handleLogin}
             disabled={loading}
+            activeOpacity={0.85}
           >
             {loading ? (
               <ActivityIndicator color={Colors.allWhite} />
             ) : (
-              <Text style={styles.submitButtonText}>Giriş Yap</Text>
+              <>
+                <Text style={styles.buttonText}>Giriş Yap</Text>
+                <View style={styles.arrowCircle}>
+                  <Text style={styles.arrowText}>→</Text>
+                </View>
+              </>
             )}
           </TouchableOpacity>
 
+          {/* Register Link */}
           <TouchableOpacity
             style={styles.registerLink}
             onPress={onNavigateToRegister}
+            activeOpacity={0.7}
           >
-            <Text style={styles.registerLinkText}>
-              Hesabınız yok mu? <Text style={styles.registerHighlight}>Kayıt Olun</Text>
+            <Text style={styles.registerText}>
+              Hesabınız yok mu?{' '}
+              <Text style={styles.registerHighlight}>Hesap oluşturun.</Text>
             </Text>
           </TouchableOpacity>
         </View>
@@ -129,98 +191,98 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     flexGrow: 1,
-    justifyContent: 'center',
-    padding: 24,
   },
-  header: {
+  heroSection: {
+    height: SCREEN_HEIGHT * 0.45,
+    width: '100%',
+    position: 'relative',
     alignItems: 'center',
-    marginBottom: 32,
   },
-  logoBadge: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
-    backgroundColor: Colors.primary,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 16,
+  heroImage: {
+    width: '100%',
+    height: '100%',
   },
-  logoBadgeText: {
-    color: Colors.allWhite,
-    fontWeight: '900',
-    fontSize: 22,
-    letterSpacing: 1.5,
+  logoImage: {
+    position: 'absolute',
+    top: 56,
+    width: 140,
+    height: 70,
   },
-  gymTitle: {
-    fontSize: 24,
-    fontWeight: '800',
-    color: Colors.textDark,
-    textAlign: 'center',
-  },
-  subtitle: {
-    fontSize: 14,
-    color: Colors.textSecondaryDark,
-    marginTop: 4,
-  },
-  card: {
+  cardContainer: {
+    flex: 1,
+    marginTop: -30,
     backgroundColor: Colors.cardDark,
-    borderRadius: 24,
-    padding: 24,
-    borderWidth: 1,
-    borderColor: Colors.borderDark,
+    borderTopLeftRadius: 30,
+    borderTopRightRadius: 30,
+    paddingHorizontal: 24,
+    paddingTop: 28,
+    paddingBottom: 40,
   },
   title: {
-    fontSize: 22,
+    fontSize: 32,
     fontWeight: '700',
     color: Colors.textDark,
-    marginBottom: 6,
   },
-  description: {
-    fontSize: 14,
+  subtitle: {
+    fontSize: 16,
     color: Colors.textSecondaryDark,
+    marginTop: 12,
+    lineHeight: 22,
     marginBottom: 24,
   },
-  inputGroup: {
+  inputWrapper: {
     marginBottom: 16,
   },
-  label: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: Colors.textDark,
-    marginBottom: 8,
-  },
-  input: {
-    backgroundColor: Colors.backgroundDark,
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    fontSize: 15,
-    color: Colors.textDark,
+  pillInput: {
+    height: 54,
     borderWidth: 1,
     borderColor: Colors.borderDark,
+    borderRadius: 100,
+    paddingHorizontal: 20,
+    fontSize: 15,
+    color: Colors.textDark,
+    backgroundColor: Colors.cardDark,
   },
-  passwordContainer: {
+  passwordRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    position: 'relative',
   },
-  eyeButton: {
+  eyeIconContainer: {
     position: 'absolute',
-    right: 14,
+    right: 18,
+    height: '100%',
+    justifyContent: 'center',
   },
-  eyeText: {
-    color: Colors.primary,
-    fontSize: 13,
+  primaryButton: {
+    height: 56,
+    backgroundColor: Colors.primary,
+    borderRadius: 100,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingLeft: 24,
+    paddingRight: 10,
+    marginTop: 16,
+  },
+  buttonDisabled: {
+    opacity: 0.6,
+  },
+  buttonText: {
+    color: Colors.allWhite,
+    fontSize: 16,
     fontWeight: '600',
   },
-  submitButton: {
-    backgroundColor: Colors.primary,
-    borderRadius: 14,
-    paddingVertical: 16,
+  arrowCircle: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: Colors.allWhite,
+    justifyContent: 'center',
     alignItems: 'center',
-    marginTop: 12,
   },
-  submitButtonText: {
-    color: Colors.allWhite,
+  arrowText: {
+    color: Colors.black100,
     fontSize: 16,
     fontWeight: '700',
   },
@@ -228,12 +290,13 @@ const styles = StyleSheet.create({
     marginTop: 20,
     alignItems: 'center',
   },
-  registerLinkText: {
-    color: Colors.textSecondaryDark,
+  registerText: {
     fontSize: 14,
+    color: Colors.textSecondaryDark,
   },
   registerHighlight: {
     color: Colors.primary,
-    fontWeight: '700',
+    fontWeight: '600',
+    textDecorationLine: 'underline',
   },
 });
