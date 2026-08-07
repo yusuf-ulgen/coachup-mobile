@@ -6,12 +6,24 @@ import { GYM_CONFIG } from '../config/gym';
 import { AuthService } from '../services/authService';
 import { NotificationService } from '../services/notificationService';
 
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
 interface HeaderProps {
   navigation?: any;
   onOpenDrawer?: () => void;
+  title?: string;
+  onMenuPress?: () => void;
+  onNotificationPress?: () => void;
 }
 
-export const Header: React.FC<HeaderProps> = ({ navigation, onOpenDrawer }) => {
+export const Header: React.FC<HeaderProps> = ({
+  navigation,
+  onOpenDrawer,
+  title,
+  onMenuPress,
+  onNotificationPress,
+}) => {
+  const insets = useSafeAreaInsets();
   const [unreadCount, setUnreadCount] = useState(0);
 
   useEffect(() => {
@@ -29,9 +41,19 @@ export const Header: React.FC<HeaderProps> = ({ navigation, onOpenDrawer }) => {
     checkUnread();
   }, []);
 
+  const handleMenu = () => {
+    if (onMenuPress) onMenuPress();
+    else if (onOpenDrawer) onOpenDrawer();
+  };
+
+  const handleNotif = () => {
+    if (onNotificationPress) onNotificationPress();
+    else if (navigation) navigation.navigate('Notifications');
+  };
+
   return (
-    <View style={styles.headerContainer}>
-      <TouchableOpacity style={styles.iconButton} onPress={onOpenDrawer} activeOpacity={0.8}>
+    <View style={[styles.headerContainer, { paddingTop: Math.max(12, insets.top + 6) }]}>
+      <TouchableOpacity style={styles.iconButton} onPress={handleMenu} activeOpacity={0.8}>
         <Menu size={20} color={Colors.textDark} />
       </TouchableOpacity>
 
@@ -43,7 +65,7 @@ export const Header: React.FC<HeaderProps> = ({ navigation, onOpenDrawer }) => {
 
       <TouchableOpacity
         style={styles.iconButton}
-        onPress={() => navigation?.navigate('Notifications')}
+        onPress={handleNotif}
         activeOpacity={0.8}
       >
         <Bell size={20} color={Colors.textDark} />
@@ -59,7 +81,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 20,
-    paddingTop: 50,
     paddingBottom: 12,
     backgroundColor: Colors.cardDark,
     borderBottomWidth: 1,

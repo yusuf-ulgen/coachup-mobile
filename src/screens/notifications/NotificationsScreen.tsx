@@ -7,10 +7,23 @@ import {
   FlatList,
   ActivityIndicator,
 } from 'react-native';
-import { ArrowLeft, Bell, CheckCheck, Trash2, ShieldAlert } from 'lucide-react-native';
+import { ArrowLeft, Bell, CheckCheck, Trash2, ShieldAlert, Dumbbell, CreditCard, User, DollarSign, Clock, Shield, X } from 'lucide-react-native';
 import { Colors } from '../../theme/colors';
 import { AuthService } from '../../services/authService';
 import { NotificationService, AppNotification } from '../../services/notificationService';
+import { supabase } from '../../services/supabaseClient';
+
+const getNotifIcon = (type: string) => {
+  switch (type) {
+    case 'workout':    return { icon: Dumbbell,    color: '#FF6047' };
+    case 'membership': return { icon: CreditCard,   color: '#9C27B0' };
+    case 'coach':      return { icon: User,         color: '#2196F3' };
+    case 'payment':    return { icon: DollarSign,   color: '#4CAF50' };
+    case 'reminder':   return { icon: Clock,        color: '#FF9800' };
+    case 'system':     return { icon: Shield,       color: '#607D8B' };
+    default:           return { icon: Bell,         color: Colors.primary };
+  }
+};
 
 interface NotificationsScreenProps {
   navigation?: any;
@@ -52,6 +65,18 @@ export const NotificationsScreen: React.FC<NotificationsScreenProps> = ({ naviga
     if (!user) return;
     await NotificationService.clearAllNotifications(user.id);
     setNotifications([]);
+  };
+
+  const handleDeleteNotification = async (notifId: string) => {
+    try {
+      await supabase
+        .from('notifications')
+        .update({ is_read: true })
+        .eq('id', notifId);
+      setNotifications(prev => prev.filter(n => n.id !== notifId));
+    } catch (e) {
+      console.error('Bildirim silinirken hata:', e);
+    }
   };
 
   return (
@@ -96,18 +121,23 @@ export const NotificationsScreen: React.FC<NotificationsScreenProps> = ({ naviga
           data={notifications}
           keyExtractor={(item) => item.id}
           contentContainerStyle={styles.listContent}
-          renderItem={({ item }) => (
+          renderItem={({ item }) => {
+            const { icon: IconComponent, color: iconColor } = getNotifIcon(item.type || 'system');
+            return (
             <View style={[styles.card, !item.is_read && styles.unreadCard]}>
               <View style={styles.cardHeader}>
-                <Bell size={18} color={!item.is_read ? Colors.primary : Colors.textSecondaryDark} />
+                <IconComponent size={18} color={!item.is_read ? iconColor : Colors.textSecondaryDark} />
                 <Text style={styles.cardTitle}>{item.title}</Text>
+                <TouchableOpacity onPress={() => handleDeleteNotification(item.id)}>
+                  <X size={18} color={Colors.textSecondaryDark} />
+                </TouchableOpacity>
               </View>
               <Text style={styles.cardBody}>{item.body}</Text>
               <Text style={styles.cardTime}>
                 {new Date(item.created_at).toLocaleString('tr-TR')}
               </Text>
             </View>
-          )}
+          )}}
         />
       )}
     </View>

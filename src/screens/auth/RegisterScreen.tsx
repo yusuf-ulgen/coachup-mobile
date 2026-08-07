@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   View,
   Text,
@@ -17,6 +17,8 @@ import { Eye, EyeOff } from 'lucide-react-native';
 import { Colors } from '../../theme/colors';
 import { AuthService } from '../../services/authService';
 import { GYM_CONFIG } from '../../config/gym';
+import { supabase } from '../../services/supabaseClient';
+import { UserService } from '../../services/userService';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -34,7 +36,11 @@ export const RegisterScreen: React.FC<RegisterScreenProps> = ({
   const [password, setPassword] = useState('');
   const [gender, setGender] = useState<'male' | 'female' | null>(null);
   const [loading, setLoading] = useState(false);
+  const [resendLoading, setResendLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+
+  const emailRef = useRef<TextInput>(null);
+  const passwordRef = useRef<TextInput>(null);
 
   const handleRegister = async () => {
     if (!name.trim()) {
@@ -64,6 +70,13 @@ export const RegisterScreen: React.FC<RegisterScreenProps> = ({
         true
       );
 
+      // Profil satırını garantile
+      const { data: userData } = await supabase.auth.getUser();
+      const userId = userData?.user?.id;
+      if (userId) {
+        await UserService.ensureProfileExists(userId, email.trim(), name.trim(), gender!);
+      }
+
       if (emailConfirmed) {
         if (onRegisterSuccess) {
           onRegisterSuccess();
@@ -77,16 +90,23 @@ export const RegisterScreen: React.FC<RegisterScreenProps> = ({
           [
             {
               text: 'Giriş Ekranına Dön',
-              onPress: onNavigateToLogin,
+              onPress: async () => {
+                try { await AuthService.signOut(); } catch (e) {}
+                onNavigateToLogin();
+              },
             },
             {
-              text: 'Tekrar Gönder',
+              text: resendLoading ? 'Gönderiliyor...' : 'Tekrar Gönder',
               onPress: async () => {
+                if (resendLoading) return;
                 try {
+                  setResendLoading(true);
                   await AuthService.resendConfirmationEmail(email.trim());
                   Alert.alert('Bilgi', 'Doğrulama e-postası gönderildi.');
                 } catch (e: any) {
                   Alert.alert('Hata', e.message || 'Gönderilemedi.');
+                } finally {
+                  setResendLoading(false);
                 }
               },
             },
@@ -108,7 +128,7 @@ export const RegisterScreen: React.FC<RegisterScreenProps> = ({
   return (
     <KeyboardAvoidingView
       style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
       <ScrollView
         contentContainerStyle={styles.scrollContent}
@@ -145,12 +165,15 @@ export const RegisterScreen: React.FC<RegisterScreenProps> = ({
               value={name}
               onChangeText={setName}
               autoCapitalize="words"
+              returnKeyType="next"
+              onSubmitEditing={() => emailRef.current?.focus()}
             />
           </View>
 
           {/* Email Input */}
           <View style={styles.inputWrapper}>
             <TextInput
+              ref={emailRef}
               style={styles.pillInput}
               placeholder="Email adresinizi girin"
               placeholderTextColor={Colors.textSecondaryDark}
@@ -159,6 +182,8 @@ export const RegisterScreen: React.FC<RegisterScreenProps> = ({
               keyboardType="email-address"
               autoCapitalize="none"
               autoCorrect={false}
+              returnKeyType="next"
+              onSubmitEditing={() => passwordRef.current?.focus()}
             />
           </View>
 
@@ -166,6 +191,7 @@ export const RegisterScreen: React.FC<RegisterScreenProps> = ({
           <View style={styles.inputWrapper}>
             <View style={styles.passwordRow}>
               <TextInput
+                ref={passwordRef}
                 style={[styles.pillInput, { flex: 1 }]}
                 placeholder="Şifre"
                 placeholderTextColor={Colors.textSecondaryDark}
@@ -173,6 +199,8 @@ export const RegisterScreen: React.FC<RegisterScreenProps> = ({
                 onChangeText={setPassword}
                 secureTextEntry={!showPassword}
                 autoCapitalize="none"
+                returnKeyType="done"
+                onSubmitEditing={handleRegister}
               />
               <TouchableOpacity
                 onPress={() => setShowPassword(!showPassword)}
@@ -247,7 +275,12 @@ export const RegisterScreen: React.FC<RegisterScreenProps> = ({
             activeOpacity={0.85}
           >
             {loading ? (
-              <ActivityIndicator color={Colors.allWhite} />
+              <>
+                <ActivityIndicator color={Colors.allWhite} size="small" />
+                <View style={styles.arrowCircle}>
+                  <Text style={styles.arrowText}>→</Text>
+                </View>
+              </>
             ) : (
               <>
                 <Text style={styles.buttonText}>Kayıt Ol</Text>
@@ -284,7 +317,7 @@ const styles = StyleSheet.create({
     flexGrow: 1,
   },
   heroSection: {
-    height: SCREEN_HEIGHT * 0.38,
+    height: SCREEN_HEIGHT * 0.40,
     width: '100%',
     position: 'relative',
     alignItems: 'center',

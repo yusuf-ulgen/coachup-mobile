@@ -29,7 +29,15 @@ export function resolveCodeType(code: string): 'entry' | 'exit' {
 }
 
 export const QRService = {
-  async fetchEntries(userId: string, limit = 5): Promise<EntryHistory[]> {
+  async fetchEntryCount(userId: string): Promise<number> {
+    const { count, error } = await supabase
+      .from('gym_entries')
+      .select('*', { count: 'exact', head: true })
+      .eq('user_id', userId);
+    return count || 0;
+  },
+
+  async fetchEntries(userId: string, limit = 50): Promise<EntryHistory[]> {
     const { data, error } = await supabase
       .from('gym_entries')
       .select('*')
@@ -61,12 +69,17 @@ export const QRService = {
     method: 'qr' | 'manual'
   ): Promise<void> {
     const entryType = resolveCodeType(code);
-    const { error } = await supabase.from('gym_entries').insert({
-      user_id: userId,
-      entry_type: entryType,
-      entry_method: method,
-      entry_time: new Date().toISOString(),
-    });
-    if (error) throw new Error(error.message);
+    
+    if (entryType === 'entry') {
+      const { error } = await supabase.functions.invoke('qr-validate', {
+        body: { code, method }
+      });
+      if (error) throw new Error(error.message || 'Giriş işlemi başarısız');
+    } else {
+      const { error } = await supabase.functions.invoke('qr-exit', {
+        body: { code, method }
+      });
+      if (error) throw new Error(error.message || 'Çıkış işlemi başarısız');
+    }
   },
 };

@@ -18,7 +18,9 @@ import {
   CheckCircle,
   Flag,
   Clock,
+  Users,
 } from 'lucide-react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors } from '../../theme/colors';
 import { GYM_CONFIG } from '../../config/gym';
 import { AuthService } from '../../services/authService';
@@ -28,6 +30,7 @@ import { TrainingService, TrainingSession } from '../../services/trainingService
 import { GroupClassService, ClassBooking } from '../../services/groupClassService';
 import { GoalService, UserGoal } from '../../services/goalService';
 import { UserService } from '../../services/userService';
+import { NotificationService } from '../../services/notificationService';
 
 import { HomeTabState } from '../../navigation/HomeTabState';
 
@@ -42,18 +45,44 @@ interface WeekDay {
   isToday: boolean;
 }
 
+const buildWeekDays = (): WeekDay[] => {
+  const days: WeekDay[] = [];
+  const today = new Date();
+  const todayStr = today.toISOString().split('T')[0];
+  const dayNames = ['Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cts', 'Paz'];
+
+  for (let i = -30; i < 30; i++) {
+    const d = new Date();
+    d.setDate(today.getDate() + i);
+    const dateStr = d.toISOString().split('T')[0];
+    const nameIndex = (d.getDay() + 6) % 7;
+    days.push({
+      name: dayNames[nameIndex],
+      dateString: dateStr,
+      dayOfMonth: d.getDate(),
+      isToday: dateStr === todayStr,
+    });
+  }
+  return days;
+};
+
 export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
+  const insets = useSafeAreaInsets();
+  const flatListRef = React.useRef<FlatList>(null);
+
   const [menuVisible, setMenuVisible] = useState(false);
   const [userProfile, setUserProfile] = useState<any>(null);
   const [selectedDate, setSelectedDateState] = useState<string>(
     HomeTabState.selectedDate || new Date().toISOString().split('T')[0]
   );
+  // Okunmamış bildirim sayısı
+  const [unreadNotifCount, setUnreadNotifCount] = useState(0);
 
   const setSelectedDate = (dateStr: string) => {
     HomeTabState.selectedDate = dateStr;
     setSelectedDateState(dateStr);
   };
-  const [weekDays, setWeekDays] = useState<WeekDay[]>([]);
+  const [weekDays, setWeekDays] = useState<WeekDay[]>(() => buildWeekDays());
   const [loading, setLoading] = useState(false);
 
   // Live Supabase Data State
@@ -66,26 +95,19 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
   const [showMembershipPicker, setShowMembershipPicker] = useState(false);
 
   useEffect(() => {
-    // Generate 60 days range (30 days past + today + 29 days future)
-    const days: WeekDay[] = [];
-    const today = new Date();
-    const todayStr = today.toISOString().split('T')[0];
-    const dayNames = ['Pzt', 'Sal', 'Çar', 'Per', 'Cm', 'Cts', 'Paz'];
-
-    for (let i = -30; i < 30; i++) {
-      const d = new Date();
-      d.setDate(today.getDate() + i);
-      const dateStr = d.toISOString().split('T')[0];
-      const nameIndex = (d.getDay() + 6) % 7;
-      days.push({
-        name: dayNames[nameIndex],
-        dateString: dateStr,
-        dayOfMonth: d.getDate(),
-        isToday: dateStr === todayStr,
-      });
+    // Auto-scroll to today in day selector strip
+    const todayIndex = weekDays.findIndex((w) => w.isToday);
+    if (todayIndex >= 0 && flatListRef.current) {
+      setTimeout(() => {
+        flatListRef.current?.scrollToIndex({
+          index: Math.max(0, todayIndex - 2),
+          animated: false,
+        });
+      }, 100);
     }
-    setWeekDays(days);
+  }, []);
 
+  useEffect(() => {
     // Fetch Profile
     const loadProfile = async () => {
       try {
@@ -117,6 +139,24 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
       }
     };
     loadProfile();
+
+    // Okunmamış bildirim sayısını çek
+    const loadUnreadCount = async () => {
+      try {
+        const user = await AuthService.getCurrentUser();
+        if (user?.id) {
+          const { count } = await (await import('../../services/supabaseClient')).supabase
+            .from('notifications')
+            .select('*', { count: 'exact', head: true })
+            .eq('user_id', user.id)
+            .eq('is_read', false);
+          setUnreadNotifCount(count || 0);
+        }
+      } catch (e) {
+        // Bildirim sayısı hatası sessizce geç
+      }
+    };
+    loadUnreadCount();
   }, []);
 
   // Fetch Live Supabase Data on date or user change
@@ -161,7 +201,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
   return (
     <View style={styles.container}>
       {/* Top Navigation Bar */}
-      <View style={styles.topHeader}>
+      <View style={[styles.topHeader, { paddingTop: Math.max(12, insets.top + 6) }]}>
         <TouchableOpacity
           style={styles.circleIconButton}
           onPress={() => setMenuVisible(true)}
@@ -176,12 +216,20 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
           resizeMode="contain"
         />
 
+        {/* Bildirim Butonu + Badge */}
         <TouchableOpacity
           style={styles.circleIconButton}
           onPress={() => navigation.navigate('Notifications')}
           activeOpacity={0.8}
         >
           <Bell size={20} color={Colors.textDark} />
+          {unreadNotifCount > 0 && (
+            <View style={styles.notifBadge}>
+              <Text style={styles.notifBadgeText}>
+                {unreadNotifCount > 9 ? '9+' : unreadNotifCount}
+              </Text>
+            </View>
+          )}
         </TouchableOpacity>
       </View>
 
@@ -236,12 +284,21 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
         {/* Day Selector Strip */}
         <View style={styles.daySelectorWrapper}>
           <FlatList
+            ref={flatListRef}
             horizontal
             data={weekDays}
             keyExtractor={(item) => item.dateString}
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={styles.daySelectorList}
             initialScrollIndex={28}
+            onScrollToIndexFailed={(info) => {
+              setTimeout(() => {
+                flatListRef.current?.scrollToIndex({
+                  index: Math.max(0, info.index),
+                  animated: false,
+                });
+              }, 100);
+            }}
             getItemLayout={(_, index) => ({
               length: 64,
               offset: 64 * index,
@@ -344,7 +401,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
                 </View>
               ))}
 
-              {/* Completed Sessions */}
+              {/* Tamamlanan Oturumlar */}
               {completedSessions.map((session: any) => {
                 const completionTime = session.completed_at
                   ? (() => {
@@ -415,6 +472,58 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
                         )}
                       </View>
                     )}
+                  </View>
+                );
+              })}
+
+              {/* Grup Dersi Kartları (GroupClassProgramCard) */}
+              {groupBookings.map((booking: ClassBooking) => {
+                const groupClass = booking.group_class || (booking as any).class;
+                const statusStr = booking.status?.toLowerCase() || '';
+                const isWaitlist = statusStr === 'waitlist' || statusStr === 'waiting';
+                const isConfirmed = statusStr === 'confirmed' || statusStr === 'booked';
+
+                const startTimeStr = groupClass?.start_time ? groupClass.start_time.substring(0, 5) : null;
+                const endTimeStr = groupClass?.end_time ? groupClass.end_time.substring(0, 5) : null;
+                const timeDisplay = startTimeStr ? (endTimeStr ? `${startTimeStr} - ${endTimeStr}` : startTimeStr) : null;
+
+                return (
+                  <View key={booking.id} style={styles.groupClassCard}>
+                    <View style={styles.groupClassIconBox}>
+                      <Users size={20} color="#9C27B0" />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.cardTitle}>
+                        {groupClass?.name || 'Grup Dersi'}
+                      </Text>
+                      <Text style={styles.cardSubtitle}>
+                        {groupClass?.instructor_name
+                          ? `Eğitmen: ${groupClass.instructor_name}`
+                          : 'Grup Eğitimi'}
+                      </Text>
+                      {timeDisplay && (
+                        <View style={styles.statusRow}>
+                          <Clock size={12} color={Colors.textSecondaryDark} />
+                          <Text style={[styles.cardSubtitle, { marginTop: 0, marginLeft: 4 }]}>
+                            {timeDisplay}
+                          </Text>
+                        </View>
+                      )}
+                    </View>
+                    <View
+                      style={[
+                        styles.bookingStatusBadge,
+                        isWaitlist && styles.bookingStatusWaitlist,
+                      ]}
+                    >
+                      <Text style={styles.bookingStatusText}>
+                        {isConfirmed
+                          ? 'Katılıyorum'
+                          : isWaitlist
+                          ? 'Yedekte'
+                          : booking.status || 'Katılıyorum'}
+                      </Text>
+                    </View>
                   </View>
                 );
               })}
@@ -490,6 +599,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.cardDark,
     justifyContent: 'center',
     alignItems: 'center',
+    position: 'relative', // Badge için
   },
   headerLogo: {
     height: 32,
@@ -716,7 +826,7 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
   modalOverlay: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: 'rgba(0,0,0,0.65)',
     justifyContent: 'center',
     alignItems: 'center',
@@ -742,4 +852,56 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: Colors.borderDark,
   },
+  // Grup Dersi Kartı Stilleri
+  groupClassCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.cardDark,
+    borderRadius: 16,
+    padding: 14,
+    gap: 12,
+    borderLeftWidth: 3,
+    borderLeftColor: '#9C27B0',
+  },
+  groupClassIconBox: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: 'rgba(156, 39, 176, 0.12)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  bookingStatusBadge: {
+    backgroundColor: 'rgba(76, 175, 80, 0.15)',
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  bookingStatusWaitlist: {
+    backgroundColor: 'rgba(255, 152, 0, 0.15)',
+  },
+  bookingStatusText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#4CAF50',
+  },
+  // Bildirim Badge Stilleri
+  notifBadge: {
+    position: 'absolute',
+    top: 4,
+    right: 4,
+    backgroundColor: Colors.primary,
+    borderRadius: 8,
+    minWidth: 16,
+    height: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 3,
+  },
+  notifBadgeText: {
+    color: Colors.allWhite,
+    fontSize: 10,
+    fontWeight: '700',
+  },
 });
+

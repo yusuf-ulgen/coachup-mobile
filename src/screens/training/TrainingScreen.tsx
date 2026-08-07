@@ -26,21 +26,28 @@ import { TrainingService, TrainingProgram } from '../../services/trainingService
 import { WorkoutGoalSheet, WorkoutGoal } from '../../components/WorkoutGoalSheet';
 import { Header } from '../../components/Header';
 import { SideMenu } from '../../components/SideMenu';
+import { ProgramPreviewModal } from '../../components/ProgramPreviewModal';
+import { CustomAlert } from '../../components/CustomAlertModal';
 import { supabase } from '../../services/supabaseClient';
+import { ActiveWorkoutManager } from '../../services/activeWorkoutManager';
 
 interface TrainingScreenProps {
   navigation?: any;
 }
 
 const BUILTIN_ACTIVITIES = [
+  { id: 'fitness', title: 'Fitness', emoji: '🏋️', hint: 'Süre · Nabız' },
   { id: 'running', title: 'Koşu', emoji: '🏃', hint: 'Süre · Mesafe · Tempo' },
   { id: 'walking', title: 'Yürüyüş', emoji: '🚶', hint: 'Süre · Mesafe · Tempo' },
   { id: 'cycling', title: 'Bisiklet', emoji: '🚴', hint: 'Süre · Mesafe · Hız' },
   { id: 'swimming', title: 'Yüzme', emoji: '🏊', hint: 'Süre · Mesafe' },
-  { id: 'crossfit', title: 'CrossFit WOD', emoji: '🏋️', hint: 'Süre · Nabız' },
-  { id: 'hiit', title: 'HIIT', emoji: '⚡', hint: 'Süre · Nabız' },
+  { id: 'combat', title: 'Dövüş Sporları', emoji: '🥊', hint: 'Süre · Nabız' },
   { id: 'yoga', title: 'Yoga', emoji: '🧘', hint: 'Süre · Nabız' },
-  { id: 'custom', title: 'Serbest Antrenman', emoji: '💪', hint: 'Serbest kayıt' },
+  { id: 'pilates', title: 'Pilates', emoji: '🤸', hint: 'Süre · Nabız' },
+  { id: 'crossfit', title: 'CrossFit', emoji: '🔥', hint: 'Süre · Nabız' },
+  { id: 'functional', title: 'Functional Fitness', emoji: '⚡', hint: 'Süre · Nabız' },
+  { id: 'hyrox', title: 'Hyrox', emoji: '🏁', hint: 'Süre · Mesafe · Tempo' },
+  { id: 'custom', title: 'Özel Aktivite', emoji: '📋', hint: 'Serbest kayıt' },
 ];
 
 export const TrainingScreen: React.FC<TrainingScreenProps> = ({ navigation }) => {
@@ -54,6 +61,10 @@ export const TrainingScreen: React.FC<TrainingScreenProps> = ({ navigation }) =>
   // Goal Sheet State
   const [selectedActivity, setSelectedActivity] = useState<any>(null);
   const [showGoalSheet, setShowGoalSheet] = useState(false);
+
+  // Program Preview Modal State
+  const [previewProgram, setPreviewProgram] = useState<TrainingProgram | null>(null);
+  const [showPreviewModal, setShowPreviewModal] = useState(false);
 
   useEffect(() => {
     const loadProfileAndPrograms = async () => {
@@ -98,7 +109,7 @@ export const TrainingScreen: React.FC<TrainingScreenProps> = ({ navigation }) =>
 
   const [startingProgramId, setStartingProgramId] = useState<string | null>(null);
 
-  const handleStartProgram = async (prog: TrainingProgram) => {
+  const handleStartProgram = async (prog: TrainingProgram, selectedDay: number = 1) => {
     const uid = userProfile?.id || userProfile?.user_id;
     if (!uid) return;
 
@@ -113,10 +124,12 @@ export const TrainingScreen: React.FC<TrainingScreenProps> = ({ navigation }) =>
         .maybeSingle();
 
       if (activeData) {
-        Alert.alert(
-          'Aktif Antrenman Mevcut',
-          'Zaten devam eden bir antrenmanınız var. Lütfen önce mevcut antrenmanı bitirin veya antrenmana dönün.',
-          [
+        setShowPreviewModal(false);
+        CustomAlert.show({
+          title: 'Aktif Antrenman Mevcut',
+          message: 'Zaten devam eden bir antrenmanınız var. Lütfen önce mevcut antrenmanı bitirin veya antrenmana dönün.',
+          type: 'warning',
+          buttons: [
             { text: 'Vazgeç', style: 'cancel' },
             {
               text: 'Antrenmana Dön',
@@ -127,22 +140,29 @@ export const TrainingScreen: React.FC<TrainingScreenProps> = ({ navigation }) =>
                   title: prog.name,
                 }),
             },
-          ]
-        );
+          ],
+        });
         return;
       }
 
       // Create new session via TrainingService
       const session = await TrainingService.startSession(uid, prog.id, prog.gym_id);
+      setShowPreviewModal(false);
+      ActiveWorkoutManager.startWorkout(session.id, prog.name, prog.id);
       navigation?.navigate('ActiveWorkout', {
         sessionId: session.id,
         programId: prog.id,
         title: prog.name,
         category: prog.category || 'Salon',
+        selectedDay: selectedDay,
       });
     } catch (e: any) {
       console.error('Start program error:', e);
-      Alert.alert('Hata', 'Antrenman başlatılamadı: ' + (e?.message || e));
+      CustomAlert.show({
+        title: 'Hata',
+        message: 'Antrenman başlatılamadı: ' + (e?.message || e),
+        type: 'error',
+      });
     } finally {
       setStartingProgramId(null);
     }
@@ -195,12 +215,15 @@ export const TrainingScreen: React.FC<TrainingScreenProps> = ({ navigation }) =>
             style={styles.startButton}
             activeOpacity={0.8}
             disabled={isStarting}
-            onPress={() => handleStartProgram(prog)}
+            onPress={() => {
+              setPreviewProgram(prog);
+              setShowPreviewModal(true);
+            }}
           >
             {isStarting ? (
               <ActivityIndicator size="small" color={Colors.allWhite} />
             ) : (
-              <Text style={styles.startButtonText}>Başlat</Text>
+              <Text style={styles.startButtonText}>Programe Başlat</Text>
             )}
           </TouchableOpacity>
         </View>
@@ -385,13 +408,29 @@ export const TrainingScreen: React.FC<TrainingScreenProps> = ({ navigation }) =>
         )}
       </ScrollView>
 
+      {/* Program Preview Modal (Image 1) */}
+      <ProgramPreviewModal
+        visible={showPreviewModal}
+        program={previewProgram}
+        onClose={() => setShowPreviewModal(false)}
+        onStartWorkout={(day) => {
+          if (previewProgram) {
+            handleStartProgram(previewProgram, day);
+          }
+        }}
+        isStarting={!!startingProgramId}
+      />
+
       {/* Workout Goal Selection Sheet */}
       <WorkoutGoalSheet
         visible={showGoalSheet}
         onClose={() => setShowGoalSheet(false)}
         onSelectGoal={(goal: WorkoutGoal) => {
           if (selectedActivity) {
+            const sessionId = `free_${Date.now()}`;
+            ActiveWorkoutManager.startWorkout(sessionId, selectedActivity.title);
             navigation?.navigate('ActiveWorkout', {
+              sessionId,
               title: selectedActivity.title,
               category: selectedActivity.id,
               goalLabel: goal.label,

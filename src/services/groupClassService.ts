@@ -18,6 +18,7 @@ export interface ClassBooking {
   user_id: string;
   booked_at?: string;
   status?: string;
+  is_waitlist?: boolean;
   group_class?: GroupClass;
 }
 
@@ -27,7 +28,9 @@ export const GroupClassService = {
       const { data, error } = await supabase
         .from('class_bookings')
         .select('*, group_class:group_classes(*)')
-        .eq('user_id', userId);
+        .eq('user_id', userId)
+        .eq('booking_date', dateStr)
+        .neq('status', 'cancelled');
 
       if (error) throw error;
       return data || [];
@@ -53,11 +56,36 @@ export const GroupClassService = {
     }
   },
 
-  async bookClass(userId: string, classId: string) {
+  async fetchClassesForDate(userId: string, dateStr: string): Promise<GroupClass[]> {
+    try {
+      const { data: userProfile } = await supabase.from('users').select('gym_id').eq('id', userId).single();
+      if (!userProfile?.gym_id) return [];
+      
+      const { data, error } = await supabase
+        .from('group_classes')
+        .select('*')
+        .eq('gym_id', userProfile.gym_id)
+        .eq('is_active', true)
+        .order('start_time', { ascending: true });
+
+      if (error) throw error;
+      if (!data) return [];
+
+      const targetDay = new Date(dateStr).getDay();
+      return data.filter((c: any) => c.day_of_week === undefined || c.day_of_week === null || c.day_of_week === targetDay);
+    } catch (e) {
+      console.error('Error fetching classes for date:', e);
+      return [];
+    }
+  },
+
+  async bookClass(userId: string, classId: string, bookingDate?: string, status: string = 'booked') {
+    const targetDate = bookingDate || new Date().toISOString().split('T')[0];
     const { data, error } = await supabase.from('class_bookings').insert({
       user_id: userId,
       class_id: classId,
-      status: 'booked',
+      booking_date: targetDate,
+      status: status,
     });
 
     if (error) throw error;

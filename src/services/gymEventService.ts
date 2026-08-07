@@ -37,11 +37,18 @@ export const GymEventService = {
   async fetchParticipationsForDate(userId: string, dateStr: string): Promise<EventParticipant[]> {
     try {
       const { data, error } = await supabase
-        .from('gym_event_participants')
+        .from('event_participants')
         .select('*')
         .eq('user_id', userId);
 
-      if (error) throw error;
+      if (error) {
+        const { data: fallback } = await supabase
+          .from('gym_event_participants')
+          .select('*')
+          .eq('user_id', userId);
+        if (fallback) return fallback;
+        throw error;
+      }
       return data || [];
     } catch (e) {
       console.error('Error fetching event participations:', e);
@@ -52,7 +59,7 @@ export const GymEventService = {
   async joinEvent(userId: string, eventId: string): Promise<string> {
     try {
       const { data, error } = await supabase
-        .from('gym_event_participants')
+        .from('event_participants')
         .insert({
           event_id: eventId,
           user_id: userId,
@@ -72,7 +79,7 @@ export const GymEventService = {
   async leaveEvent(participantId: string): Promise<void> {
     try {
       const { error } = await supabase
-        .from('gym_event_participants')
+        .from('event_participants')
         .delete()
         .eq('id', participantId);
 

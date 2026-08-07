@@ -5,10 +5,12 @@ export interface Coach {
   name: string;
   surname?: string;
   speciality?: string;
+  specialization?: string;
   bio?: string;
   avatar_url?: string;
   gym_id?: string;
   rating?: number;
+  gender?: string;
 }
 
 export const CoachService = {

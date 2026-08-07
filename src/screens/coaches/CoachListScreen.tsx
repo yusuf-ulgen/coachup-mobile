@@ -7,8 +7,10 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   Image,
+  TextInput,
+  ScrollView,
 } from 'react-native';
-import { ArrowLeft, User as UserIcon } from 'lucide-react-native';
+import { ArrowLeft, User as UserIcon, Search } from 'lucide-react-native';
 import { Colors } from '../../theme/colors';
 import { CoachService, Coach } from '../../services/coachService';
 
@@ -19,6 +21,8 @@ interface CoachListScreenProps {
 export const CoachListScreen: React.FC<CoachListScreenProps> = ({ navigation }) => {
   const [coaches, setCoaches] = useState<Coach[]>([]);
   const [loading, setLoading] = useState(true);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [genderFilter, setGenderFilter] = useState<'all' | 'male' | 'female'>('all');
 
   useEffect(() => {
     const loadCoaches = async () => {
@@ -35,6 +39,18 @@ export const CoachListScreen: React.FC<CoachListScreenProps> = ({ navigation }) 
     loadCoaches();
   }, []);
 
+  const filteredCoaches = coaches.filter(coach => {
+    const searchLower = searchQuery.toLowerCase();
+    const matchesSearch = !searchQuery ||
+      coach.name?.toLowerCase().includes(searchLower) ||
+      coach.surname?.toLowerCase().includes(searchLower) ||
+      coach.speciality?.toLowerCase().includes(searchLower) ||
+      (coach as any).specialization?.toLowerCase().includes(searchLower);
+    
+    const matchesGender = genderFilter === 'all' || coach.gender === genderFilter;
+    return matchesSearch && matchesGender;
+  });
+
   return (
     <View style={styles.container}>
       <View style={styles.header}>
@@ -49,6 +65,32 @@ export const CoachListScreen: React.FC<CoachListScreenProps> = ({ navigation }) 
         <Text style={styles.headerTitle}>Kulüp Koçları</Text>
       </View>
 
+      <View style={styles.searchContainer}>
+        <View style={styles.searchInputContainer}>
+          <Search size={20} color={Colors.textSecondaryDark} style={styles.searchIcon} />
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Koç veya uzmanlık ara..."
+            placeholderTextColor={Colors.textSecondaryDark}
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+          />
+        </View>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterContainer}>
+          {(['all', 'male', 'female'] as const).map(filter => (
+            <TouchableOpacity
+              key={filter}
+              style={[styles.filterChip, genderFilter === filter && styles.filterChipActive]}
+              onPress={() => setGenderFilter(filter)}
+            >
+              <Text style={[styles.filterChipText, genderFilter === filter && styles.filterChipTextActive]}>
+                {filter === 'all' ? 'Tümü' : filter === 'male' ? 'Erkek' : 'Kadın'}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      </View>
+
       {loading ? (
         <View style={styles.loadingBox}>
           <ActivityIndicator size="large" color={Colors.primary} />
@@ -59,13 +101,17 @@ export const CoachListScreen: React.FC<CoachListScreenProps> = ({ navigation }) 
         </View>
       ) : (
         <FlatList
-          data={coaches}
+          data={filteredCoaches}
           keyExtractor={(item) => item.id}
           contentContainerStyle={styles.listContent}
           renderItem={({ item }) => {
             const fullName = `${item.name || ''} ${item.surname || ''}`.trim() || 'Koç';
             return (
-              <View style={styles.coachCard}>
+              <TouchableOpacity 
+                style={styles.coachCard}
+                activeOpacity={0.7}
+                onPress={() => navigation?.navigate('CoachDetail', { coachId: item.id })}
+              >
                 {item.avatar_url ? (
                   <Image source={{ uri: item.avatar_url }} style={styles.avatar} />
                 ) : (
@@ -84,10 +130,14 @@ export const CoachListScreen: React.FC<CoachListScreenProps> = ({ navigation }) 
                   ) : null}
                 </View>
 
-                <TouchableOpacity style={styles.bookButton} activeOpacity={0.8}>
+                <TouchableOpacity 
+                  style={styles.bookButton} 
+                  activeOpacity={0.8}
+                  onPress={() => navigation?.navigate('Appointments', { coachId: item.id })}
+                >
                   <Text style={styles.bookButtonText}>Randevu</Text>
                 </TouchableOpacity>
-              </View>
+              </TouchableOpacity>
             );
           }}
         />
@@ -116,6 +166,54 @@ const styles = StyleSheet.create({
     fontSize: 22,
     fontWeight: '700',
     color: Colors.textDark,
+  },
+  searchContainer: {
+    paddingHorizontal: 20,
+    paddingBottom: 16,
+    backgroundColor: Colors.cardDark,
+  },
+  searchInputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.backgroundDark,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: Colors.borderDark,
+  },
+  searchIcon: {
+    marginRight: 8,
+  },
+  searchInput: {
+    flex: 1,
+    height: 44,
+    color: Colors.textDark,
+    fontSize: 15,
+  },
+  filterContainer: {
+    flexDirection: 'row',
+  },
+  filterChip: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    backgroundColor: Colors.backgroundDark,
+    borderWidth: 1,
+    borderColor: Colors.borderDark,
+    marginRight: 8,
+  },
+  filterChipActive: {
+    backgroundColor: Colors.primary,
+    borderColor: Colors.primary,
+  },
+  filterChipText: {
+    color: Colors.textSecondaryDark,
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  filterChipTextActive: {
+    color: Colors.allWhite,
   },
   loadingBox: {
     flex: 1,

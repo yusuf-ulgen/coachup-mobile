@@ -67,6 +67,34 @@ export const AuthService = {
     }
   },
 
+  async ensureProfileFromAuthIfMissing(): Promise<void> {
+    try {
+      const { data: userData } = await supabase.auth.getUser();
+      if (!userData?.user) return;
+      const userId = userData.user.id;
+      // Profil var mı kontrol et
+      const { data: existing } = await supabase
+        .from('users')
+        .select('id')
+        .eq('id', userId)
+        .single();
+      if (existing) return; // Zaten var
+      // Yoksa oluştur
+      const meta = userData.user.user_metadata || {};
+      await supabase.from('users').upsert({
+        id: userId,
+        email: userData.user.email,
+        name: meta.name || 'Kullanıcı',
+        gender: meta.gender || null,
+        role: meta.role || 'individual',
+        gym_id: meta.gym_id || null,
+        is_individual: meta.account_type === 'individual',
+      });
+    } catch (e) {
+      console.error('ensureProfileFromAuthIfMissing failed:', e);
+    }
+  },
+
   async getCurrentUser() {
     const { data } = await supabase.auth.getUser();
     return data.user;

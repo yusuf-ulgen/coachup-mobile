@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   View,
   Text,
@@ -12,8 +12,11 @@ import {
   ScrollView,
   Image,
   Dimensions,
+  TouchableWithoutFeedback,
+  Keyboard,
+  Modal,
 } from 'react-native';
-import { Eye, EyeOff } from 'lucide-react-native';
+import { Eye, EyeOff, Mail } from 'lucide-react-native';
 import { Colors } from '../../theme/colors';
 import { AuthService } from '../../services/authService';
 import { GYM_CONFIG } from '../../config/gym';
@@ -33,6 +36,9 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [showVerificationModal, setShowVerificationModal] = useState(false);
+  const [resendLoading, setResendLoading] = useState(false);
+  const passwordRef = useRef<TextInput>(null);
 
   const handleLogin = async () => {
     if (!email.trim() || !password) {
@@ -43,32 +49,18 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
     try {
       setLoading(true);
       await AuthService.signIn(email.trim(), password);
+      await AuthService.ensureProfileFromAuthIfMissing();
       if (onLoginSuccess) {
         onLoginSuccess();
       }
     } catch (error: any) {
       const msg = error.message || '';
-      if (msg.includes('invalid_credentials') || msg.includes('E-posta veya şifre hatalı')) {
+      if (msg.includes('network') || msg.includes('Unable to resolve host') || msg.includes('Network request failed')) {
+        Alert.alert('Hata', 'İnternet bağlantısı yok. Lütfen bağlantınızı kontrol edin.');
+      } else if (msg.includes('invalid_credentials') || msg.includes('E-posta veya şifre hatalı')) {
         Alert.alert('Giriş Başarısız', 'E-posta veya şifre hatalı.');
       } else if (msg.includes('email_not_confirmed')) {
-        Alert.alert(
-          'E-posta Doğrulama Gerekli',
-          'E-posta adresinizi doğrulamadınız. Gelen kutunuzu kontrol edin.',
-          [
-            { text: 'Tamam' },
-            {
-              text: 'Tekrar Gönder',
-              onPress: async () => {
-                try {
-                  await AuthService.resendConfirmationEmail(email.trim());
-                  Alert.alert('Bilgi', 'Doğrulama e-postası tekrar gönderildi.');
-                } catch (e: any) {
-                  Alert.alert('Hata', e.message || 'Gönderilemedi.');
-                }
-              },
-            },
-          ]
-        );
+        setShowVerificationModal(true);
       } else {
         Alert.alert('Hata', msg || 'Giriş yapılamadı. Lütfen tekrar deneyin.');
       }
@@ -78,11 +70,12 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
   };
 
   return (
-    <KeyboardAvoidingView
-      style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-    >
-      <ScrollView
+    <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+      <KeyboardAvoidingView
+        style={styles.container}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      >
+        <ScrollView
         contentContainerStyle={styles.scrollContent}
         keyboardShouldPersistTaps="handled"
         bounces={false}
@@ -119,6 +112,8 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
               keyboardType="email-address"
               autoCapitalize="none"
               autoCorrect={false}
+              returnKeyType="next"
+              onSubmitEditing={() => passwordRef.current?.focus()}
             />
           </View>
 
@@ -126,13 +121,16 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
           <View style={styles.inputWrapper}>
             <View style={styles.passwordRow}>
               <TextInput
-                style={[styles.pillInput, { flex: 1 }]}
+                ref={passwordRef}
+                style={[styles.pillInput, { flex: 1, paddingRight: 48 }]}
                 placeholder="Şifre"
                 placeholderTextColor={Colors.textSecondaryDark}
                 value={password}
                 onChangeText={setPassword}
                 secureTextEntry={!showPassword}
                 autoCapitalize="none"
+                returnKeyType="done"
+                onSubmitEditing={handleLogin}
               />
               <TouchableOpacity
                 onPress={() => setShowPassword(!showPassword)}
@@ -156,7 +154,12 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
             activeOpacity={0.85}
           >
             {loading ? (
-              <ActivityIndicator color={Colors.allWhite} />
+              <>
+                <ActivityIndicator color={Colors.allWhite} size="small" />
+                <View style={styles.arrowCircle}>
+                  <Text style={styles.arrowText}>→</Text>
+                </View>
+              </>
             ) : (
               <>
                 <Text style={styles.buttonText}>Giriş Yap</Text>
@@ -179,8 +182,60 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
             </Text>
           </TouchableOpacity>
         </View>
+
+        {/* E-posta Doğrulama Modalı */}
+        <Modal
+          visible={showVerificationModal}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setShowVerificationModal(false)}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalContent}>
+              <View style={styles.modalIconContainer}>
+                <Mail size={32} color={Colors.primary} />
+              </View>
+              <Text style={styles.modalTitle}>E-posta Doğrulama</Text>
+              <Text style={styles.modalMessage}>
+                Hesabınızı kullanmaya başlamak için e-posta adresinizi doğrulamanız gerekmektedir. Gelen kutunuzu kontrol edin.
+              </Text>
+              
+              <TouchableOpacity
+                style={[styles.primaryButton, { marginTop: 24 }]}
+                onPress={async () => {
+                  try {
+                    setResendLoading(true);
+                    await AuthService.resendConfirmationEmail(email.trim());
+                    Alert.alert('Bilgi', 'Doğrulama e-postası tekrar gönderildi.');
+                  } catch (e: any) {
+                    Alert.alert('Hata', e.message || 'Gönderilemedi.');
+                  } finally {
+                    setResendLoading(false);
+                    setShowVerificationModal(false);
+                  }
+                }}
+                disabled={resendLoading}
+              >
+                {resendLoading ? (
+                  <ActivityIndicator color={Colors.allWhite} />
+                ) : (
+                  <Text style={styles.buttonText}>Tekrar Gönder</Text>
+                )}
+              </TouchableOpacity>
+              
+              <TouchableOpacity
+                style={styles.modalCancelButton}
+                onPress={() => setShowVerificationModal(false)}
+              >
+                <Text style={styles.modalCancelText}>Kapat</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
+
       </ScrollView>
-    </KeyboardAvoidingView>
+      </KeyboardAvoidingView>
+    </TouchableWithoutFeedback>
   );
 };
 
@@ -193,7 +248,7 @@ const styles = StyleSheet.create({
     flexGrow: 1,
   },
   heroSection: {
-    height: SCREEN_HEIGHT * 0.45,
+    height: SCREEN_HEIGHT * 0.50,
     width: '100%',
     position: 'relative',
     alignItems: 'center',
@@ -250,7 +305,7 @@ const styles = StyleSheet.create({
   },
   eyeIconContainer: {
     position: 'absolute',
-    right: 18,
+    right: 12,
     height: '100%',
     justifyContent: 'center',
   },
@@ -298,5 +353,51 @@ const styles = StyleSheet.create({
     color: Colors.primary,
     fontWeight: '600',
     textDecorationLine: 'underline',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+  },
+  modalContent: {
+    backgroundColor: Colors.cardDark,
+    borderRadius: 24,
+    padding: 24,
+    width: '100%',
+    alignItems: 'center',
+  },
+  modalIconContainer: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: 'rgba(239, 68, 68, 0.1)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: Colors.textDark,
+    marginBottom: 12,
+  },
+  modalMessage: {
+    fontSize: 15,
+    color: Colors.textSecondaryDark,
+    textAlign: 'center',
+    lineHeight: 22,
+  },
+  modalCancelButton: {
+    marginTop: 16,
+    paddingVertical: 12,
+    width: '100%',
+    alignItems: 'center',
+  },
+  modalCancelText: {
+    color: Colors.textSecondaryDark,
+    fontSize: 15,
+    fontWeight: '600',
   },
 });

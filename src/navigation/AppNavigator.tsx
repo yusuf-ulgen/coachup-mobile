@@ -15,17 +15,25 @@ import { useAuth } from '../context/AuthContext';
 import { Colors } from '../theme/colors';
 import { SplashView } from '../components/SplashView';
 import { AuthService } from '../services/authService';
+import PusherService from '../services/pusherService';
 
 import { LoginScreen } from '../screens/auth/LoginScreen';
 import { RegisterScreen } from '../screens/auth/RegisterScreen';
 import { HomeScreen } from '../screens/home/HomeScreen';
 import { TrainingScreen } from '../screens/training/TrainingScreen';
 import { CoachListScreen } from '../screens/coaches/CoachListScreen';
+import { CoachDetailScreen } from '../screens/coaches/CoachDetailScreen';
+import { CoachChatScreen } from '../screens/coaches/CoachChatScreen';
 import { CommunityScreen } from '../screens/community/CommunityScreen';
 import { CalendarScreen } from '../screens/calendar/CalendarScreen';
 import { QREntryScreen } from '../screens/qr/QREntryScreen';
 import { ActiveWorkoutScreen } from '../screens/training/ActiveWorkoutScreen';
 import { RecordAttemptSetupScreen } from '../screens/training/RecordAttemptSetupScreen';
+import { RecordAttemptSessionScreen } from '../screens/training/RecordAttemptSessionScreen';
+import { RecordAttemptSummaryScreen } from '../screens/training/RecordAttemptSummaryScreen';
+import { RecordAttemptTimedModesScreen } from '../screens/training/RecordAttemptTimedModesScreen';
+import { WorkoutSummaryScreen } from '../screens/training/WorkoutSummaryScreen';
+import { WorkoutFinishCelebrationScreen } from '../screens/training/WorkoutFinishCelebrationScreen';
 import {
   MembershipScreen,
   TrainingHistoryScreen,
@@ -36,6 +44,25 @@ import {
 import { ProfileScreen } from '../screens/profile/ProfileScreen';
 import { NotificationsScreen } from '../screens/notifications/NotificationsScreen';
 import { AllEntryHistoryScreen } from '../screens/qr/AllEntryHistoryScreen';
+import { SettingsScreen } from '../screens/settings/SettingsScreen';
+import { AddressSettingsScreen } from '../screens/settings/AddressScreen';
+import { PasswordSettingsScreen } from '../screens/settings/PasswordSettingsScreen';
+import { AppearanceSettingsScreen } from '../screens/settings/AppearanceSettingsScreen';
+import { StreakScreen } from '../screens/streak/StreakScreen';
+import { ResultsScreen } from '../screens/results/ResultsScreen';
+import { ResultDetailScreen } from '../screens/results/ResultDetailScreen';
+import { NutritionScreen } from '../screens/nutrition/NutritionScreen';
+import { ProgressTrackingScreen } from '../screens/progress/ProgressTrackingScreen';
+import { AppointmentsScreen } from '../screens/appointments/AppointmentsScreen';
+import { PaymentsScreen } from '../screens/payments/PaymentsScreen';
+import { ReservationsScreen } from '../screens/reservations/ReservationsScreen';
+import GroupClassesScreen from '../screens/groups/GroupClassesScreen';
+import SurveysScreen from '../screens/surveys/SurveysScreen';
+import { AdminDashboardScreen } from '../screens/admin/AdminDashboardScreen';
+import { GuardianScreen } from '../screens/guardian/GuardianScreen';
+import { GuardianChildDetailScreen } from '../screens/guardian/GuardianChildDetailScreen';
+import { FloatingActiveWorkoutOverlay } from '../components/FloatingActiveWorkoutOverlay';
+import { CustomAlertContainer } from '../components/CustomAlertModal';
 
 const Tab = createBottomTabNavigator();
 const Stack = createNativeStackNavigator();
@@ -178,62 +205,166 @@ const AuthNavigator: React.FC = () => {
 export const AppNavigator: React.FC = () => {
   const { session, loading } = useAuth();
   const [showSplash, setShowSplash] = useState(true);
+  const [isGuardian, setIsGuardian] = useState(false);
+  const [guardianChecked, setGuardianChecked] = useState(false);
 
-  if (loading || showSplash) {
+  useEffect(() => {
+    if (!session) {
+      setGuardianChecked(true);
+      return;
+    }
+    // Guardian kontrolu yap
+    const checkGuardian = async () => {
+      try {
+        const { supabase } = await import('../services/supabaseClient');
+        const { data } = await supabase
+          .from('guardians')
+          .select('id')
+          .eq('user_id', session.user.id)
+          .single();
+        setIsGuardian(Boolean(data));
+      } catch (e) {
+        setIsGuardian(false);
+      } finally {
+        setGuardianChecked(true);
+      }
+    };
+    checkGuardian();
+  }, [session]);
+
+  useEffect(() => {
+    if (!session) return;
+    // Streak sync
+    const runStreakSync = async () => {
+      try {
+        const { supabase } = await import('../services/supabaseClient');
+        // Streak guncelle: son antrenman bugune kadar mi?
+        const today = new Date().toISOString().split('T')[0];
+        const { data: lastSession } = await supabase
+          .from('training_sessions')
+          .select('completed_at')
+          .eq('user_id', session.user.id)
+          .not('completed_at', 'is', null)
+          .order('completed_at', { ascending: false })
+          .limit(1)
+          .single();
+        
+        if (lastSession?.completed_at) {
+          const lastDate = new Date(lastSession.completed_at).toISOString().split('T')[0];
+          const yesterday = new Date();
+          yesterday.setDate(yesterday.getDate() - 1);
+          const yesterdayStr = yesterday.toISOString().split('T')[0];
+          
+          if (lastDate !== today && lastDate !== yesterdayStr) {
+            // Streak kirdi, sifirla
+            await supabase
+              .from('users')
+              .update({ current_streak: 0 })
+              .eq('id', session.user.id);
+          }
+        }
+      } catch (e) {
+        // Sessizce gec
+      }
+    };
+    runStreakSync();
+    
+    // Pusher / Supabase Realtime abonelikleri
+    const setupSubscriptions = async () => {
+      try {
+        const { supabase } = await import('../services/supabaseClient');
+        const { data: profile } = await supabase
+          .from('users')
+          .select('gym_id')
+          .eq('id', session.user.id)
+          .single();
+          
+        PusherService.subscribeToUser(session.user.id, (payload) => {
+          console.log('Kullanıcı bildirimi:', payload);
+        });
+        
+        if (profile?.gym_id) {
+          PusherService.subscribeToGym(profile.gym_id, (payload) => {
+            console.log('Salon bildirimi:', payload);
+          });
+        }
+      } catch (e) {
+        console.error('PusherService abonelik hatası:', e);
+      }
+    };
+    
+    setupSubscriptions();
+    
+    return () => {
+      PusherService.unsubscribeAll();
+    };
+  }, [session]);
+
+  if (loading || showSplash || (session && !guardianChecked)) {
     return <SplashView onAnimationFinish={() => setShowSplash(false)} />;
   }
 
   return (
     <NavigationContainer>
       {session ? (
-        <Stack.Navigator screenOptions={{ headerShown: false }}>
-          <Stack.Screen name="MainTabs" component={MainTabNavigator} />
+        isGuardian ? (
+          // Veli modu navigasyonu
+          <Stack.Navigator screenOptions={{ headerShown: false }}>
+            <Stack.Screen name="GuardianTabs" component={GuardianScreen} />
+            <Stack.Screen name="GuardianChildDetail" component={GuardianChildDetailScreen} />
+          </Stack.Navigator>
+        ) : (
+          <Stack.Navigator screenOptions={{ headerShown: false }}>
+            <Stack.Screen name="MainTabs" component={MainTabNavigator} />
           <Stack.Screen name="Profile" component={ProfileScreen} />
           <Stack.Screen name="Coaches" component={CoachListScreen} />
+          <Stack.Screen name="CoachDetail" component={CoachDetailScreen} />
+          <Stack.Screen name="CoachChat" component={CoachChatScreen} />
           <Stack.Screen name="ActiveWorkout" component={ActiveWorkoutScreen} />
           <Stack.Screen name="PersonalRecords" component={RecordAttemptSetupScreen} />
+          <Stack.Screen name="RecordAttemptSession" component={RecordAttemptSessionScreen} />
+          <Stack.Screen name="RecordAttemptTimedModes" component={RecordAttemptTimedModesScreen} />
+          <Stack.Screen name="RecordAttemptSummary" component={RecordAttemptSummaryScreen} />
+          <Stack.Screen name="WorkoutSummary" component={WorkoutSummaryScreen} />
+          <Stack.Screen name="WorkoutFinishCelebration">
+            {(props) => (
+              <WorkoutFinishCelebrationScreen 
+                {...props.route.params} 
+                onFinished={() => props.navigation.navigate('WorkoutSummary', props.route.params)} 
+              />
+            )}
+          </Stack.Screen>
           <Stack.Screen name="Membership" component={MembershipScreen} />
           <Stack.Screen name="TrainingHistory">
             {(props) => <TrainingHistoryScreen {...props} />}
           </Stack.Screen>
-          <Stack.Screen name="Appointments">
-            {(props) => <GenericMenuScreen {...props} title="Randevularım" />}
-          </Stack.Screen>
+          <Stack.Screen name="Appointments" component={AppointmentsScreen} />
           <Stack.Screen name="Calendar" component={CalendarScreen} />
-          <Stack.Screen name="GroupClasses">
-            {(props) => <GenericMenuScreen {...props} title="Grup Dersleri" />}
-          </Stack.Screen>
-          <Stack.Screen name="Nutrition">
-            {(props) => <GenericMenuScreen {...props} title="Beslenme & Diyet" />}
-          </Stack.Screen>
-          <Stack.Screen name="Progress">
-            {(props) => <GenericMenuScreen {...props} title="Gelişim & Ölçümler" />}
-          </Stack.Screen>
+          <Stack.Screen name="GroupClasses" component={GroupClassesScreen} />
+          <Stack.Screen name="Nutrition" component={NutritionScreen} />
+          <Stack.Screen name="Progress" component={ProgressTrackingScreen} />
           <Stack.Screen name="Goals" component={GoalsScreen} />
-          <Stack.Screen name="Payments">
-            {(props) => <GenericMenuScreen {...props} title="Ödemelerim" />}
-          </Stack.Screen>
-          <Stack.Screen name="Surveys">
-            {(props) => <GenericMenuScreen {...props} title="Anketler & Geri Bildirim" />}
-          </Stack.Screen>
-          <Stack.Screen name="Reservations">
-            {(props) => <GenericMenuScreen {...props} title="Rezervasyonlarım" />}
-          </Stack.Screen>
-          <Stack.Screen name="Settings">
-            {(props) => <GenericMenuScreen {...props} title="Ayarlar" />}
-          </Stack.Screen>
-          <Stack.Screen name="AdminDashboard">
-            {(props) => <GenericMenuScreen {...props} title="Admin Paneli" />}
-          </Stack.Screen>
+          <Stack.Screen name="Payments" component={PaymentsScreen} />
+          <Stack.Screen name="Surveys" component={SurveysScreen} />
+          <Stack.Screen name="Reservations" component={ReservationsScreen} />
+          <Stack.Screen name="Settings" component={SettingsScreen} />
+          <Stack.Screen name="AddressSettings" component={AddressSettingsScreen} />
+          <Stack.Screen name="PasswordSettings" component={PasswordSettingsScreen} />
+          <Stack.Screen name="AppearanceSettings" component={AppearanceSettingsScreen} />
+          <Stack.Screen name="AdminDashboard" component={AdminDashboardScreen} />
           <Stack.Screen name="Notifications" component={NotificationsScreen} />
           <Stack.Screen name="AllEntryHistory" component={AllEntryHistoryScreen} />
-          <Stack.Screen name="Streak">
-            {(props) => <GenericMenuScreen {...props} title="Seri & İstatistikler" />}
-          </Stack.Screen>
+          <Stack.Screen name="Streak" component={StreakScreen} />
+          <Stack.Screen name="Results" component={ResultsScreen} />
+          <Stack.Screen name="ResultDetail" component={ResultDetailScreen} />
         </Stack.Navigator>
+        )
       ) : (
         <AuthNavigator />
       )}
+      
+      {session && !isGuardian && <FloatingActiveWorkoutOverlay />}
+      <CustomAlertContainer />
     </NavigationContainer>
   );
 };

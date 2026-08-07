@@ -32,4 +32,11 @@ export const Colors = {
   warning: '#FF9800',
   success: '#4CAF50',
   info: '#2196F3',
+  textPrimaryDark: '#FAF9F8',
+  white: '#FFFFFF',
+  text: '#FAF9F8',
+  textSecondary: 'rgba(250, 249, 248, 0.6)',
+  background: '#191717',
+  surface: '#2C2C2C',
+  border: '#444444',
 };

@@ -47,19 +47,26 @@ interface MenuItemData {
   route: string;
 }
 
+interface MenuItemData {
+  title: string;
+  icon: any;
+  route: string;
+  salonOnly?: boolean; // Sadece salon üyelerine göster
+}
+
 const menuItems: MenuItemData[] = [
   { title: 'Aktivite Geçmişi', icon: BarChart2, route: 'PersonalRecords' },
-  { title: 'Randevular', icon: Calendar, route: 'Appointments' },
+  { title: 'Randevular', icon: Calendar, route: 'Appointments', salonOnly: true },
   { title: 'Takvim', icon: Calendar, route: 'Calendar' },
-  { title: 'Grup Dersleri', icon: Users, route: 'GroupClasses' },
+  { title: 'Grup Dersleri', icon: Users, route: 'GroupClasses', salonOnly: true },
   { title: 'Beslenme', icon: BookOpen, route: 'Nutrition' },
   { title: 'İlerleme', icon: BarChart2, route: 'Progress' },
   { title: 'Hedefler', icon: Target, route: 'Goals' },
   { title: 'Üyelik', icon: CreditCard, route: 'Membership' },
-  { title: 'Ödemeler', icon: DollarSign, route: 'Payments' },
+  { title: 'Ödemeler', icon: DollarSign, route: 'Payments', salonOnly: true },
   { title: 'Anketler', icon: FileText, route: 'Surveys' },
-  { title: 'Rezervasyon', icon: MapPin, route: 'Reservations' },
-  { title: 'Koçlar', icon: Dumbbell, route: 'Coaches' },
+  { title: 'Rezervasyon', icon: MapPin, route: 'Reservations', salonOnly: true },
+  { title: 'Koçlar', icon: Dumbbell, route: 'Coaches', salonOnly: true },
   { title: 'Ayarlar', icon: Settings, route: 'Settings' },
 ];
 
@@ -147,12 +154,18 @@ export const SideMenu: React.FC<SideMenuProps> = ({
           {/* Menu Section Title */}
           <Text style={styles.menuHeading}>Menü</Text>
 
-          {/* Menu Items List */}
+          {/* Menü Öğeleri Listesi */}
           <ScrollView
             style={styles.menuScrollView}
             showsVerticalScrollIndicator={false}
           >
-            {menuItems.map((item) => {
+            {menuItems
+              .filter((item) => {
+                // Bireysel kullanıcılara salon-only menü gizle
+                if (item.salonOnly && userProfile?.is_individual) return false;
+                return true;
+              })
+              .map((item) => {
               const IconComp = item.icon;
               return (
                 <TouchableOpacity
@@ -174,6 +187,7 @@ export const SideMenu: React.FC<SideMenuProps> = ({
                 </TouchableOpacity>
               );
             })}
+
 
             {isAdmin && (
               <TouchableOpacity

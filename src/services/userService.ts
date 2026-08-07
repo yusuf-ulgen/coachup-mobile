@@ -6,6 +6,10 @@ export interface UserProfile {
   name: string;
   surname?: string;
   gender?: string;
+  phone?: string;
+  birth_date?: string;
+  height_cm?: number;
+  weight_kg?: number;
   role?: string;
   gym_id?: string;
   gym_name?: string;
@@ -13,6 +17,20 @@ export interface UserProfile {
   is_individual?: boolean;
   avatar_url?: string;
   profile_image_url?: string;
+  // Settings & Address Fields
+  default_screen?: string;
+  notifications_enabled?: boolean;
+  biometrics_enabled?: boolean;
+  weight_unit?: 'kg' | 'lbs';
+  address_title?: string;
+  city?: string;
+  district?: string;
+  neighborhood?: string;
+  street?: string;
+  building_no?: string;
+  door_no?: string;
+  postal_code?: string;
+  theme_mode?: 'dark' | 'light' | 'system';
 }
 
 export const UserService = {
@@ -82,4 +100,40 @@ export const UserService = {
       gym_name: gymName,
     });
   },
+
+  async ensureProfileExists(
+    userId: string,
+    email: string,
+    name: string,
+    gender: string
+  ): Promise<void> {
+    try {
+      const { data: existing } = await supabase
+        .from('users')
+        .select('id')
+        .eq('id', userId)
+        .single();
+      if (existing) return;
+      await supabase.from('users').upsert({
+        id: userId,
+        email,
+        name,
+        gender,
+        role: 'individual',
+        is_individual: true,
+      });
+    } catch (e) {
+      console.error('ensureProfileExists failed:', e);
+    }
+  },
+
+  async resolveActiveGymIdForContent(profile: UserProfile): Promise<string | null> {
+    if (profile.gym_id) return profile.gym_id;
+    try {
+      const memberships = await this.fetchAvailableMemberships(profile.id);
+      const active = memberships.find((m: any) => m.status === 'active' || new Date(m.end_date) > new Date());
+      if (active && active.gym_id) return active.gym_id;
+    } catch (e) {}
+    return null;
+  }
 };

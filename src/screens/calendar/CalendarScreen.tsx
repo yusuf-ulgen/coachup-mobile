@@ -7,6 +7,8 @@ import {
   ScrollView,
   FlatList,
   ActivityIndicator,
+  Alert,
+  TextInput,
 } from 'react-native';
 import {
   ChevronLeft,
@@ -21,6 +23,10 @@ import {
   Edit3,
   Trash2,
   Star,
+  Activity,
+  Droplets,
+  Bike,
+  Apple,
 } from 'lucide-react-native';
 import { Colors } from '../../theme/colors';
 import { Header } from '../../components/Header';
@@ -31,8 +37,8 @@ import { TrainingService, TrainingSession } from '../../services/trainingService
 import { GroupClassService, ClassBooking } from '../../services/groupClassService';
 import { GoalService, UserGoal } from '../../services/goalService';
 import { GymEventService, GymEvent, EventParticipant } from '../../services/gymEventService';
+import { CustomAlert } from '../../components/CustomAlertModal';
 import { supabase } from '../../services/supabaseClient';
-import { TextInput } from 'react-native';
 
 interface CalendarScreenProps {
   navigation?: any;
@@ -55,12 +61,16 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({ navigation }) =>
   const [newEventTitle, setNewEventTitle] = useState('');
   const [newEventStartTime, setNewEventStartTime] = useState('09:00');
   const [newEventEndTime, setNewEventEndTime] = useState('10:00');
+  const [newEventColor, setNewEventColor] = useState('#2196F3');
+  const [newEventIcon, setNewEventIcon] = useState('Calendar');
+  const [newEventNotes, setNewEventNotes] = useState('');
 
   const [eventDays, setEventDays] = useState<Set<number>>(new Set());
 
   const [scheduledPrograms, setScheduledPrograms] = useState<ScheduledProgram[]>([]);
   const [completedSessions, setCompletedSessions] = useState<TrainingSession[]>([]);
   const [groupBookings, setGroupBookings] = useState<ClassBooking[]>([]);
+  const [openClasses, setOpenClasses] = useState<any[]>([]);
   const [userGoals, setUserGoals] = useState<UserGoal[]>([]);
   const [userEvents, setUserEvents] = useState<any[]>([]);
   const [editingEventId, setEditingEventId] = useState<string | null>(null);
@@ -77,7 +87,7 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({ navigation }) =>
     if (!userProfile?.id && !userProfile?.user_id) return;
     const userId = userProfile?.id || userProfile?.user_id;
     try {
-      const [eventsRes, programsRes, goalsRes] = await Promise.all([
+      const [eventsRes, programsRes, goalsRes, classesRes, gymEventsRes] = await Promise.all([
         supabase
           .from('user_events')
           .select('event_date')
@@ -94,6 +104,19 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({ navigation }) =>
           .from('user_goals')
           .select('target_date, created_at')
           .eq('user_id', userId),
+        userProfile?.gym_id
+          ? supabase
+              .from('group_classes')
+              .select('date_str')
+              .eq('gym_id', userProfile.gym_id)
+              .gte('date_str', `${yearMonthPrefix}-01`)
+              .lte('date_str', `${yearMonthPrefix}-31`)
+          : Promise.resolve({ data: [] }),
+        supabase
+          .from('gym_events')
+          .select('event_date')
+          .gte('event_date', `${yearMonthPrefix}-01`)
+          .lte('event_date', `${yearMonthPrefix}-31`),
       ]);
 
       const daysSet = new Set<number>();
@@ -113,6 +136,18 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({ navigation }) =>
         const dateStr = item.target_date || item.created_at;
         if (dateStr && dateStr.startsWith(yearMonthPrefix)) {
           const d = parseInt(dateStr.split('-')[2], 10);
+          if (!isNaN(d)) daysSet.add(d);
+        }
+      });
+      classesRes.data?.forEach((item: any) => {
+        if (item.date_str) {
+          const d = parseInt(item.date_str.split('-')[2], 10);
+          if (!isNaN(d)) daysSet.add(d);
+        }
+      });
+      gymEventsRes.data?.forEach((item: any) => {
+        if (item.event_date) {
+          const d = parseInt(item.event_date.split('-')[2], 10);
           if (!isNaN(d)) daysSet.add(d);
         }
       });
@@ -144,7 +179,7 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({ navigation }) =>
 
     setLoading(true);
     try {
-      const [programs, sessions, bookings, goals, eventsRes, gymEventsData, participationsData] =
+      const [programs, sessions, bookings, goals, eventsRes, gymEventsData, participationsData, openClassesData] =
         await Promise.all([
           ScheduleService.fetchScheduledPrograms(userId, selectedDateStr),
           TrainingService.fetchCompletedSessionsForDate(userId, selectedDateStr),
@@ -157,6 +192,7 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({ navigation }) =>
             .eq('event_date', selectedDateStr),
           GymEventService.fetchEventsForDate(selectedDateStr),
           GymEventService.fetchParticipationsForDate(userId, selectedDateStr),
+          GroupClassService.fetchClassesForDate(userId, selectedDateStr),
         ]);
 
       setScheduledPrograms(programs);
@@ -166,8 +202,10 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({ navigation }) =>
       setUserEvents(eventsRes.data || []);
       setGymEvents(gymEventsData);
       setEventParticipations(participationsData);
+      setOpenClasses(openClassesData);
     } catch (e) {
       console.error('Error loading calendar content:', e);
+      Alert.alert('Hata', 'İçerikler yüklenemedi.');
     } finally {
       setLoading(false);
     }
@@ -203,6 +241,7 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({ navigation }) =>
     scheduledPrograms.length > 0 ||
     completedSessions.length > 0 ||
     groupBookings.length > 0 ||
+    openClasses.length > 0 ||
     userGoals.length > 0 ||
     userEvents.length > 0 ||
     gymEvents.length > 0;
@@ -334,12 +373,20 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({ navigation }) =>
               )}
 
               {/* Scheduled Programs */}
-              {scheduledPrograms.map((prog) => (
+              {scheduledPrograms.map((prog) => {
+                const progName = prog.program?.name?.toLowerCase() || '';
+                let bgColor = Colors.cardDark; // default
+                if (progName.includes('cardio') || progName.includes('kardiyo')) bgColor = '#F44336';
+                else if (progName.includes('strength') || progName.includes('güç') || progName.includes('kuvvet')) bgColor = '#FF9800';
+                else if (progName.includes('flexibility') || progName.includes('esneklik') || progName.includes('pilates') || progName.includes('yoga')) bgColor = '#9C27B0';
+                else bgColor = Colors.primary;
+
+                return (
                 <View key={prog.id} style={styles.programCardRow}>
-                  <View style={styles.iconBox}>
-                    <Dumbbell size={20} color={Colors.primary} />
+                  <View style={[styles.iconBox, { backgroundColor: `${bgColor}20` }]}>
+                    <Dumbbell size={20} color={bgColor} />
                   </View>
-                  <View style={styles.purplePill}>
+                  <View style={[styles.purplePill, { backgroundColor: bgColor }]}>
                     <View style={{ flex: 1 }}>
                       <Text style={styles.purplePillTitle}>
                         {prog.program?.name || 'Antrenman Programı'}
@@ -358,41 +405,116 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({ navigation }) =>
                     </View>
                   </View>
                 </View>
-              ))}
+              )})}
 
-              {/* Group Classes */}
-              {groupBookings.map((booking) => (
-                <View key={booking.id} style={styles.cardItem}>
-                  <View style={styles.iconBox}>
-                    <Users size={20} color={Colors.primary} />
+              {/* Open Classes */}
+              {openClasses.map((cls) => {
+                const booking = groupBookings.find(b => b.class_id === cls.id);
+                const isWaitlist = booking?.status === 'waitlist';
+                const currentCount = cls.enrolled_count || cls.current_participants || 0;
+                const isFull = cls.capacity && currentCount >= cls.capacity;
+
+                // Past class calculation
+                const now = new Date();
+                const [endH, endM] = (cls.end_time || cls.start_time || '23:59').split(':');
+                const classEndTime = new Date(`${selectedDateStr}T${String(endH).padStart(2, '0')}:${String(endM).padStart(2, '0')}:00`);
+                const isPast = classEndTime < now;
+
+                let buttonLabel = 'Derse Katıl';
+                if (isPast) {
+                  buttonLabel = 'Bitti';
+                } else if (booking) {
+                  buttonLabel = isWaitlist ? 'Kuyruktan Çık' : 'İptal Et';
+                } else if (isFull) {
+                  buttonLabel = 'Yedek Listesine Katıl';
+                }
+
+                return (
+                  <View key={cls.id} style={styles.cardItem}>
+                    <View style={styles.iconBox}>
+                      <Users size={20} color={Colors.primary} />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6 }}>
+                        <Text style={styles.cardTitle}>{cls.name}</Text>
+                        {isWaitlist && (
+                          <View style={{ backgroundColor: '#FF9800', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
+                            <Text style={{ color: '#fff', fontSize: 10, fontWeight: 'bold' }}>Yedekte</Text>
+                          </View>
+                        )}
+                        {!isWaitlist && isFull && (
+                          <View style={{ backgroundColor: '#F44336', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
+                            <Text style={{ color: '#fff', fontSize: 10, fontWeight: 'bold' }}>Dolu</Text>
+                          </View>
+                        )}
+                        {isPast && (
+                          <View style={{ backgroundColor: 'rgba(255,255,255,0.1)', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
+                            <Text style={{ color: Colors.textSecondaryDark, fontSize: 10, fontWeight: 'bold' }}>Geçmiş</Text>
+                          </View>
+                        )}
+                      </View>
+                      <Text style={styles.cardSubtitle}>
+                        {cls.instructor_name || 'Eğitmen'} · {cls.start_time} - {cls.end_time}
+                      </Text>
+                      {cls.capacity ? (
+                        <Text style={[styles.cardSubtitle, { marginTop: 4, color: Colors.primary }]}>
+                          Kapasite: {currentCount}/{cls.capacity}
+                        </Text>
+                      ) : null}
+                    </View>
+                    <TouchableOpacity
+                      style={[
+                        styles.joinButton,
+                        booking && styles.joinedButton,
+                        isPast && { backgroundColor: 'rgba(255,255,255,0.08)', opacity: 0.6 },
+                      ]}
+                      disabled={isPast}
+                      onPress={async () => {
+                        try {
+                          const uid = userProfile?.id || userProfile?.user_id;
+                          if (booking) {
+                            await GroupClassService.cancelBooking(booking.id);
+                            CustomAlert.show({
+                              title: 'Bilgi',
+                              message: 'Dersten ayrıldınız.',
+                              type: 'info',
+                            });
+                          } else {
+                            const status = isFull ? 'waitlist' : 'booked';
+                            await GroupClassService.bookClass(uid, cls.id, selectedDateStr, status);
+                            CustomAlert.show({
+                              title: 'Başarılı 🎉',
+                              message: isFull
+                                ? 'Ders dolu olduğu için yedek listesine eklendiniz.'
+                                : 'Derse kaydınız başarıyla oluşturuldu!',
+                              type: 'success',
+                            });
+                          }
+                          loadCalendarContent();
+                        } catch (e: any) {
+                          console.error('Error toggling class booking:', e);
+                          CustomAlert.show({
+                            title: 'Hata',
+                            message: 'İşlem gerçekleştirilemedi: ' + (e?.message || e),
+                            type: 'error',
+                          });
+                        }
+                      }}
+                      activeOpacity={0.8}
+                    >
+                      <Text
+                        style={[
+                          styles.joinButtonText,
+                          booking && styles.joinedButtonText,
+                          isPast && { color: Colors.textSecondaryDark },
+                        ]}
+                      >
+                        {buttonLabel}
+                      </Text>
+                    </TouchableOpacity>
                   </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.cardTitle}>
-                      {booking.group_class?.name || 'Grup Dersi'}
-                    </Text>
-                    <Text style={styles.cardSubtitle}>
-                      {booking.group_class?.instructor_name || 'Eğitmen'}
-                      {booking.group_class?.start_time ? ` · ${booking.group_class.start_time}` : ''}
-                    </Text>
-                  </View>
-                  <TouchableOpacity
-                    style={[styles.joinButton, styles.joinedButton]}
-                    onPress={async () => {
-                      try {
-                        await GroupClassService.cancelBooking(booking.id);
-                        loadCalendarContent();
-                      } catch (e) {
-                        console.error('Error cancelling class booking:', e);
-                      }
-                    }}
-                    activeOpacity={0.8}
-                  >
-                    <Text style={[styles.joinButtonText, styles.joinedButtonText]}>
-                      Ayrıl
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-              ))}
+                );
+              })}
 
               {/* Completed Sessions */}
               {completedSessions.map((session) => (
@@ -421,10 +543,13 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({ navigation }) =>
                       Etkinliklerim
                     </Text>
                   </View>
-                  {userEvents.map((evt) => (
+                  {userEvents.map((evt) => {
+                    const EventIcon = evt.icon === 'Activity' ? Activity : evt.icon === 'Dumbbell' ? Dumbbell : evt.icon === 'Droplets' ? Droplets : evt.icon === 'Bike' ? Bike : evt.icon === 'Apple' ? Apple : CalendarIcon;
+                    const eventColor = evt.color || Colors.primary;
+                    return (
                     <View key={evt.id} style={styles.cardItem}>
-                      <View style={styles.iconBox}>
-                        <CalendarIcon size={20} color={Colors.primary} />
+                      <View style={[styles.iconBox, { backgroundColor: `${eventColor}1A` }]}>
+                        <EventIcon size={20} color={eventColor} />
                       </View>
                       <View style={{ flex: 1 }}>
                         <Text style={styles.cardTitle}>{evt.title}</Text>
@@ -438,6 +563,9 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({ navigation }) =>
                           setNewEventTitle(evt.title);
                           setNewEventStartTime(evt.start_time || '09:00');
                           setNewEventEndTime(evt.end_time || '10:00');
+                          setNewEventColor(evt.color || '#2196F3');
+                          setNewEventIcon(evt.icon || 'Calendar');
+                          setNewEventNotes(evt.notes || '');
                           setShowAddEventModal(true);
                         }}
                         style={{ padding: 6 }}
@@ -453,6 +581,7 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({ navigation }) =>
                             loadMonthEventDays();
                           } catch (e) {
                             console.error('Error deleting event:', e);
+                            Alert.alert('Hata', 'Etkinlik silinemedi.');
                           }
                         }}
                         style={{ padding: 6 }}
@@ -461,7 +590,7 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({ navigation }) =>
                         <Trash2 size={18} color="#F44336" />
                       </TouchableOpacity>
                     </View>
-                  ))}
+                  )})}
                 </View>
               )}
               {/* Gym Events */}
@@ -552,6 +681,40 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({ navigation }) =>
               onChangeText={setNewEventTitle}
             />
 
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 12, marginTop: 12 }}>
+              {['#2196F3', '#4CAF50', '#FF9800', '#9C27B0', '#F44336', '#FFEB3B'].map(color => (
+                <TouchableOpacity
+                  key={color}
+                  style={[{ width: 32, height: 32, borderRadius: 16, backgroundColor: color }, newEventColor === color && { borderWidth: 2, borderColor: Colors.allWhite }]}
+                  onPress={() => setNewEventColor(color)}
+                />
+              ))}
+            </View>
+
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 12 }}>
+              {['Calendar', 'Activity', 'Dumbbell', 'Droplets', 'Bike', 'Apple'].map(icon => {
+                const IconComp = icon === 'Activity' ? Activity : icon === 'Dumbbell' ? Dumbbell : icon === 'Droplets' ? Droplets : icon === 'Bike' ? Bike : icon === 'Apple' ? Apple : CalendarIcon;
+                return (
+                  <TouchableOpacity
+                    key={icon}
+                    style={[{ padding: 8, borderRadius: 8, backgroundColor: Colors.cardDark }, newEventIcon === icon && { backgroundColor: Colors.primary }]}
+                    onPress={() => setNewEventIcon(icon)}
+                  >
+                    <IconComp size={20} color={newEventIcon === icon ? Colors.allWhite : Colors.textSecondaryDark} />
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            <TextInput
+              style={[styles.modalInput, { height: 80, textAlignVertical: 'top' }]}
+              placeholder="Notlar..."
+              placeholderTextColor={Colors.textSecondaryDark}
+              value={newEventNotes}
+              onChangeText={setNewEventNotes}
+              multiline
+            />
+
             <View style={styles.timeInputsRow}>
               <View style={{ flex: 1 }}>
                 <Text style={styles.timeInputLabel}>Başlangıç</Text>
@@ -603,6 +766,9 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({ navigation }) =>
                           title: newEventTitle.trim(),
                           start_time: newEventStartTime,
                           end_time: newEventEndTime,
+                          color: newEventColor,
+                          icon: newEventIcon,
+                          notes: newEventNotes,
                         })
                         .eq('id', editingEventId);
                     } else {
@@ -612,6 +778,9 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({ navigation }) =>
                         event_date: selectedDateStr,
                         start_time: newEventStartTime,
                         end_time: newEventEndTime,
+                        color: newEventColor,
+                        icon: newEventIcon,
+                        notes: newEventNotes,
                       });
                     }
                     setEditingEventId(null);
@@ -851,15 +1020,20 @@ const styles = StyleSheet.create({
   },
   fab: {
     position: 'absolute',
-    right: 24,
-    bottom: 90,
+    right: 20,
+    bottom: 20,
     width: 56,
     height: 56,
     borderRadius: 28,
     backgroundColor: Colors.primary,
     justifyContent: 'center',
     alignItems: 'center',
-    elevation: 6,
+    elevation: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 5,
+    zIndex: 99,
   },
   modalOverlay: {
     ...StyleSheet.absoluteFill,

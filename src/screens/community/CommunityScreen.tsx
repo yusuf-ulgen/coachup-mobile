@@ -10,6 +10,7 @@ import {
   Image,
   ScrollView,
   Animated,
+  Alert,
 } from 'react-native';
 import {
   Heart,
@@ -34,6 +35,7 @@ import {
   CommunityPost,
   CommunityComment,
 } from '../../services/communityService';
+import { UserService } from '../../services/userService';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -175,7 +177,7 @@ const PostCard: React.FC<PostCardProps> = ({
       await loadComments();
       onCommentAction();
     } catch (e: any) {
-      // silent fail — can be enhanced with toast
+      Alert.alert('Hata', 'Yorum gönderilemedi: ' + (e.message || 'Bilinmeyen hata'));
     } finally {
       setIsSendingComment(false);
     }
@@ -266,7 +268,7 @@ const PostCard: React.FC<PostCardProps> = ({
                     <View
                       style={[
                         styles.pollProgressBg,
-                        { width: `${opt.percentage}%` },
+                        { width: `${Math.max(opt.percentage, 2)}%` },
                         isMyVote && styles.pollProgressBgVoted,
                       ]}
                     />
@@ -465,14 +467,15 @@ export const CommunityScreen: React.FC<CommunityScreenProps> = ({ navigation }) 
     if (!userProfile) return;
 
     const userId = userProfile.id || userProfile.user_id;
-    const gymId = userProfile.gym_id;
-
+    
     setLoading(true);
     try {
+      const resolvedGymId = await UserService.resolveActiveGymIdForContent(userProfile);
+
       if (selectedTab === 'gym') {
-        const allowed = await CommunityService.canAccessGymFeed(userId, gymId);
+        const allowed = resolvedGymId ? await CommunityService.canAccessGymFeed(userId, resolvedGymId) : false;
         setCanAccess(allowed);
-        if (!gymId) {
+        if (!resolvedGymId) {
           setAccessMessage('Aktif salon üyeliğin yok. Salon topluluğuna sadece üyeler erişebilir.');
           setPosts([]);
           setGroups([]);
@@ -482,7 +485,7 @@ export const CommunityScreen: React.FC<CommunityScreenProps> = ({ navigation }) 
           setGroups([]);
         } else {
           setAccessMessage(null);
-          const groupsData = await CommunityService.fetchGroups('gym', gymId);
+          const groupsData = await CommunityService.fetchGroups('gym', resolvedGymId);
           setGroups(groupsData);
 
           // Group access check
@@ -504,7 +507,7 @@ export const CommunityScreen: React.FC<CommunityScreenProps> = ({ navigation }) 
             }
           }
 
-          const data = await CommunityService.fetchFeed(userId, 'gym', gymId, selectedGroupId ?? undefined);
+          const data = await CommunityService.fetchFeed(userId, 'gym', resolvedGymId, selectedGroupId ?? undefined);
           setPosts(data);
         }
       } else {
@@ -638,12 +641,12 @@ export const CommunityScreen: React.FC<CommunityScreenProps> = ({ navigation }) 
         uploadedUrl = await CommunityService.uploadImage(imageUri, userId);
       }
 
-      const gymId = userProfile?.gym_id;
+      const resolvedGymId = await UserService.resolveActiveGymIdForContent(userProfile);
       const createdPost = await CommunityService.createPost(
         userId,
         postText.trim() || (showPollCreator ? pollQuestion.trim() : ' '),
         selectedTab,
-        selectedTab === 'gym' ? gymId : undefined,
+        selectedTab === 'gym' ? resolvedGymId || undefined : undefined,
         uploadedUrl,
         selectedGroupId ?? undefined
       );
