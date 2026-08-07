@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -15,25 +15,26 @@ interface AppearanceSettingsScreenProps {
   navigation: any;
 }
 
+import { useTheme } from '../../theme/ThemeContext';
+
 export const AppearanceSettingsScreen: React.FC<AppearanceSettingsScreenProps> = ({
   navigation,
 }) => {
-  const [themeMode, setThemeMode] = useState<'dark' | 'light' | 'system'>('dark');
+  const { themeMode, setThemeMode } = useTheme();
   const [userId, setUserId] = useState<string | null>(null);
 
   useEffect(() => {
-    const loadTheme = async () => {
+    const loadProfile = async () => {
       try {
         const profile = await AuthService.getCurrentProfile();
         if (profile) {
           setUserId(profile.id);
-          if (profile.theme_mode) setThemeMode(profile.theme_mode);
         }
       } catch (e) {
-        console.error('Error loading theme:', e);
+        console.error('Error loading profile:', e);
       }
     };
-    loadTheme();
+    loadProfile();
   }, []);
 
   const handleSelectTheme = async (mode: 'dark' | 'light' | 'system') => {

@@ -2,7 +2,7 @@
   "expo": {
     "name": "rn-temp",
     "slug": "rn-temp",
-    "version": "1.0.0",
+    "version": "1.2.9",
     "orientation": "portrait",
     "splash": {
       "image": "./assets/icon.png",
@@ -21,7 +21,12 @@
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "config": {
+        "googleMaps": {
+          "apiKey": "AIzaSyBnbHJfEa1GLOSKiVxxix-lrNPgn7di938"
+        }
+      }
     },
     "web": {
       "favicon": "./assets/favicon.png"

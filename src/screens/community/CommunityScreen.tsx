@@ -724,11 +724,12 @@ export const CommunityScreen: React.FC<CommunityScreenProps> = ({ navigation }) 
 
       {/* Group Chips */}
       {groups.length > 0 && canAccess && (
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.groupChipsRow}
-        >
+        <View style={{ height: 44, marginBottom: 6 }}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.groupChipsRow}
+          >
           <TouchableOpacity
             style={[styles.groupChip, selectedGroupId === null && styles.groupChipSelected]}
             onPress={() => setSelectedGroupId(null)}
@@ -761,6 +762,7 @@ export const CommunityScreen: React.FC<CommunityScreenProps> = ({ navigation }) 
             </TouchableOpacity>
           ))}
         </ScrollView>
+        </View>
       )}
 
       {/* Main Content */}
@@ -972,17 +974,19 @@ const styles = StyleSheet.create({
   // Groups
   groupChipsRow: {
     paddingHorizontal: 20,
-    paddingBottom: 10,
+    alignItems: 'center',
     gap: 8,
     flexDirection: 'row',
   },
   groupChip: {
+    height: 36,
     borderRadius: 100,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
+    paddingHorizontal: 16,
     backgroundColor: Colors.cardDark,
     borderWidth: 1,
     borderColor: 'rgba(250,249,248,0.08)',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   groupChipSelected: {
     backgroundColor: 'rgba(255,96,71,0.15)',

@@ -19,6 +19,7 @@ interface WorkoutGoalSheetProps {
   visible: boolean;
   onClose: () => void;
   onSelectGoal: (goal: WorkoutGoal) => void;
+  isOutdoor?: boolean;
 }
 
 const DISTANCE_OPTIONS = [1.0, 3.0, 5.0, 10.0, 15.0, 21.1, 42.2];
@@ -36,13 +37,20 @@ export const WorkoutGoalSheet: React.FC<WorkoutGoalSheetProps> = ({
   visible,
   onClose,
   onSelectGoal,
+  isOutdoor = false,
 }) => {
-  const [tab, setTab] = useState<'distance' | 'duration'>('distance');
+  const [tab, setTab] = useState<'distance' | 'duration'>(isOutdoor ? 'distance' : 'duration');
   const [selectedDistance, setSelectedDistance] = useState<number | null>(5.0);
   const [selectedDuration, setSelectedDuration] = useState<number | null>(30 * 60);
 
+  // Sync tab when isOutdoor changes
+  React.useEffect(() => {
+    if (!isOutdoor) setTab('duration');
+    else setTab('distance');
+  }, [isOutdoor]);
+
   const handleConfirm = () => {
-    if (tab === 'distance' && selectedDistance) {
+    if (isOutdoor && tab === 'distance' && selectedDistance) {
       onSelectGoal({
         type: 'distance',
         distanceKm: selectedDistance,
@@ -67,25 +75,33 @@ export const WorkoutGoalSheet: React.FC<WorkoutGoalSheetProps> = ({
         <TouchableOpacity style={styles.sheetBox} activeOpacity={1}>
           <Text style={styles.sheetTitle}>Hedef Belirle</Text>
 
-          {/* Segmented Tab: Mesafe | Süre */}
-          <View style={styles.tabRow}>
-            <TouchableOpacity
-              style={[styles.tabBtn, tab === 'distance' && styles.tabBtnActive]}
-              onPress={() => setTab('distance')}
-            >
-              <Text style={[styles.tabBtnText, tab === 'distance' && styles.tabBtnTextActive]}>
-                Mesafe
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.tabBtn, tab === 'duration' && styles.tabBtnActive]}
-              onPress={() => setTab('duration')}
-            >
-              <Text style={[styles.tabBtnText, tab === 'duration' && styles.tabBtnTextActive]}>
-                Süre
-              </Text>
-            </TouchableOpacity>
-          </View>
+          {/* Segmented Tab: Mesafe | Süre (Only show Mesafe if isOutdoor is true) */}
+          {isOutdoor ? (
+            <View style={styles.tabRow}>
+              <TouchableOpacity
+                style={[styles.tabBtn, tab === 'distance' && styles.tabBtnActive]}
+                onPress={() => setTab('distance')}
+              >
+                <Text style={[styles.tabBtnText, tab === 'distance' && styles.tabBtnTextActive]}>
+                  Mesafe
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.tabBtn, tab === 'duration' && styles.tabBtnActive]}
+                onPress={() => setTab('duration')}
+              >
+                <Text style={[styles.tabBtnText, tab === 'duration' && styles.tabBtnTextActive]}>
+                  Süre
+                </Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <View style={styles.tabRow}>
+              <View style={[styles.tabBtn, styles.tabBtnActive]}>
+                <Text style={[styles.tabBtnText, styles.tabBtnTextActive]}>Süre</Text>
+              </View>
+            </View>
+          )}
 
           {/* Options Grid */}
           <View style={styles.grid}>

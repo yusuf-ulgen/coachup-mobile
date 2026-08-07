@@ -15,11 +15,10 @@ export class HealthConnectService {
     return this.isConnected;
   }
 
-  // Anlık nabız okuma (simülasyon: 90 - 160 arası)
   static async getLiveHeartRate(): Promise<number> {
     if (!this.isConnected) return 0;
-    // Küçük dalgalanmalarla gerçekçi nabız
-    return Math.floor(Math.random() * (160 - 90 + 1)) + 90;
+    // Gerçek sensör verisi olmadığı sürece 0 döndürür (rasgele değer üretilmez)
+    return 0;
   }
 
   // Aktif kalori hesaplama
@@ -31,16 +30,22 @@ export class HealthConnectService {
     age: number = 25,
     isMale: boolean = true
   ): number {
-    if (durationSeconds <= 0 || averageHeartRate === 0) return 0;
-    const durationMinutes = durationSeconds / 60;
+    if (durationSeconds <= 0) return 0;
     
-    let calories = 0;
-    if (isMale) {
-      calories = ((age * 0.2017) - (weightKg * 0.09036) + (averageHeartRate * 0.6309) - 55.0969) * durationMinutes / 4.184;
-    } else {
-      calories = ((age * 0.074) - (weightKg * 0.05741) + (averageHeartRate * 0.4472) - 20.4022) * durationMinutes / 4.184;
+    if (averageHeartRate > 0) {
+      const durationMinutes = durationSeconds / 60;
+      let calories = 0;
+      if (isMale) {
+        calories = ((age * 0.2017) - (weightKg * 0.09036) + (averageHeartRate * 0.6309) - 55.0969) * durationMinutes / 4.184;
+      } else {
+        calories = ((age * 0.074) - (weightKg * 0.05741) + (averageHeartRate * 0.4472) - 20.4022) * durationMinutes / 4.184;
+      }
+      return Math.max(0, Math.ceil(calories));
     }
     
+    // Sensör yoksa standart MET (6.0) hesabına göre kalori tahmini
+    const durationHours = durationSeconds / 3600;
+    const calories = 6.0 * weightKg * durationHours;
     return Math.max(0, Math.ceil(calories));
   }
 

@@ -27,6 +27,7 @@ import { WorkoutGoalSheet, WorkoutGoal } from '../../components/WorkoutGoalSheet
 import { Header } from '../../components/Header';
 import { SideMenu } from '../../components/SideMenu';
 import { ProgramPreviewModal } from '../../components/ProgramPreviewModal';
+import { PreWorkoutStartModal } from '../../components/PreWorkoutStartModal';
 import { CustomAlert } from '../../components/CustomAlertModal';
 import { supabase } from '../../services/supabaseClient';
 import { ActiveWorkoutManager } from '../../services/activeWorkoutManager';
@@ -61,6 +62,7 @@ export const TrainingScreen: React.FC<TrainingScreenProps> = ({ navigation }) =>
   // Goal Sheet State
   const [selectedActivity, setSelectedActivity] = useState<any>(null);
   const [showGoalSheet, setShowGoalSheet] = useState(false);
+  const [showPreWorkoutModal, setShowPreWorkoutModal] = useState(false);
 
   // Program Preview Modal State
   const [previewProgram, setPreviewProgram] = useState<TrainingProgram | null>(null);
@@ -321,7 +323,7 @@ export const TrainingScreen: React.FC<TrainingScreenProps> = ({ navigation }) =>
         {/* Rekor Denemesi Card Button */}
         <TouchableOpacity
           style={styles.rekorCard}
-          onPress={() => navigation?.navigate('PersonalRecords')}
+          onPress={() => navigation?.navigate('RecordAttemptSetup')}
           activeOpacity={0.8}
         >
           <Flame size={20} color={Colors.primary} />
@@ -344,7 +346,15 @@ export const TrainingScreen: React.FC<TrainingScreenProps> = ({ navigation }) =>
               activeOpacity={0.8}
               onPress={() => {
                 setSelectedActivity(act);
-                setShowGoalSheet(true);
+                const isActOutdoor = ['running', 'walking', 'cycling', 'hyrox', 'swimming', 'koşu', 'yürüyüş', 'bisiklet', 'hyrox', 'yüzme'].includes(
+                  (act.id || '').toLowerCase()
+                ) || ['koşu', 'yürüyüş', 'bisiklet', 'hyrox', 'yüzme'].some((kw) => (act.title || '').toLowerCase().includes(kw));
+
+                if (isActOutdoor) {
+                  setShowGoalSheet(true);
+                } else {
+                  setShowPreWorkoutModal(true);
+                }
               }}
             >
               <Text style={styles.activityEmoji}>{act.emoji}</Text>
@@ -424,6 +434,16 @@ export const TrainingScreen: React.FC<TrainingScreenProps> = ({ navigation }) =>
       {/* Workout Goal Selection Sheet */}
       <WorkoutGoalSheet
         visible={showGoalSheet}
+        isOutdoor={
+          selectedActivity
+            ? ['running', 'walking', 'cycling', 'hyrox', 'swimming', 'koşu', 'yürüyüş', 'bisiklet', 'hyrox', 'yüzme'].includes(
+                (selectedActivity.id || '').toLowerCase()
+              ) ||
+              ['koşu', 'yürüyüş', 'bisiklet', 'hyrox', 'yüzme'].some((kw) =>
+                (selectedActivity.title || '').toLowerCase().includes(kw)
+              )
+            : false
+        }
         onClose={() => setShowGoalSheet(false)}
         onSelectGoal={(goal: WorkoutGoal) => {
           if (selectedActivity) {
@@ -437,6 +457,27 @@ export const TrainingScreen: React.FC<TrainingScreenProps> = ({ navigation }) =>
               goalType: goal.type,
               distanceKm: goal.distanceKm,
               durationSeconds: goal.durationSeconds,
+            });
+          }
+        }}
+      />
+
+      {/* Pre-Workout Start Modal for Indoor Free Activities (Image 1) */}
+      <PreWorkoutStartModal
+        visible={showPreWorkoutModal}
+        activityTitle={selectedActivity?.title || 'Fitness'}
+        activityEmoji={selectedActivity?.emoji || '🏋️'}
+        onClose={() => setShowPreWorkoutModal(false)}
+        onStart={() => {
+          setShowPreWorkoutModal(false);
+          if (selectedActivity) {
+            const sessionId = `free_${Date.now()}`;
+            ActiveWorkoutManager.startWorkout(sessionId, selectedActivity.title);
+            navigation?.navigate('ActiveWorkout', {
+              sessionId,
+              title: selectedActivity.title,
+              category: selectedActivity.id,
+              emoji: selectedActivity.emoji,
             });
           }
         }}

@@ -127,13 +127,37 @@ export const UserService = {
     }
   },
 
-  async resolveActiveGymIdForContent(profile: UserProfile): Promise<string | null> {
-    if (profile.gym_id) return profile.gym_id;
+  async resolveActiveGymIdForContent(profile?: UserProfile | null): Promise<string | null> {
+    if (!profile) return null;
+    if (profile.role === 'individual' || profile.is_individual) return null;
+    if (profile.gym_id && profile.gym_id.trim().length > 0) {
+      return profile.gym_id;
+    }
+
     try {
       const memberships = await this.fetchAvailableMemberships(profile.id);
-      const active = memberships.find((m: any) => m.status === 'active' || new Date(m.end_date) > new Date());
-      if (active && active.gym_id) return active.gym_id;
-    } catch (e) {}
+      const activeMemberships = memberships.filter((m: any) => {
+        const isNotDisabled = m.is_active !== false;
+        const notExpired = !m.end_date || new Date(m.end_date) > new Date();
+        return isNotDisabled && notExpired;
+      });
+
+      const gymIds = Array.from(
+        new Set(
+          activeMemberships
+            .map((m: any) => m.gym_id || m.plan?.gym_id)
+            .filter((id: string) => !!id && id.trim().length > 0)
+        )
+      );
+
+      if (gymIds.length > 0) {
+        return gymIds[0] as string;
+      }
+    } catch (e) {
+      console.error('Error resolving active gym ID:', e);
+    }
+
     return null;
-  }
+  },
 };
+

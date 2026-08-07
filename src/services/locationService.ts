@@ -5,20 +5,27 @@ export interface RouteCoordinate {
 
 export interface LocationStats {
   distanceKm: number;
-  currentSpeed: number; // m/s
-  avgSpeed: number; // m/s
+  currentSpeed: number; // km/h
+  avgSpeed: number; // km/h
   paceMinPerKm: number; // min/km
   altitude: number; // m
   route: RouteCoordinate[];
+  lastLatitude?: number;
+  lastLongitude?: number;
 }
 
 export class LocationService {
   private static route: any[] = [];
-  private static locationSubscription: any = null;
+  private static watchId: number | null = null;
   private static startTime: number = 0;
 
   static async requestPermissions(): Promise<boolean> {
-    return true;
+    try {
+      return true;
+    } catch (e) {
+      console.warn('Location permission error:', e);
+      return false;
+    }
   }
 
   static async startTracking(
@@ -32,28 +39,56 @@ export class LocationService {
     this.route = [];
     this.startTime = Date.now();
 
-    const interval = setInterval(() => {
-      const mockLocation = {
-        coords: {
-          latitude: 41.0082 + (Math.random() - 0.5) * 0.001,
-          longitude: 28.9784 + (Math.random() - 0.5) * 0.001,
-          speed: 2.5,
-          altitude: 50,
-        },
-        timestamp: Date.now(),
-      };
-      this.route.push(mockLocation);
-      const stats = this.calculateStats();
-      onLocationUpdate(stats);
-    }, 2000);
+    // Clear previous subscription if any
+    this.stopTracking();
 
-    this.locationSubscription = { remove: () => clearInterval(interval) };
+    if (typeof navigator !== 'undefined' && navigator.geolocation) {
+      this.watchId = navigator.geolocation.watchPosition(
+        (position) => {
+          const { latitude, longitude, speed, altitude } = position.coords;
+          const stats = this.addRealCoordinate(
+            latitude,
+            longitude,
+            speed || 0,
+            altitude || 0
+          );
+          onLocationUpdate(stats);
+        },
+        (error) => {
+          console.warn('Geolocation watch error:', error);
+        },
+        {
+          enableHighAccuracy: true,
+          timeout: 15000,
+          maximumAge: 5000,
+        } as any
+      );
+    }
+  }
+
+  static addRealCoordinate(
+    lat: number,
+    lon: number,
+    speed?: number,
+    altitude?: number
+  ): LocationStats {
+    const point = {
+      coords: {
+        latitude: lat,
+        longitude: lon,
+        speed: speed || 0,
+        altitude: altitude || 0,
+      },
+      timestamp: Date.now(),
+    };
+    this.route.push(point);
+    return this.calculateStats();
   }
 
   static stopTracking(): void {
-    if (this.locationSubscription) {
-      this.locationSubscription.remove();
-      this.locationSubscription = null;
+    if (this.watchId !== null && typeof navigator !== 'undefined' && navigator.geolocation) {
+      navigator.geolocation.clearWatch(this.watchId);
+      this.watchId = null;
     }
   }
 
@@ -82,36 +117,48 @@ export class LocationService {
     }
 
     const timeElapsedSeconds = (Date.now() - this.startTime) / 1000;
-    const avgSpeed = totalDistanceKm > 0 ? (totalDistanceKm * 1000) / timeElapsedSeconds : 0;
-    
-    // pace is minutes per km
-    const paceMinPerKm = totalDistanceKm > 0 ? (timeElapsedSeconds / 60) / totalDistanceKm : 0;
-    
-    const routeCoords = this.route.map(l => ({
+    const avgSpeedKmh =
+      totalDistanceKm > 0 && timeElapsedSeconds > 0
+        ? totalDistanceKm / (timeElapsedSeconds / 3600)
+        : 0;
+    const paceMinPerKm =
+      totalDistanceKm > 0 && timeElapsedSeconds > 0
+        ? timeElapsedSeconds / 60 / totalDistanceKm
+        : 0;
+
+    const routeCoords = this.route.map((l) => ({
       latitude: l.coords.latitude,
       longitude: l.coords.longitude,
     }));
 
     return {
       distanceKm: totalDistanceKm,
-      currentSpeed: lastLoc.coords.speed || 0,
-      avgSpeed: avgSpeed,
+      currentSpeed: lastLoc.coords.speed ? lastLoc.coords.speed * 3.6 : 0,
+      avgSpeed: avgSpeedKmh,
       paceMinPerKm: paceMinPerKm,
       altitude: lastLoc.coords.altitude || 0,
       route: routeCoords,
+      lastLatitude: lastLoc.coords.latitude,
+      lastLongitude: lastLoc.coords.longitude,
     };
   }
 
-  private static haversineDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  private static haversineDistance(
+    lat1: number,
+    lon1: number,
+    lat2: number,
+    lon2: number
+  ): number {
     const toRad = (x: number) => (x * Math.PI) / 180;
-
     const R = 6371; // km
     const dLat = toRad(lat2 - lat1);
     const dLon = toRad(lon2 - lon1);
     const a =
       Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-      Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) *
-      Math.sin(dLon / 2) * Math.sin(dLon / 2);
+      Math.cos(toRad(lat1)) *
+        Math.cos(toRad(lat2)) *
+        Math.sin(dLon / 2) *
+        Math.sin(dLon / 2);
     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
     return R * c;
   }

@@ -444,17 +444,94 @@ export const CommunityService = {
     if (error) throw error;
   },
 
-  async canAccessGymFeed(userId: string, gymId?: string): Promise<boolean> {
-    if (!gymId) return false;
+  async fetchGlobalSettings(): Promise<{ general_enabled: boolean; gym_feed_enabled: boolean }> {
     try {
       const { data } = await supabase
-        .from('memberships')
-        .select('id, status')
-        .eq('user_id', userId)
-        .eq('gym_id', gymId)
-        .eq('status', 'active')
+        .from('community_settings')
+        .select('*')
+        .eq('scope', 'global')
         .limit(1);
-      return !!(data && data.length > 0);
+
+      if (data && data.length > 0) {
+        return {
+          general_enabled: data[0].general_enabled ?? true,
+          gym_feed_enabled: data[0].gym_feed_enabled ?? true,
+        };
+      }
+      return { general_enabled: true, gym_feed_enabled: true };
+    } catch {
+      return { general_enabled: true, gym_feed_enabled: true };
+    }
+  },
+
+  async fetchGymSettings(gymId: string): Promise<{ general_enabled: boolean; gym_feed_enabled: boolean }> {
+    try {
+      const { data } = await supabase
+        .from('community_settings')
+        .select('*')
+        .eq('scope', 'gym')
+        .eq('gym_id', gymId)
+        .limit(1);
+
+      if (data && data.length > 0) {
+        return {
+          general_enabled: data[0].general_enabled ?? true,
+          gym_feed_enabled: data[0].gym_feed_enabled ?? true,
+        };
+      }
+      return { general_enabled: true, gym_feed_enabled: true };
+    } catch {
+      return { general_enabled: true, gym_feed_enabled: true };
+    }
+  },
+
+  async canAccessGymFeed(userId: string, gymId?: string): Promise<boolean> {
+    if (!gymId) return false;
+
+    // 1. Global toggle check
+    const globalSettings = await this.fetchGlobalSettings();
+    if (!globalSettings.gym_feed_enabled) return false;
+
+    // 2. Gym-specific toggle check
+    const gymSettings = await this.fetchGymSettings(gymId);
+    if (!gymSettings.gym_feed_enabled) return false;
+
+    // 3. Staff check (admin / gym_manager)
+    try {
+      const { data: profile } = await supabase
+        .from('users')
+        .select('role, is_admin, is_gym_manager')
+        .eq('id', userId)
+        .single();
+
+      if (
+        profile?.role === 'admin' ||
+        profile?.role === 'gym_manager' ||
+        profile?.is_admin === true ||
+        profile?.is_gym_manager === true
+      ) {
+        return true;
+      }
+    } catch {}
+
+    // 4. User active membership check
+    try {
+      const { data: memberships } = await supabase
+        .from('user_memberships')
+        .select('*, plan:membership_plans(*)')
+        .eq('user_id', userId)
+        .eq('is_active', true);
+
+      if (!memberships || memberships.length === 0) return false;
+
+      const activeMem = memberships.find((m: any) => {
+        const notExpired = !m.end_date || new Date(m.end_date) > new Date();
+        const planGym = m.plan?.gym_id || m.gym_id;
+        const gymMatches = !planGym || planGym === gymId;
+        return m.is_active && notExpired && gymMatches;
+      });
+
+      return !!activeMem;
     } catch {
       return false;
     }
@@ -462,29 +539,26 @@ export const CommunityService = {
 
   async canAccessGeneralFeed(): Promise<boolean> {
     try {
-      const { data } = await supabase
-        .from('app_settings')
-        .select('value')
-        .eq('key', 'general_community_enabled')
-        .single();
-      // If the setting doesn't exist, default to true (open)
-      if (!data) return true;
-      return data.value !== 'false' && data.value !== false;
+      const settings = await this.fetchGlobalSettings();
+      return settings.general_enabled;
     } catch {
       return true;
     }
   },
 
-  async fetchGroups(scope: string, gymId?: string): Promise<{ id: string; name: string; scope: string }[]> {
+  async fetchGroups(scope: string, gymId?: string): Promise<{ id: string; name: string; scope: string; gym_id?: string }[]> {
     try {
       let query = supabase
         .from('community_groups')
-        .select('id, name, scope')
+        .select('id, name, scope, gym_id')
         .eq('scope', scope)
-        .eq('is_active', true);
+        .eq('is_active', true)
+        .order('name', { ascending: true });
 
       if (scope === 'gym' && gymId) {
         query = query.eq('gym_id', gymId);
+      } else if (scope === 'general') {
+        query = query.is('gym_id', null);
       }
 
       const { data, error } = await query;
@@ -493,6 +567,64 @@ export const CommunityService = {
     } catch {
       return [];
     }
+  },
+
+  async createGroup(
+    scope: string,
+    name: string,
+    description?: string,
+    gymId?: string,
+    createdBy?: string
+  ) {
+    const { data, error } = await supabase
+      .from('community_groups')
+      .insert({
+        scope,
+        name: name.trim(),
+        description: description?.trim() || null,
+        gym_id: scope === 'gym' ? gymId : null,
+        created_by: createdBy || null,
+        is_active: true,
+      })
+      .select()
+      .single();
+
+    if (error) throw error;
+    return data;
+  },
+
+  async deactivateGroup(groupId: string) {
+    const { error } = await supabase
+      .from('community_groups')
+      .update({ is_active: false })
+      .eq('id', groupId);
+
+    if (error) throw error;
+  },
+
+  async addGroupMember(groupId: string, userId: string, role: string = 'member') {
+    const { data, error } = await supabase
+      .from('community_group_members')
+      .insert({
+        group_id: groupId,
+        user_id: userId,
+        role,
+      })
+      .select()
+      .single();
+
+    if (error) throw error;
+    return data;
+  },
+
+  async removeGroupMember(groupId: string, userId: string) {
+    const { error } = await supabase
+      .from('community_group_members')
+      .delete()
+      .eq('group_id', groupId)
+      .eq('user_id', userId);
+
+    if (error) throw error;
   },
 
   async isGroupMember(groupId: string, userId: string): Promise<boolean> {

@@ -1,224 +1,532 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ScrollView, ActivityIndicator } from 'react-native';
-import { ArrowLeft, Flame, ChevronRight, Check, Target, Clock, Ruler, Activity } from 'lucide-react-native';
+import React, { useState, useEffect, useCallback } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
+import {
+  View,
+  Text,
+  TouchableOpacity,
+  StyleSheet,
+  ScrollView,
+  ActivityIndicator,
+} from 'react-native';
+import {
+  ArrowLeft,
+  ChevronRight,
+  Dumbbell,
+  User,
+  Flame,
+  Activity,
+  Award,
+  Plus,
+} from 'lucide-react-native';
 import { Colors } from '../../theme/colors';
-import { supabase } from '../../services/supabaseClient';
 import { useAuth } from '../../context/AuthContext';
+import { supabase } from '../../services/supabaseClient';
+import {
+  RECORD_ATTEMPT_CATEGORIES,
+  RecordCategory,
+  RecordExercise,
+  RecordMeasureType,
+  measureLabel,
+} from '../../models/recordAttemptCategories';
 
-export const RecordAttemptSetupScreen = ({ navigation }: any) => {
+interface RecordAttemptSetupScreenProps {
+  navigation?: any;
+}
+
+type SetupStep = 'category' | 'exercise' | 'detail';
+
+export const RecordAttemptSetupScreen: React.FC<RecordAttemptSetupScreenProps> = ({ navigation }) => {
   const { session } = useAuth();
-  const [step, setStep] = useState<'category' | 'exercise' | 'config'>('category');
-  
-  const [categories, setCategories] = useState<any[]>([]);
-  const [exercises, setExercises] = useState<any[]>([]);
-  const [pastPRs, setPastPRs] = useState<any[]>([]);
-  
-  const [loading, setLoading] = useState(true);
-  
-  const [selectedCategory, setSelectedCategory] = useState<any>(null);
-  const [selectedExercise, setSelectedExercise] = useState<any>(null);
-  const [recordType, setRecordType] = useState<'weight' | 'reps' | 'time' | 'distance' | 'calories'>('weight');
-  const [targetValue, setTargetValue] = useState(100);
-  const [includeWarmup, setIncludeWarmup] = useState(true);
+  const userId = session?.user?.id;
 
-  useEffect(() => {
-    fetchData();
-  }, []);
+  const [step, setStep] = useState<SetupStep>('category');
+  const [selectedCategory, setSelectedCategory] = useState<RecordCategory | null>(null);
+  const [selectedExercise, setSelectedExercise] = useState<RecordExercise | null>(null);
 
-  const fetchData = async () => {
-    setLoading(true);
+  // Target Config
+  const [targetValue, setTargetValue] = useState<number>(100);
+  const [targetReps, setTargetReps] = useState<number>(1);
+  const [includeWarmup, setIncludeWarmup] = useState<boolean>(false);
+
+  // DB History states
+  const [historyLoading, setHistoryLoading] = useState<boolean>(false);
+  const [pastPR, setPastPR] = useState<any | null>(null);
+  const [pastAttempts, setPastAttempts] = useState<any[]>([]);
+  const [setsByAttempt, setSetsByAttempt] = useState<Record<string, any>>({});
+  const [isStarting, setIsStarting] = useState<boolean>(false);
+
+  const applyDefaults = (ex: RecordExercise) => {
+    setSelectedExercise(ex);
+    setIncludeWarmup(false);
+    setTargetReps(ex.defaultReps || 1);
+    setTargetValue(ex.defaultTarget || 100);
+    setStep('detail');
+  };
+
+  // Fetch history for selected exercise from DB
+  const loadHistoryForExercise = useCallback(async (catalogEx: RecordExercise) => {
+    if (!userId) return;
+    setHistoryLoading(true);
     try {
-      const { data: cats } = await supabase.from('categories').select('*');
-      if (cats) setCategories(cats);
-      
-      const { data: exers } = await supabase.from('exercises').select('*');
-      if (exers) setExercises(exers);
-      
-      if (session?.user?.id) {
-        const { data: prs } = await supabase
+      // 1. Resolve exercise_id from exercises table
+      let resolvedExerciseId: string | null = null;
+      const { data: dbExercises } = await supabase
+        .from('exercises')
+        .select('id, name')
+        .ilike('name', catalogEx.name)
+        .limit(1);
+
+      if (dbExercises && dbExercises.length > 0) {
+        resolvedExerciseId = dbExercises[0].id;
+      } else {
+        // Fallback search by id/slug
+        const { data: slugExercises } = await supabase
+          .from('exercises')
+          .select('id, name')
+          .eq('id', catalogEx.id)
+          .limit(1);
+        if (slugExercises && slugExercises.length > 0) {
+          resolvedExerciseId = slugExercises[0].id;
+        }
+      }
+
+      if (resolvedExerciseId) {
+        // 2. Fetch Personal Record
+        const { data: prData } = await supabase
           .from('personal_records')
           .select('*')
-          .eq('user_id', session.user.id);
-        if (prs) setPastPRs(prs);
+          .eq('user_id', userId)
+          .eq('exercise_id', resolvedExerciseId)
+          .order('record_date', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        setPastPR(prData || null);
+
+        // 3. Fetch past completed attempts
+        const { data: attemptsData } = await supabase
+          .from('record_attempts')
+          .select('*')
+          .eq('user_id', userId)
+          .eq('exercise_id', resolvedExerciseId)
+          .neq('status', 'in_progress')
+          .order('completed_at', { ascending: false })
+          .limit(10);
+
+        const attempts = attemptsData || [];
+        setPastAttempts(attempts);
+
+        // 4. Fetch sets for attempts
+        if (attempts.length > 0) {
+          const attemptIds = attempts.map((a: any) => a.id);
+          const { data: setsData } = await supabase
+            .from('record_attempt_sets')
+            .select('*')
+            .in('attempt_id', attemptIds)
+            .eq('set_type', 'main')
+            .eq('is_completed', true);
+
+          const setsMap: Record<string, any> = {};
+          (setsData || []).forEach((s: any) => {
+            setsMap[s.attempt_id] = s;
+          });
+          setSetsByAttempt(setsMap);
+        } else {
+          setSetsByAttempt({});
+        }
+      } else {
+        setPastPR(null);
+        setPastAttempts([]);
+        setSetsByAttempt({});
       }
     } catch (e) {
-      console.error(e);
+      console.error('History load error:', e);
+      setPastPR(null);
+      setPastAttempts([]);
+      setSetsByAttempt({});
     } finally {
-      setLoading(false);
+      setHistoryLoading(false);
+    }
+  }, [userId]);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (selectedExercise && userId && step === 'detail') {
+        loadHistoryForExercise(selectedExercise);
+      }
+    }, [selectedExercise, userId, step, loadHistoryForExercise])
+  );
+
+  const handleBack = () => {
+    if (step === 'detail') {
+      setSelectedExercise(null);
+      setStep('exercise');
+    } else if (step === 'exercise') {
+      setSelectedCategory(null);
+      setStep('category');
+    } else {
+      navigation?.goBack();
     }
   };
 
-  const getRecordTypeIcon = (type: string) => {
-    switch(type) {
-      case 'weight': return <Target size={20} color={Colors.primary} />;
-      case 'reps': return <Activity size={20} color={Colors.primary} />;
-      case 'time': return <Clock size={20} color={Colors.primary} />;
-      case 'distance': return <Ruler size={20} color={Colors.primary} />;
-      case 'calories': return <Flame size={20} color={Colors.primary} />;
-      default: return <Target size={20} color={Colors.primary} />;
-    }
-  };
-  
-  const getRecordTypeLabel = (type: string) => {
-    switch(type) {
-      case 'weight': return 'Ağırlık (kg)';
-      case 'reps': return 'Tekrar';
-      case 'time': return 'Süre (dk)';
-      case 'distance': return 'Mesafe (km)';
-      case 'calories': return 'Kalori (kcal)';
-      default: return '';
+  const getCategoryIcon = (catId: string) => {
+    switch (catId) {
+      case 'strength':
+        return <Dumbbell size={22} color={Colors.primary} />;
+      case 'bodyweight':
+        return <User size={22} color={Colors.primary} />;
+      case 'running':
+        return <Flame size={22} color={Colors.primary} />;
+      case 'cardio':
+        return <Activity size={22} color={Colors.primary} />;
+      case 'benchmark':
+        return <Award size={22} color={Colors.primary} />;
+      default:
+        return <Dumbbell size={22} color={Colors.primary} />;
     }
   };
 
-  const calculateWarmupPlan = (targetWeight: number) => {
-    if (!includeWarmup || recordType !== 'weight') return [];
-    return [
-      { weight: Math.round(targetWeight * 0.4), reps: 10, type: 'warmup' },
-      { weight: Math.round(targetWeight * 0.6), reps: 5, type: 'warmup' },
-      { weight: Math.round(targetWeight * 0.8), reps: 3, type: 'warmup' },
-      { weight: Math.round(targetWeight * 0.9), reps: 1, type: 'warmup' },
-      { weight: targetWeight, reps: 1, type: 'main' },
-    ];
+  const adjustValue = (delta: number) => {
+    setTargetValue((prev) => Math.max(0, prev + delta));
   };
 
-  const handleStart = () => {
-    const plan = calculateWarmupPlan(targetValue);
-    navigation.navigate('RecordAttemptSession', {
+  const adjustReps = (delta: number) => {
+    setTargetReps((prev) => Math.max(1, prev + delta));
+  };
+
+  const calculatePlan = () => {
+    if (!selectedExercise) return [];
+    if (selectedExercise.measureType !== RecordMeasureType.WEIGHT) {
+      return [{ weight: targetValue, reps: targetReps, type: 'main' }];
+    }
+    if (includeWarmup) {
+      return [
+        { weight: Math.round(targetValue * 0.4), reps: 10, type: 'warmup' },
+        { weight: Math.round(targetValue * 0.6), reps: 5, type: 'warmup' },
+        { weight: Math.round(targetValue * 0.8), reps: 3, type: 'warmup' },
+        { weight: Math.round(targetValue * 0.9), reps: 1, type: 'warmup' },
+        { weight: targetValue, reps: targetReps, type: 'main' },
+      ];
+    }
+    return [{ weight: targetValue, reps: targetReps, type: 'main' }];
+  };
+
+  const handleStartAttempt = () => {
+    if (!selectedExercise || isStarting) return;
+    setIsStarting(true);
+    const plan = calculatePlan();
+    navigation?.navigate('RecordAttemptSession', {
       exercise: selectedExercise,
-      recordType,
+      recordType: selectedExercise.measureType,
       targetValue,
-      plan: plan.length ? plan : [{ weight: targetValue, reps: 1, type: 'main' }]
+      targetReps,
+      plan,
     });
+    setIsStarting(false);
   };
 
-  const currentCategoryExercises = exercises.filter(e => e.category_id === selectedCategory?.id || e.category === selectedCategory?.id || e.category === selectedCategory?.name);
+  const formatHistoryAttemptValue = (attempt: any, measureType: RecordMeasureType) => {
+    const mainSet = setsByAttempt[attempt.id];
+    const w = mainSet?.actual_weight ?? attempt.target_weight ?? 0;
+    const r = mainSet?.actual_reps ?? attempt.target_reps ?? 1;
+
+    switch (measureType) {
+      case RecordMeasureType.WEIGHT:
+        return `${w} kg × ${r}`;
+      case RecordMeasureType.REPS:
+        return `${r} tekrar`;
+      case RecordMeasureType.TIME:
+        return `${Math.round(w)} sn`;
+      case RecordMeasureType.CALORIES:
+        return `${Math.round(w)} cal`;
+      case RecordMeasureType.DISTANCE:
+        return `${w} km`;
+      default:
+        return `${w} × ${r}`;
+    }
+  };
 
   return (
     <View style={styles.container}>
-      <View style={styles.header}>
-        <TouchableOpacity
-          onPress={() => {
-            if (step === 'config') setStep('exercise');
-            else if (step === 'exercise') setStep('category');
-            else navigation?.goBack();
-          }}
-          style={styles.backBtn}
-        >
-          <ArrowLeft size={22} color={Colors.textDark} />
+      {/* ── Header ────────────────────────────────────────────────────────── */}
+      <View style={styles.headerRow}>
+        <TouchableOpacity onPress={handleBack} style={styles.backBtn} activeOpacity={0.8}>
+          <ArrowLeft size={20} color={Colors.textDark} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Rekor Denemesi</Text>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.headerTitle}>
+            {step === 'category'
+              ? 'Rekor Denemesi'
+              : step === 'exercise'
+              ? selectedCategory?.name || 'Hareket Seç'
+              : selectedExercise?.name || 'Hazırlık'}
+          </Text>
+          <Text style={styles.headerSubtitle}>
+            {step === 'category'
+              ? 'Kategori seçin'
+              : step === 'exercise'
+              ? `${selectedCategory?.exerciseCount || 0} hareket`
+              : measureLabel(selectedExercise?.measureType || RecordMeasureType.WEIGHT, selectedExercise?.id)}
+          </Text>
+        </View>
       </View>
 
-      <ScrollView contentContainerStyle={styles.content}>
-        {loading ? (
-           <ActivityIndicator size="large" color={Colors.primary} style={{marginTop: 50}} />
-        ) : (
-          <>
-            {step === 'category' && (
-              <View>
-                <Text style={styles.stepTitle}>Kategori Seçin</Text>
-                <Text style={styles.stepSubtitle}>Hangi branşta rekor denemek istiyorsunuz?</Text>
-                <View style={styles.list}>
-                  {(categories.length ? categories : [
-                    { id: 'bodybuilding', name: 'Vücut Geliştirme', icon: '🏋️' },
-                    { id: 'powerlifting', name: 'Powerlifting', icon: '⚡' }
-                  ]).map((cat) => (
-                    <TouchableOpacity
-                      key={cat.id}
-                      style={styles.cardBtn}
-                      onPress={() => {
-                        setSelectedCategory(cat);
-                        setStep('exercise');
-                      }}
-                    >
-                      <Text style={styles.cardEmoji}>{cat.icon || '🔥'}</Text>
-                      <Text style={styles.cardName}>{cat.name}</Text>
-                      <ChevronRight size={18} color={Colors.textSecondaryDark} />
-                    </TouchableOpacity>
-                  ))}
+      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+        {/* ── Step 1: Category Selection ──────────────────────────────────── */}
+        {step === 'category' && (
+          <View style={styles.cardsList}>
+            {RECORD_ATTEMPT_CATEGORIES.map((cat) => (
+              <TouchableOpacity
+                key={cat.id}
+                style={styles.categoryCard}
+                onPress={() => {
+                  setSelectedCategory(cat);
+                  setStep('exercise');
+                }}
+                activeOpacity={0.8}
+              >
+                <View style={styles.categoryIconBadge}>{getCategoryIcon(cat.id)}</View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.categoryTitle}>{cat.name}</Text>
+                  <Text style={styles.categorySubtitle}>{cat.exerciseCount} hareket</Text>
                 </View>
-              </View>
-            )}
+                <ChevronRight size={20} color={Colors.textSecondaryDark} />
+              </TouchableOpacity>
+            ))}
+          </View>
+        )}
 
-            {step === 'exercise' && (
-              <View>
-                <Text style={styles.stepTitle}>Hareket Seçin</Text>
-                <View style={styles.list}>
-                  {(currentCategoryExercises.length ? currentCategoryExercises : [
-                    { id: 'bench', name: 'Bench Press', category: 'bodybuilding', defaultVal: 100 }
-                  ]).map((ex) => {
-                    const pr = pastPRs.find(p => p.exercise_id === ex.id);
+        {/* ── Step 2: Exercise Selection ──────────────────────────────────── */}
+        {step === 'exercise' && selectedCategory && (
+          <View style={styles.cardsList}>
+            {selectedCategory.exercises.map((ex) => (
+              <TouchableOpacity
+                key={ex.id}
+                style={styles.exerciseCard}
+                onPress={() => applyDefaults(ex)}
+                activeOpacity={0.8}
+              >
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.exerciseTitle}>{ex.name}</Text>
+                  <Text style={styles.exerciseSubtitle}>{measureLabel(ex.measureType, ex.id)}</Text>
+                </View>
+                <ChevronRight size={18} color={Colors.textSecondaryDark} />
+              </TouchableOpacity>
+            ))}
+          </View>
+        )}
+
+        {/* ── Step 3: Detail & Setup ──────────────────────────────────────── */}
+        {step === 'detail' && selectedExercise && (
+          <View style={{ gap: 16 }}>
+            {/* Selected Exercise Banner */}
+            <View style={styles.selectedBanner}>
+              <Dumbbell size={22} color={Colors.primary} />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.bannerTitle}>{selectedExercise.name}</Text>
+                <Text style={styles.bannerSub}>{selectedCategory?.name || ''}</Text>
+              </View>
+              <TouchableOpacity
+                onPress={() => {
+                  setSelectedExercise(null);
+                  setStep('exercise');
+                }}
+              >
+                <Text style={styles.changeBtnText}>Değiştir</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* History Section */}
+            <View style={styles.historyBox}>
+              <Text style={styles.sectionHeaderTitle}>Geçmiş</Text>
+              {historyLoading ? (
+                <ActivityIndicator size="small" color={Colors.primary} style={{ marginVertical: 12 }} />
+              ) : pastPR || pastAttempts.length > 0 ? (
+                <View style={{ gap: 10 }}>
+                  {pastPR && (
+                    <View style={styles.prBox}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.prBoxLabel}>Kişisel Rekor</Text>
+                        <Text style={styles.prBoxVal}>
+                          {pastPR.weight_kg ? `${pastPR.weight_kg} kg` : ''}{' '}
+                          {pastPR.reps ? `× ${pastPR.reps} tekrar` : ''}
+                        </Text>
+                      </View>
+                      <Text style={styles.prBoxDate}>{pastPR.record_date?.slice(0, 10)}</Text>
+                    </View>
+                  )}
+
+                  {pastAttempts.map((attempt) => {
+                    const isSuccess = attempt.success || attempt.status === 'completed';
+                    const dateStr = (attempt.completed_at || attempt.created_at || '').slice(0, 10);
                     return (
-                      <TouchableOpacity
-                        key={ex.id}
-                        style={styles.cardBtn}
-                        onPress={() => {
-                          setSelectedExercise(ex);
-                          setTargetValue(ex.defaultVal || 100);
-                          setStep('config');
-                        }}
-                      >
-                        <Flame size={20} color={Colors.primary} />
-                        <View style={{ flex: 1, marginLeft: 10 }}>
-                          <Text style={styles.cardName}>{ex.name}</Text>
-                          {pr && <Text style={{ color: Colors.textSecondaryDark, fontSize: 12 }}>Geçmiş PR: {pr.record_value}</Text>}
+                      <View key={attempt.id} style={styles.attemptHistoryRow}>
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.attemptValText}>
+                            {formatHistoryAttemptValue(attempt, selectedExercise.measureType)}
+                          </Text>
+                          <Text style={styles.attemptDateText}>{dateStr}</Text>
                         </View>
-                        <ChevronRight size={18} color={Colors.textSecondaryDark} />
-                      </TouchableOpacity>
+                        <View
+                          style={[
+                            styles.statusBadge,
+                            { backgroundColor: isSuccess ? 'rgba(76,175,80,0.15)' : 'rgba(244,67,54,0.15)' },
+                          ]}
+                        >
+                          <Text style={[styles.statusBadgeText, { color: isSuccess ? '#4CAF50' : '#F44336' }]}>
+                            {isSuccess ? 'Başarılı' : 'Başarısız'}
+                          </Text>
+                        </View>
+                      </View>
                     );
                   })}
                 </View>
-              </View>
-            )}
+              ) : (
+                <Text style={styles.noHistoryText}>Bu harekette henüz kayıt yok. İlk rekoru sen kır!</Text>
+              )}
+            </View>
 
-            {step === 'config' && (
-              <View>
-                <Text style={styles.stepTitle}>{selectedExercise?.name}</Text>
-                
-                <Text style={styles.inputLabel}>Rekor Tipi</Text>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 20 }}>
-                  {['weight', 'reps', 'time', 'distance', 'calories'].map((type: any) => (
-                    <TouchableOpacity
-                      key={type}
-                      style={[styles.typeBtn, recordType === type && styles.typeBtnActive]}
-                      onPress={() => setRecordType(type)}
-                    >
-                      {getRecordTypeIcon(type)}
-                      <Text style={[styles.typeBtnText, recordType === type && { color: Colors.allWhite }]}>
-                        {getRecordTypeLabel(type)}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </ScrollView>
-
-                <View style={styles.configCard}>
-                  <Text style={styles.inputLabel}>Hedef {getRecordTypeLabel(recordType)}</Text>
-                  <View style={styles.stepperRow}>
-                    <TouchableOpacity style={styles.stepBtn} onPress={() => setTargetValue(Math.max(1, targetValue - 1))}>
-                      <Text style={styles.stepBtnText}>-</Text>
-                    </TouchableOpacity>
-                    <Text style={styles.valText}>{targetValue}</Text>
-                    <TouchableOpacity style={styles.stepBtn} onPress={() => setTargetValue(targetValue + 1)}>
-                      <Text style={styles.stepBtnText}>+</Text>
-                    </TouchableOpacity>
-                  </View>
-
-                  {recordType === 'weight' && (
-                    <TouchableOpacity style={styles.warmupToggle} onPress={() => setIncludeWarmup(!includeWarmup)}>
-                      <View style={[styles.checkbox, includeWarmup && styles.checkboxActive]}>
-                        {includeWarmup && <Check size={14} color={Colors.allWhite} />}
-                      </View>
-                      <Text style={styles.warmupText}>Isınma planı oluştur (Plate Calculator)</Text>
-                    </TouchableOpacity>
-                  )}
+            {/* Target Setup Cards */}
+            {/* 1. Target Value / Weight / Time / Distance / Calories */}
+            {selectedExercise.measureType === RecordMeasureType.WEIGHT && (
+              <View style={styles.targetCard}>
+                <Text style={styles.targetCardLabel}>HEDEF AĞIRLIK (KG)</Text>
+                <View style={styles.targetControlsRow}>
+                  <TouchableOpacity
+                    style={styles.adjustBtn}
+                    onPress={() => adjustValue(-2.5)}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={styles.adjustBtnMinus}>−</Text>
+                  </TouchableOpacity>
+                  <Text style={styles.targetValText}>{targetValue} kg</Text>
+                  <TouchableOpacity
+                    style={[styles.adjustBtn, styles.adjustBtnPlus]}
+                    onPress={() => adjustValue(2.5)}
+                    activeOpacity={0.8}
+                  >
+                    <Plus size={20} color={Colors.allWhite} />
+                  </TouchableOpacity>
                 </View>
-
-                <TouchableOpacity style={styles.startBtn} onPress={handleStart}>
-                  <Text style={styles.startBtnText}>Rekor Denemesini Başlat</Text>
-                </TouchableOpacity>
               </View>
             )}
-          </>
+
+            {selectedExercise.measureType === RecordMeasureType.TIME && (
+              <View style={styles.targetCard}>
+                <Text style={styles.targetCardLabel}>HEDEF SÜRE (SN)</Text>
+                <View style={styles.targetControlsRow}>
+                  <TouchableOpacity style={styles.adjustBtn} onPress={() => adjustValue(-10)} activeOpacity={0.8}>
+                    <Text style={styles.adjustBtnMinus}>−</Text>
+                  </TouchableOpacity>
+                  <Text style={styles.targetValText}>{Math.round(targetValue)} sn</Text>
+                  <TouchableOpacity
+                    style={[styles.adjustBtn, styles.adjustBtnPlus]}
+                    onPress={() => adjustValue(10)}
+                    activeOpacity={0.8}
+                  >
+                    <Plus size={20} color={Colors.allWhite} />
+                  </TouchableOpacity>
+                </View>
+              </View>
+            )}
+
+            {selectedExercise.measureType === RecordMeasureType.CALORIES && (
+              <View style={styles.targetCard}>
+                <Text style={styles.targetCardLabel}>HEDEF KALORİ</Text>
+                <View style={styles.targetControlsRow}>
+                  <TouchableOpacity style={styles.adjustBtn} onPress={() => adjustValue(-5)} activeOpacity={0.8}>
+                    <Text style={styles.adjustBtnMinus}>−</Text>
+                  </TouchableOpacity>
+                  <Text style={styles.targetValText}>{Math.round(targetValue)} cal</Text>
+                  <TouchableOpacity
+                    style={[styles.adjustBtn, styles.adjustBtnPlus]}
+                    onPress={() => adjustValue(5)}
+                    activeOpacity={0.8}
+                  >
+                    <Plus size={20} color={Colors.allWhite} />
+                  </TouchableOpacity>
+                </View>
+              </View>
+            )}
+
+            {selectedExercise.measureType === RecordMeasureType.DISTANCE && (
+              <View style={styles.targetCard}>
+                <Text style={styles.targetCardLabel}>HEDEF MESAFE (KM)</Text>
+                <View style={styles.targetControlsRow}>
+                  <TouchableOpacity style={styles.adjustBtn} onPress={() => adjustValue(-0.5)} activeOpacity={0.8}>
+                    <Text style={styles.adjustBtnMinus}>−</Text>
+                  </TouchableOpacity>
+                  <Text style={styles.targetValText}>{targetValue} km</Text>
+                  <TouchableOpacity
+                    style={[styles.adjustBtn, styles.adjustBtnPlus]}
+                    onPress={() => adjustValue(0.5)}
+                    activeOpacity={0.8}
+                  >
+                    <Plus size={20} color={Colors.allWhite} />
+                  </TouchableOpacity>
+                </View>
+              </View>
+            )}
+
+            {/* 2. Target Reps setup card — ONLY for WEIGHT and REPS types (Güç ve Vücut Ağırlığı) */}
+            {(selectedExercise.measureType === RecordMeasureType.WEIGHT ||
+              selectedExercise.measureType === RecordMeasureType.REPS) && (
+              <View style={styles.targetCard}>
+                <Text style={styles.targetCardLabel}>HEDEF TEKRAR</Text>
+                <View style={styles.targetControlsRow}>
+                  <TouchableOpacity style={styles.adjustBtn} onPress={() => adjustReps(-1)} activeOpacity={0.8}>
+                    <Text style={styles.adjustBtnMinus}>−</Text>
+                  </TouchableOpacity>
+                  <Text style={styles.targetValText}>{targetReps} tekrar</Text>
+                  <TouchableOpacity
+                    style={[styles.adjustBtn, styles.adjustBtnPlus]}
+                    onPress={() => adjustReps(1)}
+                    activeOpacity={0.8}
+                  >
+                    <Plus size={20} color={Colors.allWhite} />
+                  </TouchableOpacity>
+                </View>
+              </View>
+            )}
+
+            {/* Warmup Toggle (Only for WEIGHT type) */}
+            {selectedExercise.measureType === RecordMeasureType.WEIGHT && (
+              <View style={styles.warmupCard}>
+                <Text style={styles.targetCardLabel}>ISINMA</Text>
+                <View style={styles.warmupToggleRow}>
+                  <TouchableOpacity
+                    style={[styles.warmupOptionChip, includeWarmup && styles.warmupOptionChipActive]}
+                    onPress={() => setIncludeWarmup(true)}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={[styles.warmupOptionText, includeWarmup && styles.warmupOptionTextActive]}>
+                      Isınma setleriyle
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.warmupOptionChip, !includeWarmup && styles.warmupOptionChipActive]}
+                    onPress={() => setIncludeWarmup(false)}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={[styles.warmupOptionText, !includeWarmup && styles.warmupOptionTextActive]}>
+                      Direkt rekor
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            )}
+
+            {/* Start Button */}
+            <TouchableOpacity
+              style={styles.startBtn}
+              onPress={handleStartAttempt}
+              activeOpacity={0.8}
+              disabled={isStarting}
+            >
+              <Flame size={20} color={Colors.allWhite} />
+              <Text style={styles.startBtnText}>Rekor Denemesine Başla</Text>
+            </TouchableOpacity>
+          </View>
         )}
       </ScrollView>
     </View>
@@ -226,30 +534,276 @@ export const RecordAttemptSetupScreen = ({ navigation }: any) => {
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Colors.backgroundDark },
-  header: { flexDirection: 'row', alignItems: 'center', padding: 20, paddingTop: 50, backgroundColor: Colors.cardDark },
-  backBtn: { marginRight: 14 },
-  headerTitle: { fontSize: 20, fontWeight: '700', color: Colors.textDark },
-  content: { padding: 20 },
-  stepTitle: { fontSize: 22, fontWeight: '700', color: Colors.textDark, marginBottom: 8 },
-  stepSubtitle: { fontSize: 13, color: Colors.textSecondaryDark, marginBottom: 20 },
-  list: { gap: 12 },
-  cardBtn: { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.cardDark, borderRadius: 16, padding: 16, borderWidth: 1, borderColor: Colors.borderDark },
-  cardEmoji: { fontSize: 22, marginRight: 12 },
-  cardName: { fontSize: 16, fontWeight: '600', color: Colors.textDark },
-  configCard: { backgroundColor: Colors.cardDark, borderRadius: 20, padding: 20, marginBottom: 24, borderWidth: 1, borderColor: Colors.borderDark },
-  inputLabel: { fontSize: 14, fontWeight: '600', color: Colors.textDark, marginBottom: 10 },
-  stepperRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: Colors.backgroundDark, borderRadius: 14, padding: 8 },
-  stepBtn: { width: 44, height: 44, borderRadius: 10, backgroundColor: Colors.cardDark, justifyContent: 'center', alignItems: 'center' },
-  stepBtnText: { fontSize: 20, fontWeight: '700', color: Colors.textDark },
-  valText: { fontSize: 20, fontWeight: '800', color: Colors.primary },
-  typeBtn: { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.cardDark, paddingHorizontal: 16, paddingVertical: 12, borderRadius: 20, marginRight: 10, borderWidth: 1, borderColor: Colors.borderDark },
-  typeBtnActive: { backgroundColor: Colors.primary, borderColor: Colors.primary },
-  typeBtnText: { marginLeft: 8, color: Colors.textDark, fontWeight: '600' },
-  warmupToggle: { flexDirection: 'row', alignItems: 'center', marginTop: 20, gap: 10 },
-  checkbox: { width: 22, height: 22, borderRadius: 6, borderWidth: 2, borderColor: Colors.textSecondaryDark, justifyContent: 'center', alignItems: 'center' },
-  checkboxActive: { backgroundColor: Colors.primary, borderColor: Colors.primary },
-  warmupText: { fontSize: 14, color: Colors.textDark, fontWeight: '500' },
-  startBtn: { backgroundColor: Colors.primary, borderRadius: 100, paddingVertical: 16, alignItems: 'center' },
-  startBtnText: { color: Colors.allWhite, fontWeight: '700', fontSize: 16 }
+  container: {
+    flex: 1,
+    backgroundColor: Colors.backgroundDark,
+  },
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingTop: 50,
+    paddingBottom: 16,
+    gap: 14,
+  },
+  backBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: Colors.cardDark,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  headerTitle: {
+    fontSize: 22,
+    fontWeight: '700',
+    color: Colors.textDark,
+  },
+  headerSubtitle: {
+    fontSize: 13,
+    color: Colors.textSecondaryDark,
+    marginTop: 2,
+  },
+  scrollContent: {
+    paddingHorizontal: 20,
+    paddingBottom: 40,
+  },
+  cardsList: {
+    gap: 12,
+    marginTop: 8,
+  },
+  categoryCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.cardDark,
+    borderRadius: 16,
+    padding: 16,
+    gap: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(250,249,248,0.06)',
+  },
+  categoryIconBadge: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255,96,71,0.12)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  categoryTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: Colors.textDark,
+  },
+  categorySubtitle: {
+    fontSize: 12,
+    color: Colors.textSecondaryDark,
+    marginTop: 2,
+  },
+  exerciseCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.cardDark,
+    borderRadius: 14,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(250,249,248,0.06)',
+  },
+  exerciseTitle: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: Colors.textDark,
+  },
+  exerciseSubtitle: {
+    fontSize: 12,
+    color: Colors.textSecondaryDark,
+    marginTop: 2,
+  },
+  selectedBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,96,71,0.1)',
+    borderRadius: 16,
+    padding: 16,
+    gap: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(255,96,71,0.3)',
+  },
+  bannerTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: Colors.textDark,
+  },
+  bannerSub: {
+    fontSize: 12,
+    color: Colors.textSecondaryDark,
+    marginTop: 2,
+  },
+  changeBtnText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: Colors.primary,
+  },
+  historyBox: {
+    backgroundColor: Colors.cardDark,
+    borderRadius: 16,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(250,249,248,0.06)',
+  },
+  sectionHeaderTitle: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: Colors.textDark,
+    marginBottom: 10,
+  },
+  prBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: 'rgba(255,96,71,0.1)',
+    borderRadius: 12,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(255,96,71,0.2)',
+  },
+  prBoxLabel: {
+    fontSize: 11,
+    color: Colors.primary,
+    fontWeight: '700',
+  },
+  prBoxVal: {
+    fontSize: 17,
+    fontWeight: '800',
+    color: Colors.textDark,
+    marginTop: 2,
+  },
+  prBoxDate: {
+    fontSize: 12,
+    color: Colors.textSecondaryDark,
+  },
+  attemptHistoryRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.backgroundDark,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderWidth: 1,
+    borderColor: Colors.borderDark,
+  },
+  attemptValText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: Colors.textDark,
+  },
+  attemptDateText: {
+    fontSize: 11,
+    color: Colors.textSecondaryDark,
+    marginTop: 2,
+  },
+  statusBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 20,
+  },
+  statusBadgeText: {
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  noHistoryText: {
+    fontSize: 13,
+    color: Colors.textSecondaryDark,
+  },
+  targetCard: {
+    backgroundColor: Colors.cardDark,
+    borderRadius: 16,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(250,249,248,0.06)',
+    gap: 12,
+  },
+  targetCardLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: Colors.textSecondaryDark,
+    letterSpacing: 0.5,
+  },
+  targetControlsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  adjustBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: Colors.backgroundDark,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  adjustBtnPlus: {
+    backgroundColor: Colors.primary,
+  },
+  adjustBtnMinus: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: Colors.textDark,
+  },
+  targetValText: {
+    fontSize: 24,
+    fontWeight: '800',
+    color: Colors.textDark,
+  },
+  warmupCard: {
+    backgroundColor: Colors.cardDark,
+    borderRadius: 16,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(250,249,248,0.06)',
+    gap: 12,
+  },
+  warmupToggleRow: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  warmupOptionChip: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 12,
+    backgroundColor: Colors.backgroundDark,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: Colors.borderDark,
+  },
+  warmupOptionChipActive: {
+    backgroundColor: 'rgba(255,96,71,0.15)',
+    borderColor: Colors.primary,
+  },
+  warmupOptionText: {
+    fontSize: 13,
+    fontWeight: '500',
+    color: Colors.textSecondaryDark,
+  },
+  warmupOptionTextActive: {
+    color: Colors.primary,
+    fontWeight: '700',
+  },
+  startBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: Colors.primary,
+    borderRadius: 100,
+    paddingVertical: 16,
+    elevation: 4,
+    marginTop: 8,
+  },
+  startBtnText: {
+    color: Colors.allWhite,
+    fontSize: 16,
+    fontWeight: '700',
+  },
 });

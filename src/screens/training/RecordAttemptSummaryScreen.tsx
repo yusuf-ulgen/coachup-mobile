@@ -43,7 +43,7 @@ export const RecordAttemptSummaryScreen = ({ route, navigation }: any) => {
         <View style={styles.actionRow}>
           <TouchableOpacity 
             style={[styles.btn, styles.secondaryBtn]} 
-            onPress={() => navigation.navigate('HomeTab')}
+            onPress={() => navigation.navigate('MainTabs')}
           >
             <Home size={20} color={Colors.textDark} />
             <Text style={styles.secondaryBtnText}>Ana Sayfa</Text>
@@ -51,7 +51,7 @@ export const RecordAttemptSummaryScreen = ({ route, navigation }: any) => {
           
           <TouchableOpacity 
             style={[styles.btn, styles.primaryBtn]} 
-            onPress={() => navigation.navigate('PersonalRecords')}
+            onPress={() => navigation.navigate('RecordAttemptSetup')}
           >
             <RotateCcw size={20} color={Colors.allWhite} />
             <Text style={styles.primaryBtnText}>Yeni Deneme</Text>

@@ -4,6 +4,11 @@ export interface ActiveWorkoutData {
   sessionId: string | null;
   programId?: string;
   title: string;
+  workoutTitle?: string;
+  category?: string;
+  emoji?: string;
+  isOutdoor?: boolean;
+  hasStarted?: boolean;
   seconds: number;
   startTimeTimestamp: number | null;
   isActive: boolean;
@@ -13,6 +18,11 @@ export interface ActiveWorkoutData {
 let state: ActiveWorkoutData = {
   sessionId: null,
   title: '',
+  workoutTitle: '',
+  category: '',
+  emoji: '🏃',
+  isOutdoor: false,
+  hasStarted: false,
   seconds: 0,
   startTimeTimestamp: null,
   isActive: false,
@@ -23,10 +33,10 @@ const listeners = new Set<Listener>();
 
 export const ActiveWorkoutManager = {
   getState(): ActiveWorkoutData {
-    if (state.startTimeTimestamp && state.isActive) {
+    if (state.startTimeTimestamp && state.isActive && state.hasStarted) {
       state.seconds = Math.max(0, Math.floor((Date.now() - state.startTimeTimestamp) / 1000));
     }
-    return state;
+    return { ...state };
   },
 
   subscribe(listener: Listener) {
@@ -40,24 +50,63 @@ export const ActiveWorkoutManager = {
     listeners.forEach((l) => l());
   },
 
-  startWorkout(sessionId: string, title: string, programId?: string, initialSeconds: number = 0) {
+  startWorkout(
+    sessionId: string,
+    title: string,
+    programId?: string,
+    initialSeconds: number = 0,
+    options?: {
+      workoutTitle?: string;
+      category?: string;
+      emoji?: string;
+      isOutdoor?: boolean;
+      hasStarted?: boolean;
+    }
+  ) {
+    // If this session is already active, preserve its start time and metadata!
+    if (state.sessionId === sessionId && state.isActive) {
+      state.isOnActiveWorkoutScreen = true;
+      if (options?.hasStarted) {
+        state.hasStarted = true;
+        if (!state.startTimeTimestamp) {
+          state.startTimeTimestamp = Date.now() - state.seconds * 1000;
+        }
+      }
+      this.notify();
+      return;
+    }
+
     const now = Date.now();
+    const hasStarted = options?.hasStarted ?? true;
     state = {
       sessionId,
       title: title || 'Aktif Antrenman',
+      workoutTitle: options?.workoutTitle || title || 'Aktif Antrenman',
+      category: options?.category || '',
+      emoji: options?.emoji || '🏃',
+      isOutdoor: options?.isOutdoor ?? false,
+      hasStarted,
       programId,
       seconds: initialSeconds,
-      startTimeTimestamp: now - initialSeconds * 1000,
+      startTimeTimestamp: hasStarted ? now - initialSeconds * 1000 : null,
       isActive: true,
       isOnActiveWorkoutScreen: true,
     };
     this.notify();
   },
 
+  setHasStarted(hasStarted: boolean) {
+    state.hasStarted = hasStarted;
+    if (hasStarted && !state.startTimeTimestamp) {
+      state.startTimeTimestamp = Date.now() - state.seconds * 1000;
+    }
+    this.notify();
+  },
+
   updateSeconds(seconds: number) {
     if (state.sessionId) {
       state.seconds = seconds;
-      if (!state.startTimeTimestamp) {
+      if (state.hasStarted && !state.startTimeTimestamp) {
         state.startTimeTimestamp = Date.now() - seconds * 1000;
       }
       this.notify();
@@ -73,6 +122,11 @@ export const ActiveWorkoutManager = {
     state = {
       sessionId: null,
       title: '',
+      workoutTitle: '',
+      category: '',
+      emoji: '🏃',
+      isOutdoor: false,
+      hasStarted: false,
       seconds: 0,
       startTimeTimestamp: null,
       isActive: false,
@@ -89,3 +143,4 @@ export const ActiveWorkoutManager = {
     );
   },
 };
+

@@ -38,9 +38,9 @@ import {
   MembershipScreen,
   TrainingHistoryScreen,
   GoalsScreen,
-  PersonalRecordsScreen,
   GenericMenuScreen,
 } from '../screens/menu/MenuSubScreens';
+import { PersonalRecordsScreen } from '../screens/results/PersonalRecordsScreen';
 import { ProfileScreen } from '../screens/profile/ProfileScreen';
 import { NotificationsScreen } from '../screens/notifications/NotificationsScreen';
 import { AllEntryHistoryScreen } from '../screens/qr/AllEntryHistoryScreen';
@@ -321,7 +321,8 @@ export const AppNavigator: React.FC = () => {
           <Stack.Screen name="CoachDetail" component={CoachDetailScreen} />
           <Stack.Screen name="CoachChat" component={CoachChatScreen} />
           <Stack.Screen name="ActiveWorkout" component={ActiveWorkoutScreen} />
-          <Stack.Screen name="PersonalRecords" component={RecordAttemptSetupScreen} />
+          <Stack.Screen name="PersonalRecords" component={PersonalRecordsScreen} />
+          <Stack.Screen name="RecordAttemptSetup" component={RecordAttemptSetupScreen} />
           <Stack.Screen name="RecordAttemptSession" component={RecordAttemptSessionScreen} />
           <Stack.Screen name="RecordAttemptTimedModes" component={RecordAttemptTimedModesScreen} />
           <Stack.Screen name="RecordAttemptSummary" component={RecordAttemptSummaryScreen} />
