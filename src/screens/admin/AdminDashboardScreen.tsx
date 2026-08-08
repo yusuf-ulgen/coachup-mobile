@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Modal, TextInput, Alert } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator, Modal, TextInput } from 'react-native';
+import { feedback } from '../../services/feedbackService';
 import { Colors } from '../../theme/colors';
 import { GYM_CONFIG } from '../../config/gym';
 import { Users, LogIn, Clock, DollarSign, Check, X, Megaphone, ArrowLeft } from 'lucide-react-native';
@@ -46,21 +47,21 @@ export const AdminDashboardScreen = ({ navigation }: any) => {
 
   const handleApprove = (id: number) => {
     setPendingMemberships(prev => prev.filter(m => m.id !== id));
-    Alert.alert('Başarılı', 'Üyelik onaylandı.');
+    feedback.toast('Üyelik onaylandı.', 'success');
   };
 
   const handleReject = (id: number) => {
     setPendingMemberships(prev => prev.filter(m => m.id !== id));
-    Alert.alert('Başarılı', 'Üyelik reddedildi.');
+    feedback.toast('Üyelik reddedildi.', 'info');
   };
 
   const handlePublishAnnouncement = async () => {
     if (!announcementContent.trim()) {
-      Alert.alert('Hata', 'Duyuru içeriği boş olamaz.');
+      feedback.warning({ title: 'Hata', message: 'Duyuru içeriği boş olamaz.' });
       return;
     }
     // Supabase entegrasyonu (community_posts veya benzeri bir tabloya eklenebilir)
-    Alert.alert('Başarılı', 'Duyuru yayınlandı.');
+    feedback.success({ title: 'Başarılı', message: 'Duyuru yayınlandı.' });
     setShowAnnouncementModal(false);
     setAnnouncementContent('');
   };

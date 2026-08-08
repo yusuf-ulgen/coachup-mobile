@@ -8,8 +8,8 @@ import {
   TextInput,
   ActivityIndicator,
   FlatList,
-  Alert,
 } from 'react-native';
+import { feedback } from '../../services/feedbackService';
 import {
   BarChart2,
   Search,
@@ -160,10 +160,10 @@ export const TrainingScreen: React.FC<TrainingScreenProps> = ({ navigation }) =>
       });
     } catch (e: any) {
       console.error('Start program error:', e);
-      CustomAlert.show({
+      feedback.error({
         title: 'Hata',
-        message: 'Antrenman başlatılamadı: ' + (e?.message || e),
-        type: 'error',
+        message: e,
+        fallbackMessage: 'Antrenman başlatılamadı.',
       });
     } finally {
       setStartingProgramId(null);
@@ -284,7 +284,7 @@ export const TrainingScreen: React.FC<TrainingScreenProps> = ({ navigation }) =>
 
   return (
     <View style={styles.container}>
-      <Header navigation={navigation} onOpenDrawer={() => setMenuVisible(true)} />
+      <Header navigation={navigation} showMenuButton={false} />
       <SideMenu visible={menuVisible} onClose={() => setMenuVisible(false)} navigation={navigation} />
 
       {/* Screen Sub-header */}

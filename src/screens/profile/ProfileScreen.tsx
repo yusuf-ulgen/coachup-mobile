@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, TextInput, Alert, ActivityIndicator, Image } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, TextInput, ActivityIndicator, Image } from 'react-native';
+import { feedback } from '../../services/feedbackService';
 import { Colors } from '../../theme/colors';
 import { useAuth } from '../../context/AuthContext';
 import { GYM_CONFIG } from '../../config/gym';
@@ -37,7 +38,7 @@ export const ProfileScreen: React.FC = () => {
   const handlePickImage = async () => {
     try {
       const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        mediaTypes: ['images'],
         allowsEditing: true,
         aspect: [1, 1],
         quality: 0.8,
@@ -48,7 +49,7 @@ export const ProfileScreen: React.FC = () => {
       }
     } catch (error) {
       console.error(error);
-      Alert.alert('Hata', 'Görsel seçilirken bir hata oluştu.');
+      feedback.error({ title: 'Hata', message: error, fallbackMessage: 'Görsel seçilirken bir hata oluştu.' });
     }
   };
 
@@ -76,10 +77,10 @@ export const ProfileScreen: React.FC = () => {
       await UserService.updateUserProfile(user.id, { avatar_url: publicUrl });
       setAvatarUrl(publicUrl);
       refreshProfile();
-      Alert.alert('Başarılı', 'Profil fotoğrafınız güncellendi.');
+      feedback.success({ title: 'Başarılı', message: 'Profil fotoğrafınız güncellendi.' });
     } catch (error) {
       console.error(error);
-      Alert.alert('Hata', 'Fotoğraf yüklenemedi.');
+      feedback.error({ title: 'Hata', message: error, fallbackMessage: 'Fotoğraf yüklenemedi.' });
     } finally {
       setUploading(false);
     }
@@ -99,10 +100,10 @@ export const ProfileScreen: React.FC = () => {
         birth_date: birthDate || undefined,
       });
       await refreshProfile();
-      Alert.alert('Başarılı', 'Değişiklikler kaydedildi.');
+      feedback.success({ title: 'Başarılı', message: 'Değişiklikler kaydedildi.' });
     } catch (error) {
       console.error(error);
-      Alert.alert('Hata', 'Profil güncellenirken bir hata oluştu.');
+      feedback.error({ title: 'Hata', message: error, fallbackMessage: 'Profil güncellenirken bir hata oluştu.' });
     } finally {
       setLoading(false);
     }

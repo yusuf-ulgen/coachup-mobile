@@ -1,12 +1,14 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Modal, TextInput, SafeAreaView, Image, ActivityIndicator, Platform, Alert } from 'react-native';
-import { Camera, Image as ImageIcon, Plus, X } from 'lucide-react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Modal, TextInput, Image, ActivityIndicator, Platform } from 'react-native';
+import { feedback } from '../../services/feedbackService';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { Camera, Image as ImageIcon, Plus, X, ArrowLeft } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { Colors } from '../../theme/colors';
 import { supabase } from '../../services/supabaseClient';
 import { useAuth } from '../../context/AuthContext';
 
-export const ProgressTrackingScreen = () => {
+export const ProgressTrackingScreen = ({ navigation }: any) => {
   const { session } = useAuth();
   const [activeTab, setActiveTab] = useState<'measurements' | 'photos'>('measurements');
   const [modalVisible, setModalVisible] = useState(false);
@@ -42,21 +44,21 @@ export const ProgressTrackingScreen = () => {
       if (source === 'camera') {
         const permission = await ImagePicker.requestCameraPermissionsAsync();
         if (!permission.granted) {
-          Alert.alert('Hata', 'Kamera izni gerekli.');
+          feedback.warning({ title: 'Hata', message: 'Kamera izni gerekli.' });
           return;
         }
         result = await ImagePicker.launchCameraAsync({
-          mediaTypes: ImagePicker.MediaTypeOptions.Images,
+          mediaTypes: ['images'],
           quality: 0.5,
         });
       } else {
         const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
         if (!permission.granted) {
-          Alert.alert('Hata', 'Galeri izni gerekli.');
+          feedback.warning({ title: 'Hata', message: 'Galeri izni gerekli.' });
           return;
         }
         result = await ImagePicker.launchImageLibraryAsync({
-          mediaTypes: ImagePicker.MediaTypeOptions.Images,
+          mediaTypes: ['images'],
           quality: 0.5,
         });
       }
@@ -103,16 +105,17 @@ export const ProgressTrackingScreen = () => {
             });
 
           if (error) {
-            Alert.alert('Yükleme Hatası', error.message);
+            feedback.error({ title: 'Yükleme Hatası', message: error.message });
           } else {
             const { data: { publicUrl } } = supabase.storage.from('progress_photos').getPublicUrl(fileName);
             setPhotos(prev => ({ ...prev, [type]: publicUrl }));
+            feedback.success({ title: 'Başarılı', message: 'Fotoğraf başarıyla yüklendi.' });
           }
           setUploading(false);
         };
       }
     } catch (error: any) {
-      Alert.alert('Hata', error.message);
+      feedback.error({ title: 'Hata', message: error.message });
       setUploading(false);
     }
   };
@@ -211,6 +214,9 @@ export const ProgressTrackingScreen = () => {
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
+        <TouchableOpacity onPress={() => navigation?.goBack()} style={styles.backBtn}>
+          <ArrowLeft size={22} color={Colors.allWhite} />
+        </TouchableOpacity>
         <Text style={styles.headerTitle}>Gelişim & Ölçümler</Text>
       </View>
 
@@ -282,9 +288,15 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.backgroundDark,
   },
   header: {
+    flexDirection: 'row',
+    alignItems: 'center',
     paddingHorizontal: 16,
-    paddingTop: Platform.OS === 'android' ? 20 : 0,
+    paddingTop: Platform.OS === 'android' ? 12 : 0,
     paddingBottom: 16,
+  },
+  backBtn: {
+    padding: 8,
+    marginRight: 8,
   },
   headerTitle: {
     fontSize: 24,

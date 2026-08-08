@@ -1,4 +1,5 @@
 import { supabase } from './supabaseClient';
+import { UserService } from './userService';
 
 export interface CommunityComment {
   id: string;
@@ -286,6 +287,18 @@ export const CommunityService = {
     imageUrl?: string,
     groupId?: string
   ): Promise<any> {
+    // Verify active membership before creating post
+    const { data: userProfile } = await supabase
+      .from('users')
+      .select('*')
+      .eq('id', authorId)
+      .single();
+
+    const isMember = await UserService.hasActiveMembership(userProfile);
+    if (!isMember) {
+      throw new Error('Paylaşım yapabilmek için aktif bir salon üyeliğinizin olması gerekmektedir.');
+    }
+
     // Ensure content satisfies constraint community_posts_has_body
     let finalContent = content.trim();
     if (!finalContent && !imageUrl) {

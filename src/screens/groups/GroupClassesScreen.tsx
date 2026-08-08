@@ -1,8 +1,10 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert, SafeAreaView, Dimensions } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Dimensions } from 'react-native';
+import { feedback } from '../../services/feedbackService';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Colors } from '../../theme/colors';
-import { GYM_CONFIG } from '../../config/gym';
-import { Users, Clock, MapPin, CheckCircle, UserCheck, AlertCircle } from 'lucide-react-native';
+import { useTheme } from '../../theme/ThemeContext';
+import { Users, Clock, MapPin, CheckCircle, UserCheck, AlertCircle, ArrowLeft } from 'lucide-react-native';
 import { supabase } from '../../services/supabaseClient';
 
 // Mock veriler
@@ -15,7 +17,7 @@ const mockClasses = [
     location: 'Stüdyo 1',
     capacity: 10,
     booked: 8,
-    status: 'none', // none, joined, waitlist
+    status: 'none',
   },
   {
     id: '2',
@@ -49,21 +51,14 @@ const days = [
   { id: 7, name: 'Paz', date: '16' },
 ];
 
-export default function GroupClassesScreen() {
+export default function GroupClassesScreen({ navigation }: any) {
+  const { colors } = useTheme();
   const [selectedDay, setSelectedDay] = useState(1);
   const [classes, setClasses] = useState(mockClasses);
 
   const handleBooking = async (item: any) => {
     try {
-      // Supabase class_bookings simülasyonu
       const newStatus = item.status === 'none' ? (item.booked >= item.capacity ? 'waitlist' : 'joined') : 'none';
-      
-      /* Supabase kaydı (gerçek uygulamada)
-      const { data, error } = await supabase
-        .from('class_bookings')
-        .insert([{ class_id: item.id, status: newStatus }]);
-      if (error) throw error;
-      */
 
       setClasses((prev) =>
         prev.map((c) =>
@@ -73,27 +68,33 @@ export default function GroupClassesScreen() {
         )
       );
 
-      Alert.alert('Başarılı', newStatus === 'none' ? 'İptal edildi.' : (newStatus === 'waitlist' ? 'Bekleme listesine alındınız.' : 'Derse katıldınız.'));
+      const msg = newStatus === 'none' ? 'İptal edildi.' : (newStatus === 'waitlist' ? 'Bekleme listesine alındınız.' : 'Derse katıldınız.');
+      feedback.toast(msg, newStatus === 'none' ? 'info' : 'success');
     } catch (error) {
-      Alert.alert('Hata', 'Bir sorun oluştu.');
+      feedback.error({ title: 'Hata', message: error, fallbackMessage: 'Bir sorun oluştu.' });
     }
   };
 
   return (
-    <SafeAreaView style={styles.container}>
-      <Text style={styles.headerTitle}>Grup Dersleri</Text>
+    <SafeAreaView style={[styles.container, { backgroundColor: colors.bg }]}>
+      <View style={styles.headerRow}>
+        <TouchableOpacity onPress={() => navigation?.goBack()} style={styles.backBtn}>
+          <ArrowLeft size={22} color={colors.textPrimary} />
+        </TouchableOpacity>
+        <Text style={[styles.headerTitle, { color: colors.textPrimary }]}>Grup Dersleri</Text>
+      </View>
       
       {/* Haftalık Gün Seçici */}
-      <View style={styles.daysWrapper}>
+      <View style={[styles.daysWrapper, { borderBottomColor: colors.border }]}>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.daysContainer}>
           {days.map((day) => (
             <TouchableOpacity
               key={day.id}
-              style={[styles.dayItem, selectedDay === day.id && styles.selectedDayItem]}
+              style={[styles.dayItem, { backgroundColor: colors.cardBg }, selectedDay === day.id && styles.selectedDayItem]}
               onPress={() => setSelectedDay(day.id)}
             >
-              <Text style={[styles.dayName, selectedDay === day.id && styles.selectedDayText]}>{day.name}</Text>
-              <Text style={[styles.dayDate, selectedDay === day.id && styles.selectedDayText]}>{day.date}</Text>
+              <Text style={[styles.dayName, { color: colors.textSecondary }, selectedDay === day.id && styles.selectedDayText]}>{day.name}</Text>
+              <Text style={[styles.dayDate, { color: colors.textPrimary }, selectedDay === day.id && styles.selectedDayText]}>{day.date}</Text>
             </TouchableOpacity>
           ))}
         </ScrollView>
@@ -104,9 +105,9 @@ export default function GroupClassesScreen() {
         {classes.map((item) => {
           const isFull = item.booked >= item.capacity;
           return (
-            <View key={item.id} style={styles.card}>
+            <View key={item.id} style={[styles.card, { backgroundColor: colors.cardBg, borderColor: colors.border }]}>
               <View style={styles.cardHeader}>
-                <Text style={styles.className}>{item.name}</Text>
+                <Text style={[styles.className, { color: colors.textPrimary }]}>{item.name}</Text>
                 {item.status === 'joined' && (
                   <View style={[styles.badge, { backgroundColor: Colors.success }]}>
                     <Text style={styles.badgeText}>Katıldın</Text>
@@ -126,20 +127,20 @@ export default function GroupClassesScreen() {
 
               <View style={styles.cardBody}>
                 <View style={styles.infoRow}>
-                  <UserCheck size={16} color={Colors.textSecondaryDark} />
-                  <Text style={styles.infoText}>{item.instructor}</Text>
+                  <UserCheck size={16} color={colors.textSecondary} />
+                  <Text style={[styles.infoText, { color: colors.textSecondary }]}>{item.instructor}</Text>
                 </View>
                 <View style={styles.infoRow}>
-                  <Clock size={16} color={Colors.textSecondaryDark} />
-                  <Text style={styles.infoText}>{item.time}</Text>
+                  <Clock size={16} color={colors.textSecondary} />
+                  <Text style={[styles.infoText, { color: colors.textSecondary }]}>{item.time}</Text>
                 </View>
                 <View style={styles.infoRow}>
-                  <MapPin size={16} color={Colors.textSecondaryDark} />
-                  <Text style={styles.infoText}>{item.location}</Text>
+                  <MapPin size={16} color={colors.textSecondary} />
+                  <Text style={[styles.infoText, { color: colors.textSecondary }]}>{item.location}</Text>
                 </View>
                 <View style={styles.infoRow}>
-                  <Users size={16} color={Colors.textSecondaryDark} />
-                  <Text style={styles.infoText}>
+                  <Users size={16} color={colors.textSecondary} />
+                  <Text style={[styles.infoText, { color: colors.textSecondary }]}>
                     {item.booked}/{item.capacity}
                   </Text>
                 </View>
@@ -173,13 +174,21 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: Colors.background,
   },
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 8,
+  },
+  backBtn: {
+    padding: 8,
+    marginRight: 8,
+  },
   headerTitle: {
     fontSize: 24,
     fontWeight: 'bold',
     color: Colors.text,
-    paddingHorizontal: 20,
-    paddingTop: 20,
-    paddingBottom: 10,
   },
   daysWrapper: {
     height: 80,

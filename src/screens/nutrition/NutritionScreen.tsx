@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Modal, TextInput, SafeAreaView, Platform } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Modal, TextInput, Platform } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import Svg, { Circle } from 'react-native-svg';
-import { ChevronDown, ChevronUp, Plus, X } from 'lucide-react-native';
+import { ChevronDown, ChevronUp, Plus, X, ArrowLeft } from 'lucide-react-native';
 import { Colors } from '../../theme/colors';
 
 const NUTRITION_GOAL = 2500;
@@ -20,7 +21,7 @@ const INITIAL_MEALS = [
   { id: '4', name: 'Ara Öğün', calories: 0, items: [] },
 ];
 
-export const NutritionScreen = () => {
+export const NutritionScreen = ({ navigation }: any) => {
   const [meals, setMeals] = useState(INITIAL_MEALS);
   const [expandedMeals, setExpandedMeals] = useState<Record<string, boolean>>({});
   const [modalVisible, setModalVisible] = useState(false);
@@ -66,8 +67,13 @@ export const NutritionScreen = () => {
 
   return (
     <SafeAreaView style={styles.container}>
-      <ScrollView contentContainerStyle={styles.scrollContent}>
+      <View style={styles.headerRow}>
+        <TouchableOpacity onPress={() => navigation?.goBack()} style={styles.backBtn}>
+          <ArrowLeft size={22} color={Colors.textDark} />
+        </TouchableOpacity>
         <Text style={styles.headerTitle}>Beslenme & Diyet</Text>
+      </View>
+      <ScrollView contentContainerStyle={styles.scrollContent}>
         
         {/* Kalori Halkası */}
         <View style={styles.calorieCard}>
@@ -201,12 +207,21 @@ const styles = StyleSheet.create({
     padding: 16,
     paddingBottom: 40,
   },
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: 4,
+  },
+  backBtn: {
+    padding: 8,
+    marginRight: 8,
+  },
   headerTitle: {
     fontSize: 24,
     fontWeight: 'bold',
     color: Colors.allWhite,
-    marginBottom: 20,
-    marginTop: Platform.OS === 'android' ? 20 : 0,
   },
   cardTitle: {
     fontSize: 16,

@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Modal, TextInput } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Colors } from '../../theme/colors';
-import { Info, MapPin, CheckCircle, Clock, XCircle, X } from 'lucide-react-native';
+import { Info, MapPin, CheckCircle, Clock, XCircle, X, ArrowLeft } from 'lucide-react-native';
 
-export const ReservationsScreen = () => {
+export const ReservationsScreen = ({ navigation }: any) => {
   const [modalVisible, setModalVisible] = useState(false);
   const [selectedArea, setSelectedArea] = useState('');
   const [reservationNote, setReservationNote] = useState('');
@@ -14,13 +15,19 @@ export const ReservationsScreen = () => {
   };
 
   const handleMakeReservation = () => {
-    // Supabase reservations kaydı yapılacak
     setModalVisible(false);
     setReservationNote('');
   };
 
   return (
-    <ScrollView style={styles.container}>
+    <SafeAreaView style={styles.container}>
+      <View style={styles.headerRow}>
+        <TouchableOpacity onPress={() => navigation?.goBack()} style={styles.backBtn}>
+          <ArrowLeft size={22} color={Colors.allWhite} />
+        </TouchableOpacity>
+        <Text style={styles.headerTitle}>Rezervasyonlar</Text>
+      </View>
+      <ScrollView contentContainerStyle={{ padding: 16 }}>
       {/* Bilgilendirme kartı */}
       <View style={styles.infoCard}>
         <Info color={Colors.primary} size={20} />
@@ -135,38 +142,50 @@ export const ReservationsScreen = () => {
           </View>
         </View>
       </Modal>
-    </ScrollView>
+      </ScrollView>
+    </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Colors.background, padding: 16 },
-  headerTitle: { fontSize: 24, fontWeight: 'bold', color: Colors.text, marginBottom: 16 },
-  infoCard: { flexDirection: 'row', backgroundColor: Colors.surface, padding: 12, borderRadius: 8, marginBottom: 20, alignItems: 'center' },
-  infoText: { flex: 1, fontSize: 12, color: Colors.textSecondary, marginLeft: 12 },
-  sectionTitle: { fontSize: 18, fontWeight: '600', color: Colors.text, marginBottom: 12, marginTop: 8 },
+  container: { flex: 1, backgroundColor: Colors.backgroundDark },
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: 8,
+  },
+  backBtn: {
+    padding: 8,
+    marginRight: 8,
+  },
+  headerTitle: { fontSize: 24, fontWeight: 'bold', color: Colors.allWhite },
+  infoCard: { flexDirection: 'row', backgroundColor: Colors.cardDark, padding: 12, borderRadius: 8, marginBottom: 20, alignItems: 'center' },
+  infoText: { flex: 1, fontSize: 12, color: Colors.textSecondaryDark, marginLeft: 12 },
+  sectionTitle: { fontSize: 18, fontWeight: '600', color: Colors.allWhite, marginBottom: 12, marginTop: 8 },
   areasGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', marginBottom: 20 },
-  areaCard: { width: '48%', backgroundColor: Colors.surface, padding: 16, borderRadius: 12, alignItems: 'center', marginBottom: 12 },
-  areaTitle: { fontSize: 16, fontWeight: 'bold', color: Colors.text, marginTop: 8 },
-  areaCapacity: { fontSize: 12, color: Colors.textSecondary, marginTop: 4 },
+  areaCard: { width: '48%', backgroundColor: Colors.cardDark, padding: 16, borderRadius: 12, alignItems: 'center', marginBottom: 12 },
+  areaTitle: { fontSize: 16, fontWeight: 'bold', color: Colors.allWhite, marginTop: 8 },
+  areaCapacity: { fontSize: 12, color: Colors.textSecondaryDark, marginTop: 4 },
   reservationList: { marginBottom: 30 },
-  reservationItem: { flexDirection: 'row', backgroundColor: Colors.surface, padding: 16, borderRadius: 12, marginBottom: 12, alignItems: 'center', justifyContent: 'space-between' },
+  reservationItem: { flexDirection: 'row', backgroundColor: Colors.cardDark, padding: 16, borderRadius: 12, marginBottom: 12, alignItems: 'center', justifyContent: 'space-between' },
   resInfo: { flex: 1 },
-  resArea: { fontSize: 16, fontWeight: 'bold', color: Colors.text, marginBottom: 4 },
-  resDate: { fontSize: 14, color: Colors.textSecondary, marginBottom: 8 },
+  resArea: { fontSize: 16, fontWeight: 'bold', color: Colors.allWhite, marginBottom: 4 },
+  resDate: { fontSize: 14, color: Colors.textSecondaryDark, marginBottom: 8 },
   statusBadge: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 12, alignSelf: 'flex-start' },
   statusText: { fontSize: 12, fontWeight: '600', marginLeft: 4 },
   cancelBtn: { backgroundColor: Colors.error + '20', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8 },
   cancelBtnText: { color: Colors.error, fontSize: 12, fontWeight: 'bold' },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', padding: 20 },
-  modalContainer: { backgroundColor: Colors.surface, borderRadius: 16, padding: 20 },
+  modalContainer: { backgroundColor: Colors.cardDark, borderRadius: 16, padding: 20 },
   modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
-  modalTitle: { fontSize: 20, fontWeight: 'bold', color: Colors.text },
+  modalTitle: { fontSize: 20, fontWeight: 'bold', color: Colors.allWhite },
   modalSub: { fontSize: 16, color: Colors.primary, marginBottom: 20, fontWeight: '500' },
   inputGroup: { marginBottom: 16 },
-  inputLabel: { fontSize: 14, color: Colors.textSecondary, marginBottom: 8 },
-  input: { backgroundColor: Colors.background, borderWidth: 1, borderColor: Colors.border, borderRadius: 8, padding: 12, color: Colors.text },
+  inputLabel: { fontSize: 14, color: Colors.textSecondaryDark, marginBottom: 8 },
+  input: { backgroundColor: Colors.backgroundDark, borderWidth: 1, borderColor: Colors.borderDark, borderRadius: 8, padding: 12, color: Colors.allWhite },
   textArea: { minHeight: 80, textAlignVertical: 'top' },
   submitBtn: { backgroundColor: Colors.primary, padding: 16, borderRadius: 8, alignItems: 'center', marginTop: 8 },
-  submitBtnText: { color: Colors.white, fontSize: 16, fontWeight: 'bold' }
+  submitBtnText: { color: Colors.allWhite, fontSize: 16, fontWeight: 'bold' }
 });

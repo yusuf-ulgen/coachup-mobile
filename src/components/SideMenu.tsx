@@ -6,9 +6,9 @@ import {
   StyleSheet,
   Modal,
   ScrollView,
-  Alert,
   Dimensions,
 } from 'react-native';
+import { feedback } from '../services/feedbackService';
 import {
   X,
   User,
@@ -29,6 +29,7 @@ import {
 } from 'lucide-react-native';
 import { Colors } from '../theme/colors';
 import { AuthService } from '../services/authService';
+import { UserService } from '../services/userService';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const DRAWER_WIDTH = SCREEN_WIDTH * 0.75;
@@ -75,23 +76,34 @@ export const SideMenu: React.FC<SideMenuProps> = ({
   onClose,
   userProfile,
   onNavigate,
+  navigation,
 }) => {
-  const handleLogout = () => {
-    Alert.alert('Çıkış Yap', 'Hesabınızdan çıkış yapmak istediğinize emin misiniz?', [
-      { text: 'İptal', style: 'cancel' },
-      {
-        text: 'Çıkış Yap',
-        style: 'destructive',
-        onPress: async () => {
-          onClose();
-          try {
-            await AuthService.signOut();
-          } catch (e) {
-            console.error('Logout error:', e);
-          }
-        },
-      },
-    ]);
+  const [hasActiveMembership, setHasActiveMembership] = useState(false);
+
+  React.useEffect(() => {
+    if (visible && userProfile) {
+      UserService.hasActiveMembership(userProfile)
+        .then(setHasActiveMembership)
+        .catch(() => setHasActiveMembership(false));
+    }
+  }, [visible, userProfile]);
+
+  const handleLogout = async () => {
+    const confirmed = await feedback.destructive({
+      title: 'Çıkış Yap',
+      message: 'Hesabınızdan çıkış yapmak istediğinize emin misiniz?',
+      confirmText: 'Çıkış Yap',
+      cancelText: 'İptal',
+    });
+
+    if (confirmed) {
+      onClose();
+      try {
+        await AuthService.signOut();
+      } catch (e) {
+        console.error('Logout error:', e);
+      }
+    }
   };
 
   const displayName = userProfile
@@ -161,8 +173,8 @@ export const SideMenu: React.FC<SideMenuProps> = ({
           >
             {menuItems
               .filter((item) => {
-                // Bireysel kullanıcılara salon-only menü gizle
-                if (item.salonOnly && userProfile?.is_individual) return false;
+                // Sadece aktif salon üyelerine salon-only menü göster
+                if (item.salonOnly && (!hasActiveMembership || userProfile?.is_individual)) return false;
                 return true;
               })
               .map((item) => {

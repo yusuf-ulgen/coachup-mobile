@@ -10,8 +10,8 @@ import {
   Image,
   ScrollView,
   Animated,
-  Alert,
 } from 'react-native';
+import { feedback } from '../../services/feedbackService';
 import {
   Heart,
   MessageSquare,
@@ -177,7 +177,7 @@ const PostCard: React.FC<PostCardProps> = ({
       await loadComments();
       onCommentAction();
     } catch (e: any) {
-      Alert.alert('Hata', 'Yorum gönderilemedi: ' + (e.message || 'Bilinmeyen hata'));
+      feedback.error({ title: 'Hata', message: e, fallbackMessage: 'Yorum gönderilemedi.' });
     } finally {
       setIsSendingComment(false);
     }
@@ -624,9 +624,24 @@ export const CommunityScreen: React.FC<CommunityScreenProps> = ({ navigation }) 
 
   // ── Create post ───────────────────────────────────────────────────────────
 
+  const handleOpenComposer = async () => {
+    const isMember = await UserService.hasActiveMembership(userProfile);
+    if (!isMember) {
+      setSnackbar('Paylaşım yapabilmek için aktif bir salon üyeliğinizin olması gerekmektedir.');
+      return;
+    }
+    setShowComposer(true);
+  };
+
   const handleCreatePost = async () => {
     const userId = userProfile?.id || userProfile?.user_id;
     if (!userId) return;
+
+    const isMember = await UserService.hasActiveMembership(userProfile);
+    if (!isMember) {
+      setSnackbar('Paylaşım yapabilmek için aktif bir salon üyeliğinizin olması gerekmektedir.');
+      return;
+    }
 
     const canSubmit = showPollCreator
       ? pollQuestion.trim() && pollOptions.filter((o) => o.trim()).length >= 2
@@ -773,7 +788,7 @@ export const CommunityScreen: React.FC<CommunityScreenProps> = ({ navigation }) 
       ) : !canAccess ? (
         <LockedState message={accessMessage || 'Erişim yok'} />
       ) : posts.length === 0 ? (
-        <EmptyFeedState onCreatePress={() => setShowComposer(true)} />
+        <EmptyFeedState onCreatePress={handleOpenComposer} />
       ) : (
         <FlatList
           data={posts}
@@ -798,7 +813,7 @@ export const CommunityScreen: React.FC<CommunityScreenProps> = ({ navigation }) 
       {canAccess && !loading && (
         <TouchableOpacity
           style={styles.fab}
-          onPress={() => setShowComposer(true)}
+          onPress={handleOpenComposer}
           activeOpacity={0.85}
         >
           <Plus size={24} color={Colors.allWhite} />

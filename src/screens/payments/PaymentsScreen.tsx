@@ -1,11 +1,19 @@
 import React from 'react';
-import { View, Text, StyleSheet, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Colors } from '../../theme/colors';
-import { CreditCard, CheckCircle, AlertCircle, History } from 'lucide-react-native';
+import { CreditCard, CheckCircle, AlertCircle, History, ArrowLeft } from 'lucide-react-native';
 
-export const PaymentsScreen = () => {
+export const PaymentsScreen = ({ navigation }: any) => {
   return (
-    <ScrollView style={styles.container}>
+    <SafeAreaView style={styles.container}>
+      <View style={styles.headerRow}>
+        <TouchableOpacity onPress={() => navigation?.goBack()} style={styles.backBtn}>
+          <ArrowLeft size={22} color={Colors.allWhite} />
+        </TouchableOpacity>
+        <Text style={styles.headerTitle}>Ödemeler & Taksitler</Text>
+      </View>
+      <ScrollView contentContainerStyle={{ padding: 16 }}>
       {/* Aktif Taksit Planı kartı */}
       <View style={styles.card}>
         <View style={styles.cardHeader}>
@@ -57,27 +65,39 @@ export const PaymentsScreen = () => {
           <Text style={[styles.historyAmount, { color: Colors.success }]}>+450 TL</Text>
         </View>
       </View>
-    </ScrollView>
+      </ScrollView>
+    </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Colors.background, padding: 16 },
-  headerTitle: { fontSize: 24, fontWeight: 'bold', color: Colors.text, marginBottom: 20 },
-  card: { backgroundColor: Colors.surface, padding: 16, borderRadius: 12, marginBottom: 16 },
+  container: { flex: 1, backgroundColor: Colors.backgroundDark },
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: 8,
+  },
+  backBtn: {
+    padding: 8,
+    marginRight: 8,
+  },
+  headerTitle: { fontSize: 24, fontWeight: 'bold', color: Colors.allWhite },
+  card: { backgroundColor: Colors.cardDark, padding: 16, borderRadius: 12, marginBottom: 16 },
   cardHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 12 },
-  cardTitle: { fontSize: 18, fontWeight: '600', color: Colors.text, marginLeft: 8 },
+  cardTitle: { fontSize: 18, fontWeight: '600', color: Colors.allWhite, marginLeft: 8 },
   cardBody: { marginTop: 8 },
-  label: { fontSize: 14, color: Colors.textSecondary, marginBottom: 4 },
-  value: { fontWeight: 'bold', color: Colors.text },
-  sectionTitle: { fontSize: 16, fontWeight: '600', color: Colors.text, marginBottom: 12 },
-  installmentItem: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: Colors.border },
-  installmentText: { fontSize: 14, color: Colors.text },
+  label: { fontSize: 14, color: Colors.textSecondaryDark, marginBottom: 4 },
+  value: { fontWeight: 'bold', color: Colors.allWhite },
+  sectionTitle: { fontSize: 16, fontWeight: '600', color: Colors.allWhite, marginBottom: 12 },
+  installmentItem: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: Colors.borderDark },
+  installmentText: { fontSize: 14, color: Colors.allWhite },
   badgeSuccess: { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.success, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 16 },
-  badgeTextSuccess: { color: Colors.white, fontSize: 12, marginLeft: 4, fontWeight: '500' },
+  badgeTextSuccess: { color: Colors.allWhite, fontSize: 12, marginLeft: 4, fontWeight: '500' },
   badgeDanger: { flexDirection: 'row', alignItems: 'center', backgroundColor: Colors.error, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 16 },
-  badgeTextDanger: { color: Colors.white, fontSize: 12, marginLeft: 4, fontWeight: '500' },
-  historyItem: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: Colors.border },
-  historyTitle: { fontSize: 14, color: Colors.text },
-  historyAmount: { fontSize: 14, fontWeight: 'bold', color: Colors.text },
+  badgeTextDanger: { color: Colors.allWhite, fontSize: 12, marginLeft: 4, fontWeight: '500' },
+  historyItem: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: Colors.borderDark },
+  historyTitle: { fontSize: 14, color: Colors.allWhite },
+  historyAmount: { fontSize: 14, fontWeight: 'bold', color: Colors.allWhite },
 });

@@ -25,6 +25,7 @@ import {
 import { HealthConnectService } from '../../services/healthConnectService';
 import { LocationService, LocationStats } from '../../services/locationService';
 import { ActiveWorkoutManager } from '../../services/activeWorkoutManager';
+import { feedback } from '../../services/feedbackService';
 
 const EFFORT_OPTIONS = [
   { id: 'harika', emoji: '😁', label: 'Harika' },
@@ -259,9 +260,17 @@ export const ActiveWorkoutScreen = ({ route, navigation }: any) => {
     return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
   };
 
-  const handleFinishConfirmed = () => {
-    setShowConfirmFinishModal(false);
-    setShowEffortModal(true);
+  const handleRequestFinish = async () => {
+    const confirmed = await feedback.confirm({
+      title: 'Antrenmanı Tamamla',
+      message: 'Antrenmanı bitirmek istiyor musunuz?',
+      confirmText: 'Tamamla',
+      cancelText: 'İptal',
+    });
+
+    if (confirmed) {
+      setShowEffortModal(true);
+    }
   };
 
   const handleEffortSelect = (effortObj: typeof EFFORT_OPTIONS[0]) => {
@@ -507,7 +516,7 @@ export const ActiveWorkoutScreen = ({ route, navigation }: any) => {
 
                 <TouchableOpacity
                   style={[styles.drawerPillBtn, { backgroundColor: colors.bg, borderWidth: 1, borderColor: colors.border }]}
-                  onPress={() => setShowConfirmFinishModal(true)}
+                  onPress={handleRequestFinish}
                   activeOpacity={0.85}
                 >
                   <Flag size={20} color={Colors.primary} style={{ marginRight: 6 }} />
@@ -527,38 +536,6 @@ export const ActiveWorkoutScreen = ({ route, navigation }: any) => {
           </View>
         </View>
       )}
-
-      {/* Confirmation Dialog Modal */}
-      <Modal
-        visible={showConfirmFinishModal}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setShowConfirmFinishModal(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={[styles.confirmModalCard, { backgroundColor: colors.cardBg }]}>
-            <Text style={[styles.confirmModalTitle, { color: colors.textPrimary }]}>Antrenman Tamamla</Text>
-            <Text style={[styles.confirmModalSub, { color: colors.textSecondary }]}>
-              Antrenmanı bitirmek istiyor musunuz?
-            </Text>
-
-            <View style={styles.confirmModalBtnRow}>
-              <TouchableOpacity
-                style={styles.confirmModalCancelBtn}
-                onPress={() => setShowConfirmFinishModal(false)}
-              >
-                <Text style={[styles.confirmModalCancelBtnText, { color: colors.textSecondary }]}>İptal</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.confirmModalActionBtn}
-                onPress={handleFinishConfirmed}
-              >
-                <Text style={styles.confirmModalActionBtnText}>Tamamla</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
 
       {/* Effort Modal */}
       <Modal

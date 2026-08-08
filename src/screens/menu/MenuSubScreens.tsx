@@ -7,8 +7,8 @@ import {
   TouchableOpacity,
   FlatList,
   ActivityIndicator,
-  Alert,
 } from 'react-native';
+import { feedback } from '../../services/feedbackService';
 import {
   ArrowLeft,
   Calendar,
@@ -85,36 +85,38 @@ export const MembershipScreen: React.FC<ScreenProps> = ({ navigation }) => {
     loadData();
   }, []);
 
-  const handleSelectPlan = (plan: any) => {
-    Alert.alert(
-      "Plan Seç / Yenile",
-      `${plan.name} paketini seçmek istediğinize emin misiniz?`,
-      [
-        { text: "İptal", style: "cancel" },
-        { 
-          text: "Onayla", 
-          onPress: async () => {
-            setRequestLoading(true);
-            const user = await AuthService.getCurrentUser();
-            if (user) {
-              const { error } = await supabase.from('membership_requests').insert([
-                {
-                  user_id: user.id,
-                  plan_id: plan.id,
-                  status: 'pending'
-                }
-              ]);
-              if (!error) {
-                Alert.alert("Başarılı", "Üyelik talebiniz yöneticiye iletildi.");
-              } else {
-                Alert.alert("Hata", "Talep iletilirken bir sorun oluştu.");
-              }
-            }
-            setRequestLoading(false);
-          }
+  const handleSelectPlan = async (plan: any) => {
+    const confirmed = await feedback.confirm({
+      title: 'Plan Seç / Yenile',
+      message: `${plan.name} paketini seçmek istediğinize emin misiniz?`,
+      confirmText: 'Onayla',
+      cancelText: 'İptal',
+    });
+
+    if (!confirmed) return;
+
+    setRequestLoading(true);
+    try {
+      const user = await AuthService.getCurrentUser();
+      if (user) {
+        const { error } = await supabase.from('membership_requests').insert([
+          {
+            user_id: user.id,
+            plan_id: plan.id,
+            status: 'pending',
+          },
+        ]);
+        if (!error) {
+          feedback.success({ title: 'Başarılı', message: 'Üyelik talebiniz yöneticiye iletildi.' });
+        } else {
+          feedback.error({ title: 'Hata', message: error, fallbackMessage: 'Talep iletilirken bir sorun oluştu.' });
         }
-      ]
-    );
+      }
+    } catch (e: any) {
+      feedback.error({ title: 'Hata', message: e, fallbackMessage: 'Talep iletilirken bir sorun oluştu.' });
+    } finally {
+      setRequestLoading(false);
+    }
   };
 
   return (
@@ -283,37 +285,74 @@ export const GoalsScreen: React.FC<ScreenProps> = ({ navigation }) => {
   }, []);
 
   const handleAddGoal = async () => {
-    if (!title || !targetValue) return;
+    if (!title || !targetValue) {
+      feedback.warning({ title: 'Hata', message: 'Lütfen hedef başlığı ve hedef değerini girin.' });
+      return;
+    }
     setSaving(true);
-    const user = await AuthService.getCurrentUser();
-    if (user) {
-      await supabase.from('user_goals').insert([
-        {
-          user_id: user.id,
-          title,
-          goal_type: goalType,
-          target_value: Number(targetValue),
-          target_unit: getUnitForType(goalType),
-          end_date: endDate || null,
-          status: 'active',
-          progress_percentage: 0
-        }
-      ]);
-      await loadGoals();
+    try {
+      const user = await AuthService.getCurrentUser();
+      const newGoal = {
+        id: 'goal_' + Date.now(),
+        user_id: user?.id || 'guest',
+        title: title.trim(),
+        goal_type: goalType,
+        target_value: Number(targetValue),
+        target_unit: getUnitForType(goalType),
+        end_date: endDate || null,
+        status: 'active',
+        progress_percentage: 50,
+        created_at: new Date().toISOString(),
+      };
+
+      setGoals((prev) => [newGoal, ...prev]);
+
+      if (user?.id) {
+        await supabase.from('user_goals').insert([
+          {
+            user_id: user.id,
+            title: title.trim(),
+            goal_type: goalType,
+            target_value: Number(targetValue),
+            target_unit: getUnitForType(goalType),
+            end_date: endDate || null,
+            status: 'active',
+            progress_percentage: 50,
+          },
+        ]);
+      }
+
       setModalVisible(false);
       setTitle('');
       setTargetValue('');
       setEndDate('');
+      feedback.success({ title: 'Başarılı', message: 'Yeni hedefiniz eklendi.' });
+    } catch (e: any) {
+      console.error('Goal save error:', e);
+      feedback.error({ title: 'Hata', message: e, fallbackMessage: 'Hedef eklenirken bir hata oluştu.' });
+    } finally {
+      setSaving(false);
     }
-    setSaving(false);
   };
 
-  const handleCompleteGoal = async (id: string) => {
-    await supabase.from('user_goals').update({ status: 'completed' }).eq('id', id);
-    loadGoals();
+  const handleCompleteGoal = async (id: string, success: boolean = true) => {
+    const nextStatus = success ? 'completed' : 'failed';
+    const nextPct = success ? 100 : 0;
+
+    setGoals((prev) =>
+      prev.map((g) =>
+        g.id === id ? { ...g, status: 'completed', is_success: success, progress_percentage: nextPct } : g
+      )
+    );
+
+    try {
+      await supabase.from('user_goals').update({ status: 'completed', progress_percentage: nextPct }).eq('id', id);
+    } catch {}
   };
 
-  const filteredGoals = goals.filter(g => (activeTab === 'active' ? g.status !== 'completed' : g.status === 'completed'));
+  const filteredGoals = goals.filter((g) =>
+    activeTab === 'active' ? g.status === 'active' : g.status === 'completed'
+  );
 
   return (
     <View style={styles.container}>
@@ -368,20 +407,29 @@ export const GoalsScreen: React.FC<ScreenProps> = ({ navigation }) => {
                 </View>
 
                 <View style={styles.progressContainer}>
-                  <View style={[styles.progressBar, { width: `${g.progress_percentage || 0}%` }]} />
+                  <View style={[styles.progressBar, { width: `${g.progress_percentage || 50}%` }]} />
                 </View>
                 <Text style={[styles.cardDetail, { textAlign: 'right', marginTop: 4 }]}>
-                  %{g.progress_percentage || 0} Tamamlandı
+                  %{g.progress_percentage || 50} Tamamlandı
                 </Text>
 
-                {activeTab === 'active' && g.progress_percentage >= 100 && (
-                  <TouchableOpacity 
-                    style={styles.completeBtn}
-                    onPress={() => handleCompleteGoal(g.id)}
-                  >
-                    <CheckCircle2 size={18} color="#fff" style={{ marginRight: 6 }} />
-                    <Text style={styles.completeBtnText}>Tamamlandı Olarak İşaretle</Text>
-                  </TouchableOpacity>
+                {activeTab === 'active' && (
+                  <View style={{ flexDirection: 'row', gap: 10, marginTop: 12 }}>
+                    <TouchableOpacity 
+                      style={[styles.completeBtn, { flex: 1, backgroundColor: '#4CAF50' }]}
+                      onPress={() => handleCompleteGoal(g.id, true)}
+                    >
+                      <CheckCircle2 size={16} color="#fff" style={{ marginRight: 4 }} />
+                      <Text style={styles.completeBtnText}>Başarılı</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity 
+                      style={[styles.completeBtn, { flex: 1, backgroundColor: '#F44336' }]}
+                      onPress={() => handleCompleteGoal(g.id, false)}
+                    >
+                      <X size={16} color="#fff" style={{ marginRight: 4 }} />
+                      <Text style={styles.completeBtnText}>Başarısız</Text>
+                    </TouchableOpacity>
+                  </View>
                 )}
               </View>
             ))

@@ -129,13 +129,25 @@ export const UserService = {
 
   async resolveActiveGymIdForContent(profile?: UserProfile | null): Promise<string | null> {
     if (!profile) return null;
-    if (profile.role === 'individual' || profile.is_individual) return null;
-    if (profile.gym_id && profile.gym_id.trim().length > 0) {
-      return profile.gym_id;
+
+    // Staff/admin exception
+    const isStaff =
+      profile.role === 'admin' ||
+      profile.role === 'gym_manager' ||
+      (profile as any).is_admin === true ||
+      (profile as any).is_gym_manager === true;
+
+    if (isStaff) {
+      return profile.gym_id && profile.gym_id.trim().length > 0 ? profile.gym_id : 'staff';
     }
 
+    if (profile.role === 'individual' || profile.is_individual) return null;
+
     try {
-      const memberships = await this.fetchAvailableMemberships(profile.id);
+      const userId = profile.id || (profile as any).user_id;
+      if (!userId) return null;
+
+      const memberships = await this.fetchAvailableMemberships(userId);
       const activeMemberships = memberships.filter((m: any) => {
         const isNotDisabled = m.is_active !== false;
         const notExpired = !m.end_date || new Date(m.end_date) > new Date();
@@ -151,6 +163,9 @@ export const UserService = {
       );
 
       if (gymIds.length > 0) {
+        if (profile.gym_id && gymIds.includes(profile.gym_id)) {
+          return profile.gym_id;
+        }
         return gymIds[0] as string;
       }
     } catch (e) {
@@ -158,6 +173,19 @@ export const UserService = {
     }
 
     return null;
+  },
+
+  async hasActiveMembership(profile?: UserProfile | null): Promise<boolean> {
+    if (!profile) return false;
+    const isStaff =
+      profile.role === 'admin' ||
+      profile.role === 'gym_manager' ||
+      (profile as any).is_admin === true ||
+      (profile as any).is_gym_manager === true;
+    if (isStaff) return true;
+
+    const activeGymId = await this.resolveActiveGymIdForContent(profile);
+    return !!activeGymId;
   },
 };
 

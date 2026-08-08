@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -6,9 +6,9 @@ import {
   TouchableOpacity,
   StyleSheet,
   ActivityIndicator,
-  Alert,
   ScrollView,
 } from 'react-native';
+import { feedback } from '../../services/feedbackService';
 import { ArrowLeft, MapPin } from 'lucide-react-native';
 import { Colors } from '../../theme/colors';
 import { AuthService } from '../../services/authService';
@@ -69,7 +69,10 @@ export const AddressSettingsScreen: React.FC<AddressScreenProps> = ({ navigation
 
   const handleSaveAddress = async () => {
     if (!city || !district || !street) {
-      Alert.alert('Hata', 'Lütfen il, ilçe ve cadde/sokak alanlarını doldurun');
+      feedback.warning({
+        title: 'Hata',
+        message: 'Lütfen il, ilçe ve cadde/sokak alanlarını doldurun',
+      });
       return;
     }
 
@@ -87,11 +90,17 @@ export const AddressSettingsScreen: React.FC<AddressScreenProps> = ({ navigation
           postal_code: postalCode,
         });
       }
-      Alert.alert('Başarılı', 'Adres bilgileriniz kaydedildi.', [
-        { text: 'Tamam', onPress: () => navigation.goBack() },
-      ]);
+      feedback.success({
+        title: 'Başarılı',
+        message: 'Adres bilgileriniz kaydedildi.',
+      });
+      navigation.goBack();
     } catch (e: any) {
-      Alert.alert('Hata', e.message || 'Adres kaydedilemedi');
+      feedback.error({
+        title: 'Hata',
+        message: e,
+        fallbackMessage: 'Adres kaydedilemedi',
+      });
     } finally {
       setLoading(false);
     }

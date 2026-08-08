@@ -4,8 +4,8 @@ import {
   Text,
   TouchableOpacity,
   StyleSheet,
-  Alert,
 } from 'react-native';
+import { feedback } from '../../services/feedbackService';
 import { ArrowLeft, Moon, Sun, Monitor, Check } from 'lucide-react-native';
 import { Colors } from '../../theme/colors';
 import { AuthService } from '../../services/authService';
@@ -39,12 +39,17 @@ export const AppearanceSettingsScreen: React.FC<AppearanceSettingsScreenProps> =
 
   const handleSelectTheme = async (mode: 'dark' | 'light' | 'system') => {
     setThemeMode(mode);
-    try {
-      if (userId) {
+    if (userId) {
+      try {
         await UserService.updateUserProfile(userId, { theme_mode: mode });
+      } catch (e: any) {
+        console.warn('Could not save theme_mode to DB profile:', e);
+        feedback.error({
+          title: 'Hata',
+          message: e,
+          fallbackMessage: 'Tema ayarı kaydedilemedi.',
+        });
       }
-    } catch (e: any) {
-      Alert.alert('Hata', 'Tema ayarı kaydedilemedi');
     }
   };
 

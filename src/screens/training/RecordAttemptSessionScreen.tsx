@@ -12,6 +12,7 @@ import { Colors } from '../../theme/colors';
 import { ArrowLeft, X, Flame, Check, AlertCircle } from 'lucide-react-native';
 import { supabase } from '../../services/supabaseClient';
 import { useAuth } from '../../context/AuthContext';
+import { feedback } from '../../services/feedbackService';
 
 export const RecordAttemptSessionScreen = ({ route, navigation }: any) => {
   const { session } = useAuth();
@@ -22,8 +23,19 @@ export const RecordAttemptSessionScreen = ({ route, navigation }: any) => {
   const [currentSetIndex, setCurrentSetIndex] = useState(0);
   const [showRpeModal, setShowRpeModal] = useState(false);
   const [selectedRpe, setSelectedRpe] = useState(8);
-  const [showAbandonModal, setShowAbandonModal] = useState(false);
   const [pendingSuccess, setPendingSuccess] = useState(true);
+
+  const handleAbandon = async () => {
+    const confirmed = await feedback.destructive({
+      title: 'Rekor Denemesinden Çık?',
+      message: 'Devam eden rekor denemesi sonlandırılacak. Çıkmak istediğinize emin misiniz?',
+      confirmText: 'Çıkış Yap',
+      cancelText: 'Vazgeç',
+    });
+    if (confirmed) {
+      navigation.goBack();
+    }
+  };
 
   const setList = plan && plan.length > 0 ? plan : [{ weight: targetValue || 100, reps: targetReps || 1, type: 'main' }];
   const currentSet = setList[currentSetIndex] || setList[0];
@@ -139,7 +151,7 @@ export const RecordAttemptSessionScreen = ({ route, navigation }: any) => {
       {/* ── Header ────────────────────────────────────────────────────────── */}
       <View style={styles.headerRow}>
         <TouchableOpacity
-          onPress={() => setShowAbandonModal(true)}
+          onPress={handleAbandon}
           style={styles.headerIconBtn}
           activeOpacity={0.8}
         >
@@ -151,7 +163,7 @@ export const RecordAttemptSessionScreen = ({ route, navigation }: any) => {
         </Text>
 
         <TouchableOpacity
-          onPress={() => setShowAbandonModal(true)}
+          onPress={handleAbandon}
           style={styles.headerIconBtn}
           activeOpacity={0.8}
         >
@@ -273,42 +285,6 @@ export const RecordAttemptSessionScreen = ({ route, navigation }: any) => {
               <Check size={20} color={Colors.allWhite} />
               <Text style={styles.modalConfirmBtnText}>Kaydet ve Devam Et</Text>
             </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
-
-      {/* ── Exit Abandon Confirmation Modal ────────────────────────────── */}
-      <Modal
-        visible={showAbandonModal}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setShowAbandonModal(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalCard}>
-            <AlertCircle size={36} color={Colors.error} style={{ alignSelf: 'center', marginBottom: 10 }} />
-            <Text style={styles.modalTitleCentral}>Rekor Denemesinden Çık?</Text>
-            <Text style={styles.modalSubCentral}>
-              Devam eden rekor denemesi sonlandırılacak. Çıkmak istediğinize emin misiniz?
-            </Text>
-
-            <View style={styles.abandonModalBtnRow}>
-              <TouchableOpacity
-                style={styles.abandonCancelBtn}
-                onPress={() => setShowAbandonModal(false)}
-              >
-                <Text style={styles.abandonCancelBtnText}>Vazgeç</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.abandonConfirmBtn}
-                onPress={() => {
-                  setShowAbandonModal(false);
-                  navigation.goBack();
-                }}
-              >
-                <Text style={styles.abandonConfirmBtnText}>Çıkış Yap</Text>
-              </TouchableOpacity>
-            </View>
           </View>
         </View>
       </Modal>

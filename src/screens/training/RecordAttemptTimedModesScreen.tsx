@@ -11,6 +11,7 @@ import {
 import { ArrowLeft, X, Play, Square, Flag, Timer } from 'lucide-react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { Colors } from '../../theme/colors';
+import { feedback } from '../../services/feedbackService';
 
 // Mocks for types that would normally come from services/models
 enum TimedPhase { IDLE, COUNTDOWN, RUNNING, ENTER_REPS, ENTER_ROUNDS }
@@ -57,6 +58,19 @@ export const RecordAttemptTimedModesScreen: React.FC = () => {
   const [roundsInput, setRoundsInput] = useState('');
 
   const remainingMs = Math.max(0, amrapCapMs - elapsedMs);
+
+  const handleAbandon = async () => {
+    const confirmed = await feedback.destructive({
+      title: 'Denemeyi Bırak',
+      message: 'Bu denemeyi bırakmak istediğine emin misin?',
+      confirmText: 'Bırak',
+      cancelText: 'İptal',
+    });
+
+    if (confirmed) {
+      navigation.goBack();
+    }
+  };
 
   // Timer loop
   useEffect(() => {
@@ -172,11 +186,11 @@ export const RecordAttemptTimedModesScreen: React.FC = () => {
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <TouchableOpacity style={styles.iconButton} onPress={() => setShowAbandon(true)}>
+        <TouchableOpacity style={styles.iconButton} onPress={handleAbandon}>
           <ArrowLeft size={24} color={Colors.textLight} />
         </TouchableOpacity>
         <Text style={styles.headerTitle} numberOfLines={1}>{exercise.name}</Text>
-        <TouchableOpacity style={styles.iconButton} onPress={() => setShowAbandon(true)}>
+        <TouchableOpacity style={styles.iconButton} onPress={handleAbandon}>
           <X size={24} color={Colors.textLight} />
         </TouchableOpacity>
       </View>
@@ -184,27 +198,6 @@ export const RecordAttemptTimedModesScreen: React.FC = () => {
       {phase === TimedPhase.IDLE && renderIdle()}
       {phase === TimedPhase.COUNTDOWN && renderCountdown()}
       {(phase === TimedPhase.RUNNING || phase === TimedPhase.ENTER_REPS || phase === TimedPhase.ENTER_ROUNDS) && renderRunning()}
-
-      {/* Abandon Modal */}
-      <Modal visible={showAbandon} transparent animationType="fade">
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Denemeyi Bırak</Text>
-            <Text style={styles.modalText}>Bu denemeyi bırakmak istediğine emin misin?</Text>
-            <View style={styles.modalActions}>
-              <TouchableOpacity style={styles.modalButton} onPress={() => setShowAbandon(false)}>
-                <Text style={styles.modalButtonText}>İptal</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.modalButton} onPress={() => {
-                setShowAbandon(false);
-                navigation.goBack();
-              }}>
-                <Text style={[styles.modalButtonText, { color: '#E53935' }]}>Bırak</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
 
       {/* Reps/Rounds Modal */}
       <Modal visible={showRepsDialog || showRoundsDialog} transparent animationType="fade">

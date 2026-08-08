@@ -7,9 +7,9 @@ import {
   ScrollView,
   FlatList,
   ActivityIndicator,
-  Alert,
   TextInput,
 } from 'react-native';
+import { feedback } from '../../services/feedbackService';
 import {
   ChevronLeft,
   ChevronRight,
@@ -205,7 +205,7 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({ navigation }) =>
       setOpenClasses(openClassesData);
     } catch (e) {
       console.error('Error loading calendar content:', e);
-      Alert.alert('Hata', 'İçerikler yüklenemedi.');
+      feedback.error({ title: 'Hata', message: e, fallbackMessage: 'İçerikler yüklenemedi.' });
     } finally {
       setLoading(false);
     }
@@ -575,13 +575,22 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({ navigation }) =>
                       </TouchableOpacity>
                       <TouchableOpacity
                         onPress={async () => {
+                          const confirmed = await feedback.destructive({
+                            title: 'Etkinliği Sil',
+                            message: 'Bu etkinliği silmek istediğinize emin misiniz?',
+                            confirmText: 'Sil',
+                            cancelText: 'Vazgeç',
+                          });
+                          if (!confirmed) return;
+
                           try {
                             await supabase.from('user_events').delete().eq('id', evt.id);
                             loadCalendarContent();
                             loadMonthEventDays();
+                            feedback.toast('Etkinlik silindi.', 'info');
                           } catch (e) {
                             console.error('Error deleting event:', e);
-                            Alert.alert('Hata', 'Etkinlik silinemedi.');
+                            feedback.error({ title: 'Hata', message: e, fallbackMessage: 'Etkinlik silinemedi.' });
                           }
                         }}
                         style={{ padding: 6 }}

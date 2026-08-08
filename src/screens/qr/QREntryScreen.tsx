@@ -26,6 +26,7 @@ import { Header } from '../../components/Header';
 import { SideMenu } from '../../components/SideMenu';
 import { AuthService } from '../../services/authService';
 import { QRService, EntryHistory, validateCode, resolveCodeType } from '../../services/qrService';
+import { feedback } from '../../services/feedbackService';
 
 interface QREntryScreenProps {
   navigation?: any;
@@ -152,7 +153,7 @@ export const QREntryScreen: React.FC<QREntryScreenProps> = ({ navigation }) => {
     async (code: string) => {
       const scanError = validateCode(code);
       if (scanError) {
-        setErrorMessage(scanError);
+        feedback.error({ title: 'Hata', message: scanError });
         setScanned(false);
         setIsScanning(true);
         return;
@@ -179,7 +180,7 @@ export const QREntryScreen: React.FC<QREntryScreenProps> = ({ navigation }) => {
           setIsScanning(true);
         }, 2000);
       } catch (e: any) {
-        setErrorMessage(e?.message || 'İşlem gerçekleştirilemedi.');
+        feedback.error({ title: 'Hata', message: e, fallbackMessage: 'İşlem gerçekleştirilemedi.' });
         setScanned(false);
         setIsScanning(true);
       } finally {
@@ -249,22 +250,6 @@ export const QREntryScreen: React.FC<QREntryScreenProps> = ({ navigation }) => {
     <View style={styles.container}>
       <Header navigation={navigation} onOpenDrawer={() => setMenuVisible(true)} />
       <SideMenu visible={menuVisible} onClose={() => setMenuVisible(false)} navigation={navigation} />
-
-      {/* Error Modal */}
-      <Modal transparent visible={!!errorMessage} animationType="fade">
-        <View style={styles.modalOverlay}>
-          <View style={styles.errorModal}>
-            <Text style={styles.errorModalTitle}>Hata</Text>
-            <Text style={styles.errorModalMsg}>{errorMessage}</Text>
-            <TouchableOpacity
-              style={styles.errorModalBtn}
-              onPress={() => setErrorMessage(null)}
-            >
-              <Text style={styles.errorModalBtnText}>Tamam</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
 
       <ScrollView
         contentContainerStyle={styles.scrollContent}

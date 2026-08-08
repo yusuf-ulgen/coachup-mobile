@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -6,8 +6,8 @@ import {
   StyleSheet,
   Switch,
   ScrollView,
-  Alert,
 } from 'react-native';
+import { feedback } from '../../services/feedbackService';
 import {
   ChevronRight,
   Home,
@@ -16,7 +16,6 @@ import {
   Scale,
   MapPin,
   Lock,
-  SunMoon,
 } from 'lucide-react-native';
 import { Colors } from '../../theme/colors';
 import { Header } from '../../components/Header';
@@ -61,13 +60,18 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ navigation }) =>
   }, []);
 
   const saveSetting = async (key: string, value: any) => {
+    setUserProfile((prev: any) => ({ ...prev, [key]: value }));
     try {
       if (userProfile?.id) {
         await UserService.updateUserProfile(userProfile.id, { [key]: value });
-        setUserProfile((prev: any) => ({ ...prev, [key]: value }));
       }
     } catch (e: any) {
-      Alert.alert('Hata', 'Ayar kaydedilemedi: ' + (e.message || ''));
+      console.warn(`Could not sync ${key} to DB:`, e);
+      feedback.error({
+        title: 'Hata',
+        message: e,
+        fallbackMessage: 'Ayar kaydedilemedi. Lütfen tekrar deneyin.',
+      });
     }
   };
 
@@ -224,17 +228,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ navigation }) =>
           <ChevronRight size={20} color={Colors.textSecondaryDark} />
         </TouchableOpacity>
 
-        {/* Appearance Link */}
-        <TouchableOpacity
-          style={styles.navRow}
-          onPress={() => navigation.navigate('AppearanceSettings')}
-        >
-          <View style={styles.rowHeader}>
-            <SunMoon size={20} color={Colors.primary} />
-            <Text style={styles.rowTitle}>Görünüm ve Tema</Text>
-          </View>
-          <ChevronRight size={20} color={Colors.textSecondaryDark} />
-        </TouchableOpacity>
+
       </ScrollView>
 
       <SideMenu

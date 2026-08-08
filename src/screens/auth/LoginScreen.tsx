@@ -6,7 +6,6 @@ import {
   TouchableOpacity,
   StyleSheet,
   ActivityIndicator,
-  Alert,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
@@ -16,6 +15,7 @@ import {
   Keyboard,
   Modal,
 } from 'react-native';
+import { feedback } from '../../services/feedbackService';
 import { Eye, EyeOff, Mail } from 'lucide-react-native';
 import { Colors } from '../../theme/colors';
 import { AuthService } from '../../services/authService';
@@ -42,7 +42,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
 
   const handleLogin = async () => {
     if (!email.trim() || !password) {
-      Alert.alert('Hata', 'Lütfen tüm alanları doldurun');
+      feedback.warning({ title: 'Hata', message: 'Lütfen tüm alanları doldurun' });
       return;
     }
 
@@ -54,15 +54,15 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
         onLoginSuccess();
       }
     } catch (error: any) {
-      const msg = error.message || '';
-      if (msg.includes('network') || msg.includes('Unable to resolve host') || msg.includes('Network request failed')) {
-        Alert.alert('Hata', 'İnternet bağlantısı yok. Lütfen bağlantınızı kontrol edin.');
-      } else if (msg.includes('invalid_credentials') || msg.includes('E-posta veya şifre hatalı')) {
-        Alert.alert('Giriş Başarısız', 'E-posta veya şifre hatalı.');
-      } else if (msg.includes('email_not_confirmed')) {
+      const msg = error?.message || '';
+      if (msg.includes('email_not_confirmed')) {
         setShowVerificationModal(true);
       } else {
-        Alert.alert('Hata', msg || 'Giriş yapılamadı. Lütfen tekrar deneyin.');
+        feedback.error({
+          title: 'Giriş Başarısız',
+          message: error,
+          fallbackMessage: 'Giriş yapılamadı. Lütfen tekrar deneyin.',
+        });
       }
     } finally {
       setLoading(false);
@@ -206,9 +206,9 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
                   try {
                     setResendLoading(true);
                     await AuthService.resendConfirmationEmail(email.trim());
-                    Alert.alert('Bilgi', 'Doğrulama e-postası tekrar gönderildi.');
+                    feedback.info({ title: 'Bilgi', message: 'Doğrulama e-postası tekrar gönderildi.' });
                   } catch (e: any) {
-                    Alert.alert('Hata', e.message || 'Gönderilemedi.');
+                    feedback.error({ title: 'Hata', message: e, fallbackMessage: 'Gönderilemedi.' });
                   } finally {
                     setResendLoading(false);
                     setShowVerificationModal(false);

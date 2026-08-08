@@ -1,15 +1,18 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Modal, TextInput, Alert, SafeAreaView } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Modal, TextInput } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Colors } from '../../theme/colors';
-import { Star, CheckCircle, FileText, X, Calendar } from 'lucide-react-native';
+import { useTheme } from '../../theme/ThemeContext';
+import { Star, CheckCircle, FileText, X, Calendar, ArrowLeft } from 'lucide-react-native';
 import { supabase } from '../../services/supabaseClient';
+import { feedback } from '../../services/feedbackService';
 
 const mockSurveys = [
   {
     id: '1',
     title: 'Aylık Gelişim Değerlendirmesi',
     questionCount: 5,
-    endDate: '2023-12-01',
+    endDate: '2026-12-01',
     answered: false,
     questions: [
       { id: 'q1', type: 'rating', text: 'Eğitmeninizden ne kadar memnunsunuz?' },
@@ -21,13 +24,14 @@ const mockSurveys = [
     id: '2',
     title: 'Tesis Geri Bildirimi',
     questionCount: 3,
-    endDate: '2023-11-20',
+    endDate: '2026-11-20',
     answered: true,
     questions: [],
   },
 ];
 
-export default function SurveysScreen() {
+export default function SurveysScreen({ navigation }: any) {
+  const { colors } = useTheme();
   const [surveys, setSurveys] = useState(mockSurveys);
   const [selectedSurvey, setSelectedSurvey] = useState<any>(null);
   const [modalVisible, setModalVisible] = useState(false);
@@ -35,7 +39,7 @@ export default function SurveysScreen() {
 
   const openSurvey = (survey: any) => {
     if (survey.answered) {
-      Alert.alert('Bilgi', 'Bu anketi zaten doldurdunuz.');
+      feedback.info({ title: 'Bilgi', message: 'Bu anketi zaten doldurdunuz.' });
       return;
     }
     setSelectedSurvey(survey);
@@ -45,20 +49,13 @@ export default function SurveysScreen() {
 
   const submitSurvey = async () => {
     try {
-      /* Supabase kaydı (gerçek uygulamada)
-      const { data, error } = await supabase
-        .from('survey_responses')
-        .insert([{ survey_id: selectedSurvey.id, answers }]);
-      if (error) throw error;
-      */
-
       setSurveys((prev) =>
         prev.map((s) => (s.id === selectedSurvey.id ? { ...s, answered: true } : s))
       );
       setModalVisible(false);
-      Alert.alert('Başarılı', 'Anket başarıyla gönderildi.');
+      feedback.success({ title: 'Başarılı', message: 'Anket başarıyla gönderildi.' });
     } catch (error) {
-      Alert.alert('Hata', 'Anket gönderilemedi.');
+      feedback.error({ title: 'Hata', message: error, fallbackMessage: 'Anket gönderilemedi.' });
     }
   };
 
@@ -67,7 +64,7 @@ export default function SurveysScreen() {
       case 'rating':
         return (
           <View key={q.id} style={styles.questionContainer}>
-            <Text style={styles.questionText}>{q.text}</Text>
+            <Text style={[styles.questionText, { color: colors.textPrimary }]}>{q.text}</Text>
             <View style={styles.ratingContainer}>
               {[1, 2, 3, 4, 5].map((star) => (
                 <TouchableOpacity key={star} onPress={() => setAnswers({ ...answers, [q.id]: star })}>
@@ -84,12 +81,13 @@ export default function SurveysScreen() {
       case 'multiple_choice':
         return (
           <View key={q.id} style={styles.questionContainer}>
-            <Text style={styles.questionText}>{q.text}</Text>
+            <Text style={[styles.questionText, { color: colors.textPrimary }]}>{q.text}</Text>
             {q.options.map((opt: string) => (
               <TouchableOpacity
                 key={opt}
                 style={[
                   styles.optionButton,
+                  { borderColor: colors.border, backgroundColor: colors.cardBg },
                   answers[q.id] === opt && styles.optionSelected,
                 ]}
                 onPress={() => setAnswers({ ...answers, [q.id]: opt })}
@@ -97,6 +95,7 @@ export default function SurveysScreen() {
                 <Text
                   style={[
                     styles.optionText,
+                    { color: colors.textPrimary },
                     answers[q.id] === opt && styles.optionTextSelected,
                   ]}
                 >
@@ -109,13 +108,13 @@ export default function SurveysScreen() {
       case 'text':
         return (
           <View key={q.id} style={styles.questionContainer}>
-            <Text style={styles.questionText}>{q.text}</Text>
+            <Text style={[styles.questionText, { color: colors.textPrimary }]}>{q.text}</Text>
             <TextInput
-              style={styles.textInput}
+              style={[styles.textInput, { borderColor: colors.border, color: colors.textPrimary }]}
               multiline
               numberOfLines={4}
               placeholder="Cevabınızı buraya yazın..."
-              placeholderTextColor={Colors.textLight}
+              placeholderTextColor={colors.textSecondary}
               value={answers[q.id] || ''}
               onChangeText={(text) => setAnswers({ ...answers, [q.id]: text })}
             />
@@ -127,18 +126,23 @@ export default function SurveysScreen() {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
-      <Text style={styles.headerTitle}>Anketler</Text>
+    <SafeAreaView style={[styles.container, { backgroundColor: colors.bg }]}>
+      <View style={styles.headerRow}>
+        <TouchableOpacity onPress={() => navigation?.goBack()} style={styles.backBtn}>
+          <ArrowLeft size={22} color={colors.textPrimary} />
+        </TouchableOpacity>
+        <Text style={[styles.headerTitle, { color: colors.textPrimary }]}>Anketler</Text>
+      </View>
 
       <ScrollView contentContainerStyle={styles.listContainer}>
         {surveys.map((survey) => (
           <TouchableOpacity
             key={survey.id}
-            style={styles.card}
+            style={[styles.card, { backgroundColor: colors.cardBg, borderColor: colors.border }]}
             onPress={() => openSurvey(survey)}
           >
             <View style={styles.cardHeader}>
-              <Text style={styles.surveyTitle}>{survey.title}</Text>
+              <Text style={[styles.surveyTitle, { color: colors.textPrimary }]}>{survey.title}</Text>
               {survey.answered && (
                 <View style={[styles.badge, { backgroundColor: Colors.success }]}>
                   <Text style={styles.badgeText}>Cevaplandı</Text>
@@ -146,12 +150,12 @@ export default function SurveysScreen() {
               )}
             </View>
             <View style={styles.infoRow}>
-              <FileText size={16} color={Colors.textLight} />
-              <Text style={styles.infoText}>{survey.questionCount} Soru</Text>
+              <FileText size={16} color={colors.textSecondary} />
+              <Text style={[styles.infoText, { color: colors.textSecondary }]}>{survey.questionCount} Soru</Text>
             </View>
             <View style={styles.infoRow}>
-              <Calendar size={16} color={Colors.textLight} />
-              <Text style={styles.infoText}>Son Tarih: {survey.endDate}</Text>
+              <Calendar size={16} color={colors.textSecondary} />
+              <Text style={[styles.infoText, { color: colors.textSecondary }]}>Son Tarih: {survey.endDate}</Text>
             </View>
           </TouchableOpacity>
         ))}
@@ -159,11 +163,11 @@ export default function SurveysScreen() {
 
       {/* Anket Formu Modal */}
       <Modal visible={modalVisible} animationType="slide" presentationStyle="pageSheet">
-        <SafeAreaView style={styles.modalContainer}>
-          <View style={styles.modalHeader}>
-            <Text style={styles.modalTitle}>{selectedSurvey?.title}</Text>
+        <SafeAreaView style={[styles.modalContainer, { backgroundColor: colors.bg }]}>
+          <View style={[styles.modalHeader, { borderBottomColor: colors.border }]}>
+            <Text style={[styles.modalTitle, { color: colors.textPrimary }]}>{selectedSurvey?.title}</Text>
             <TouchableOpacity onPress={() => setModalVisible(false)}>
-              <X size={24} color={Colors.text} />
+              <X size={24} color={colors.textPrimary} />
             </TouchableOpacity>
           </View>
           
@@ -171,7 +175,7 @@ export default function SurveysScreen() {
             {selectedSurvey?.questions?.map(renderQuestion)}
           </ScrollView>
 
-          <View style={styles.modalFooter}>
+          <View style={[styles.modalFooter, { borderTopColor: colors.border }]}>
             <TouchableOpacity style={styles.submitButton} onPress={submitSurvey}>
               <Text style={styles.submitButtonText}>Gönder</Text>
             </TouchableOpacity>
@@ -187,13 +191,21 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: Colors.background,
   },
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 8,
+  },
+  backBtn: {
+    padding: 8,
+    marginRight: 8,
+  },
   headerTitle: {
     fontSize: 24,
     fontWeight: 'bold',
     color: Colors.text,
-    paddingHorizontal: 20,
-    paddingTop: 20,
-    paddingBottom: 10,
   },
   listContainer: {
     padding: 20,

@@ -1,4 +1,4 @@
-﻿import React, { useState } from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
@@ -6,9 +6,9 @@ import {
   TouchableOpacity,
   StyleSheet,
   ActivityIndicator,
-  Alert,
   ScrollView,
 } from 'react-native';
+import { feedback } from '../../services/feedbackService';
 import { Eye, EyeOff, Lock, Check, ArrowLeft } from 'lucide-react-native';
 import { Colors } from '../../theme/colors';
 import { supabase } from '../../services/supabaseClient';
@@ -35,15 +35,15 @@ export const PasswordSettingsScreen: React.FC<PasswordSettingsScreenProps> = ({
 
   const handleChangePassword = async () => {
     if (!newPassword || !confirmPassword) {
-      Alert.alert('Hata', 'Lütfen tüm alanları doldurun');
+      feedback.warning({ title: 'Hata', message: 'Lütfen tüm alanları doldurun' });
       return;
     }
     if (!isMinLength) {
-      Alert.alert('Hata', 'Şifre en az 6 karakter olmalıdır');
+      feedback.warning({ title: 'Hata', message: 'Şifre en az 6 karakter olmalıdır' });
       return;
     }
     if (!isMatch) {
-      Alert.alert('Hata', 'Yeni şifreler eşleşmiyor');
+      feedback.warning({ title: 'Hata', message: 'Yeni şifreler eşleşmiyor' });
       return;
     }
 
@@ -55,11 +55,17 @@ export const PasswordSettingsScreen: React.FC<PasswordSettingsScreenProps> = ({
 
       if (error) throw error;
 
-      Alert.alert('Başarılı', 'Şifreniz başarıyla güncellendi.', [
-        { text: 'Tamam', onPress: () => navigation.goBack() },
-      ]);
+      feedback.success({
+        title: 'Başarılı',
+        message: 'Şifreniz başarıyla güncellendi.',
+      });
+      navigation.goBack();
     } catch (e: any) {
-      Alert.alert('Hata', e.message || 'Şifre güncellenemedi');
+      feedback.error({
+        title: 'Hata',
+        message: e,
+        fallbackMessage: 'Şifre güncellenemedi',
+      });
     } finally {
       setLoading(false);
     }

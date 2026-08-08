@@ -6,13 +6,13 @@ import {
   TouchableOpacity,
   StyleSheet,
   ActivityIndicator,
-  Alert,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
   Image,
   Dimensions,
 } from 'react-native';
+import { feedback } from '../../services/feedbackService';
 import { Eye, EyeOff } from 'lucide-react-native';
 import { Colors } from '../../theme/colors';
 import { AuthService } from '../../services/authService';
@@ -44,19 +44,19 @@ export const RegisterScreen: React.FC<RegisterScreenProps> = ({
 
   const handleRegister = async () => {
     if (!name.trim()) {
-      Alert.alert('Hata', 'Lütfen isminizi girin');
+      feedback.warning({ title: 'Hata', message: 'Lütfen isminizi girin' });
       return;
     }
     if (!gender) {
-      Alert.alert('Hata', 'Lütfen cinsiyetinizi seçin');
+      feedback.warning({ title: 'Hata', message: 'Lütfen cinsiyetinizi seçin' });
       return;
     }
     if (!email.trim() || !password) {
-      Alert.alert('Hata', 'Lütfen tüm alanları doldurun');
+      feedback.warning({ title: 'Hata', message: 'Lütfen tüm alanları doldurun' });
       return;
     }
     if (password.length < 6) {
-      Alert.alert('Hata', 'Şifre en az 6 karakter olmalıdır');
+      feedback.warning({ title: 'Hata', message: 'Şifre en az 6 karakter olmalıdır' });
       return;
     }
 
@@ -84,10 +84,10 @@ export const RegisterScreen: React.FC<RegisterScreenProps> = ({
           onNavigateToLogin();
         }
       } else {
-        Alert.alert(
-          'E-posta Doğrulama',
-          'Kayıt oluşturuldu. Giriş yapmadan önce e-posta adresinize gelen doğrulama linkine tıklayın.',
-          [
+        feedback.showDialog({
+          title: 'E-posta Doğrulama',
+          message: 'Kayıt oluşturuldu. Giriş yapmadan önce e-posta adresinize gelen doğrulama linkine tıklayın.',
+          buttons: [
             {
               text: 'Giriş Ekranına Dön',
               onPress: async () => {
@@ -96,30 +96,29 @@ export const RegisterScreen: React.FC<RegisterScreenProps> = ({
               },
             },
             {
-              text: resendLoading ? 'Gönderiliyor...' : 'Tekrar Gönder',
+              text: 'Tekrar Gönder',
               onPress: async () => {
                 if (resendLoading) return;
                 try {
                   setResendLoading(true);
                   await AuthService.resendConfirmationEmail(email.trim());
-                  Alert.alert('Bilgi', 'Doğrulama e-postası gönderildi.');
+                  feedback.info({ title: 'Bilgi', message: 'Doğrulama e-postası gönderildi.' });
                 } catch (e: any) {
-                  Alert.alert('Hata', e.message || 'Gönderilemedi.');
+                  feedback.error({ title: 'Hata', message: e, fallbackMessage: 'Gönderilemedi.' });
                 } finally {
                   setResendLoading(false);
                 }
               },
             },
-          ]
-        );
+          ],
+        });
       }
     } catch (error: any) {
-      const msg = error.message || '';
-      if (msg.includes('already registered')) {
-        Alert.alert('Hata', 'Bu e-posta adresi zaten kayıtlı.');
-      } else {
-        Alert.alert('Hata', msg || 'Kayıt başarısız. Lütfen tekrar deneyin.');
-      }
+      feedback.error({
+        title: 'Hata',
+        message: error,
+        fallbackMessage: 'Kayıt başarısız. Lütfen tekrar deneyin.',
+      });
     } finally {
       setLoading(false);
     }

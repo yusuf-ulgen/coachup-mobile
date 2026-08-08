@@ -15,6 +15,7 @@ import { useAuth } from '../context/AuthContext';
 import { Colors } from '../theme/colors';
 import { SplashView } from '../components/SplashView';
 import { AuthService } from '../services/authService';
+import { UserService } from '../services/userService';
 import PusherService from '../services/pusherService';
 
 import { LoginScreen } from '../screens/auth/LoginScreen';
@@ -62,20 +63,21 @@ import { AdminDashboardScreen } from '../screens/admin/AdminDashboardScreen';
 import { GuardianScreen } from '../screens/guardian/GuardianScreen';
 import { GuardianChildDetailScreen } from '../screens/guardian/GuardianChildDetailScreen';
 import { FloatingActiveWorkoutOverlay } from '../components/FloatingActiveWorkoutOverlay';
-import { CustomAlertContainer } from '../components/CustomAlertModal';
+import { FeedbackContainer } from '../components/feedback/FeedbackContainer';
 
 const Tab = createBottomTabNavigator();
 const Stack = createNativeStackNavigator();
 
 const CustomTabBar = ({ state, descriptors, navigation }: any) => {
-  const [hasActiveGym, setHasActiveGym] = useState(true);
+  const [hasActiveGym, setHasActiveGym] = useState(false);
 
   useEffect(() => {
     AuthService.getCurrentProfile()
-      .then((p) => {
-        setHasActiveGym(Boolean(p?.gym_id));
+      .then(async (p) => {
+        const active = await UserService.hasActiveMembership(p);
+        setHasActiveGym(active);
       })
-      .catch(() => setHasActiveGym(true));
+      .catch(() => setHasActiveGym(false));
   }, []);
 
   return (
@@ -365,7 +367,7 @@ export const AppNavigator: React.FC = () => {
       )}
       
       {session && !isGuardian && <FloatingActiveWorkoutOverlay />}
-      <CustomAlertContainer />
+      <FeedbackContainer />
     </NavigationContainer>
   );
 };

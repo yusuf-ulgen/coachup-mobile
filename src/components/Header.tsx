@@ -14,6 +14,7 @@ interface HeaderProps {
   title?: string;
   onMenuPress?: () => void;
   onNotificationPress?: () => void;
+  showMenuButton?: boolean;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -22,6 +23,7 @@ export const Header: React.FC<HeaderProps> = ({
   title,
   onMenuPress,
   onNotificationPress,
+  showMenuButton = false,
 }) => {
   const insets = useSafeAreaInsets();
   const [unreadCount, setUnreadCount] = useState(0);
@@ -53,9 +55,13 @@ export const Header: React.FC<HeaderProps> = ({
 
   return (
     <View style={[styles.headerContainer, { paddingTop: Math.max(12, insets.top + 6) }]}>
-      <TouchableOpacity style={styles.iconButton} onPress={handleMenu} activeOpacity={0.8}>
-        <Menu size={20} color={Colors.textDark} />
-      </TouchableOpacity>
+      {showMenuButton ? (
+        <TouchableOpacity style={styles.iconButton} onPress={handleMenu} activeOpacity={0.8}>
+          <Menu size={20} color={Colors.textDark} />
+        </TouchableOpacity>
+      ) : (
+        <View style={{ width: 40 }} />
+      )}
 
       <Image
         source={GYM_CONFIG.LOGIN_LOGO}

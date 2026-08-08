@@ -8,16 +8,18 @@ import {
   Modal,
   TextInput,
   ActivityIndicator,
-  Alert,
   ScrollView,
 } from 'react-native';
+import { feedback } from '../../services/feedbackService';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { ArrowLeft, Plus, Calendar, Clock, X } from 'lucide-react-native';
+import { ArrowLeft, Plus, Calendar, Clock, X, ChevronDown, Check } from 'lucide-react-native';
 import { Colors } from '../../theme/colors';
 import { useAuth } from '../../context/AuthContext';
 import { supabase } from '../../services/supabaseClient';
 
-export const AppointmentsScreen = ({ navigation }: any) => {
+import { CoachService } from '../../services/coachService';
+
+export const AppointmentsScreen = ({ route, navigation }: any) => {
   const { session } = useAuth();
   const [activeTab, setActiveTab] = useState<'upcoming' | 'past'>('upcoming');
   const [appointments, setAppointments] = useState<any[]>([]);
@@ -26,6 +28,7 @@ export const AppointmentsScreen = ({ navigation }: any) => {
 
   // Modal State
   const [isModalVisible, setIsModalVisible] = useState(false);
+  const [isCoachDropdownOpen, setIsCoachDropdownOpen] = useState(false);
   const [selectedCoach, setSelectedCoach] = useState('');
   const [selectedType, setSelectedType] = useState('Kişisel Antrenman');
   const [dateStr, setDateStr] = useState('');
@@ -38,7 +41,14 @@ export const AppointmentsScreen = ({ navigation }: any) => {
   useEffect(() => {
     fetchAppointments();
     fetchCoaches();
-  }, []);
+
+    if (route?.params?.coachId || route?.params?.openModal) {
+      if (route?.params?.coachId) {
+        setSelectedCoach(route.params.coachId);
+      }
+      setIsModalVisible(true);
+    }
+  }, [route?.params]);
 
   const fetchAppointments = async () => {
     if (!session?.user?.id) return;
@@ -46,18 +56,25 @@ export const AppointmentsScreen = ({ navigation }: any) => {
       setLoading(true);
       const { data, error } = await supabase
         .from('appointments')
-        .select(`
-          *,
-          coach:profiles!appointments_coach_id_fkey(full_name)
-        `)
+        .select('*')
         .eq('user_id', session.user.id)
         .order('date', { ascending: false });
 
       if (error) {
-          console.error(error);
-          return;
+        console.error('Randevular yuklenirken hata:', error);
+        setAppointments([]);
+        return;
       }
-      setAppointments(data || []);
+
+      const allCoaches = await CoachService.fetchCoaches();
+      const coachMap = new Map(allCoaches.map((c) => [c.id, `${c.name || ''} ${c.surname || ''}`.trim()]));
+
+      const enriched = (data || []).map((app) => ({
+        ...app,
+        coachName: app.coach_name || coachMap.get(app.coach_id) || 'Koç',
+      }));
+
+      setAppointments(enriched);
     } catch (error) {
       console.error('Randevular alınırken hata:', error);
     } finally {
@@ -67,16 +84,9 @@ export const AppointmentsScreen = ({ navigation }: any) => {
 
   const fetchCoaches = async () => {
     try {
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('id, full_name')
-        .eq('role', 'coach');
-      if (error) {
-          console.error(error);
-          return;
-      }
+      const data = await CoachService.fetchCoaches();
       setCoaches(data || []);
-      if (data && data.length > 0) {
+      if (data && data.length > 0 && !selectedCoach) {
         setSelectedCoach(data[0].id);
       }
     } catch (error) {
@@ -86,7 +96,10 @@ export const AppointmentsScreen = ({ navigation }: any) => {
 
   const handleSaveAppointment = async () => {
     if (!selectedCoach || !dateStr || !timeStr) {
-      Alert.alert('Hata', 'Lütfen koç, tarih ve saat alanlarını doldurun.');
+      feedback.warning({
+        title: 'Hata',
+        message: 'Lütfen koç, tarih ve saat alanlarını doldurun.',
+      });
       return;
     }
     try {
@@ -105,35 +118,46 @@ export const AppointmentsScreen = ({ navigation }: any) => {
       setIsModalVisible(false);
       resetForm();
       fetchAppointments();
-      Alert.alert('Başarılı', 'Randevu talebiniz oluşturuldu.');
+      feedback.success({
+        title: 'Başarılı',
+        message: 'Randevu talebiniz oluşturuldu.',
+      });
     } catch (error) {
-      Alert.alert('Hata', 'Randevu oluşturulamadı.');
-      console.error(error);
+      feedback.error({
+        title: 'Hata',
+        message: error,
+        fallbackMessage: 'Randevu oluşturulamadı.',
+      });
     } finally {
       setSaving(false);
     }
   };
 
-  const handleCancelAppointment = (id: string) => {
-    Alert.alert('Randevuyu İptal Et', 'Bu randevuyu iptal etmek istediğinize emin misiniz?', [
-      { text: 'Vazgeç', style: 'cancel' },
-      {
-        text: 'İptal Et',
-        style: 'destructive',
-        onPress: async () => {
-          try {
-            const { error } = await supabase
-              .from('appointments')
-              .update({ status: 'cancelled' })
-              .eq('id', id);
-            if (error) throw error;
-            fetchAppointments();
-          } catch (error) {
-            Alert.alert('Hata', 'Randevu iptal edilemedi.');
-          }
-        },
-      },
-    ]);
+  const handleCancelAppointment = async (id: string) => {
+    const confirmed = await feedback.destructive({
+      title: 'Randevuyu İptal Et',
+      message: 'Bu randevuyu iptal etmek istediğinize emin misiniz?',
+      confirmText: 'İptal Et',
+      cancelText: 'Vazgeç',
+    });
+
+    if (!confirmed) return;
+
+    try {
+      const { error } = await supabase
+        .from('appointments')
+        .update({ status: 'cancelled' })
+        .eq('id', id);
+      if (error) throw error;
+      fetchAppointments();
+      feedback.toast('Randevu iptal edildi.', 'info');
+    } catch (error) {
+      feedback.error({
+        title: 'Hata',
+        message: error,
+        fallbackMessage: 'Randevu iptal edilemedi.',
+      });
+    }
   };
 
   const resetForm = () => {
@@ -144,6 +168,7 @@ export const AppointmentsScreen = ({ navigation }: any) => {
     if (coaches.length > 0) setSelectedCoach(coaches[0].id);
   };
 
+  const selectedCoachObj = coaches.find((c) => c.id === selectedCoach);
   const today = new Date().toISOString().split('T')[0];
 
   const filteredAppointments = appointments.filter((app) => {
@@ -171,7 +196,7 @@ export const AppointmentsScreen = ({ navigation }: any) => {
     return (
       <View style={styles.card}>
         <View style={styles.cardHeader}>
-          <Text style={styles.coachName}>{item.coach?.full_name || 'Bilinmeyen Koç'}</Text>
+          <Text style={styles.coachName}>{item.coachName || item.coach?.name || 'Bilinmeyen Koç'}</Text>
           <View style={[styles.badge, { backgroundColor: badge.color + '20' }]}>
             <Text style={[styles.badgeText, { color: badge.color }]}>{badge.text}</Text>
           </View>
@@ -259,19 +284,18 @@ export const AppointmentsScreen = ({ navigation }: any) => {
 
             <ScrollView contentContainerStyle={styles.formContainer}>
               <Text style={styles.label}>Koç Seçimi</Text>
-              <View style={styles.typeSelector}>
-                {coaches.map(c => (
-                  <TouchableOpacity
-                    key={c.id}
-                    style={[styles.typeChip, selectedCoach === c.id && styles.activeTypeChip]}
-                    onPress={() => setSelectedCoach(c.id)}
-                  >
-                    <Text style={[styles.typeChipText, selectedCoach === c.id && styles.activeTypeChipText]}>
-                      {c.full_name}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
+              <TouchableOpacity
+                style={styles.dropdownTrigger}
+                onPress={() => setIsCoachDropdownOpen(true)}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.dropdownTriggerText}>
+                  {selectedCoachObj
+                    ? `${selectedCoachObj.name || ''} ${selectedCoachObj.surname || ''}`.trim()
+                    : 'Koç Seçiniz'}
+                </Text>
+                <ChevronDown size={20} color={Colors.textSecondaryDark} />
+              </TouchableOpacity>
 
               <Text style={styles.label}>Randevu Türü</Text>
               <View style={styles.typeSelector}>
@@ -331,6 +355,57 @@ export const AppointmentsScreen = ({ navigation }: any) => {
             </ScrollView>
           </View>
         </View>
+      </Modal>
+
+      {/* Koç Seçim Dropdown Modalı */}
+      <Modal visible={isCoachDropdownOpen} animationType="fade" transparent>
+        <TouchableOpacity 
+          style={styles.dropdownOverlay} 
+          activeOpacity={1} 
+          onPress={() => setIsCoachDropdownOpen(false)}
+        >
+          <View style={styles.dropdownModalBox}>
+            <View style={styles.dropdownHeader}>
+              <Text style={styles.dropdownHeaderTitle}>Koç Seçin</Text>
+              <TouchableOpacity onPress={() => setIsCoachDropdownOpen(false)}>
+                <X color={Colors.allWhite} size={20} />
+              </TouchableOpacity>
+            </View>
+            <ScrollView style={{ maxHeight: 300 }}>
+              {coaches.length === 0 ? (
+                <Text style={[styles.emptyText, { marginVertical: 20 }]}>Sistemde kayıtlı koç bulunamadı.</Text>
+              ) : (
+                coaches.map((c) => {
+                  const isSelected = c.id === selectedCoach;
+                  const fullName = `${c.name || ''} ${c.surname || ''}`.trim() || 'İsimsiz Koç';
+                  return (
+                    <TouchableOpacity
+                      key={c.id}
+                      style={[styles.dropdownItemRow, isSelected && styles.dropdownItemRowSelected]}
+                      onPress={() => {
+                        setSelectedCoach(c.id);
+                        setIsCoachDropdownOpen(false);
+                      }}
+                      activeOpacity={0.7}
+                    >
+                      <View style={{ flex: 1 }}>
+                        <Text style={[styles.dropdownItemTitle, isSelected && { color: Colors.primary }]}>
+                          {fullName}
+                        </Text>
+                        {c.speciality || c.specialization ? (
+                          <Text style={styles.dropdownItemSubtitle}>
+                            {c.speciality || c.specialization}
+                          </Text>
+                        ) : null}
+                      </View>
+                      {isSelected && <Check size={18} color={Colors.primary} />}
+                    </TouchableOpacity>
+                  );
+                })
+              )}
+            </ScrollView>
+          </View>
+        </TouchableOpacity>
       </Modal>
     </SafeAreaView>
   );
@@ -460,8 +535,8 @@ const styles = StyleSheet.create({
   },
   modalContent: {
     backgroundColor: Colors.backgroundDark,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
     maxHeight: '90%',
   },
   modalHeader: {
@@ -479,14 +554,79 @@ const styles = StyleSheet.create({
   },
   formContainer: {
     padding: 20,
-    paddingBottom: 40,
+    gap: 16,
   },
   label: {
-    color: Colors.allWhite,
     fontSize: 14,
     fontWeight: '600',
+    color: Colors.allWhite,
+    marginBottom: -8,
+  },
+  dropdownTrigger: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: Colors.cardDark,
+    borderWidth: 1,
+    borderColor: Colors.borderDark,
+    borderRadius: 8,
+    padding: 14,
+  },
+  dropdownTriggerText: {
+    color: Colors.allWhite,
+    fontSize: 15,
+    fontWeight: '500',
+  },
+  dropdownOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.7)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  dropdownModalBox: {
+    width: '100%',
+    backgroundColor: Colors.cardDark,
+    borderRadius: 16,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: Colors.borderDark,
+  },
+  dropdownHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingBottom: 12,
     marginBottom: 8,
-    marginTop: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.borderDark,
+  },
+  dropdownHeaderTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: Colors.allWhite,
+  },
+  dropdownItemRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    marginBottom: 4,
+  },
+  dropdownItemRowSelected: {
+    backgroundColor: Colors.backgroundDark,
+  },
+  dropdownItemTitle: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: Colors.allWhite,
+  },
+  dropdownItemSubtitle: {
+    fontSize: 12,
+    color: Colors.textSecondaryDark,
+    marginTop: 2,
   },
   input: {
     backgroundColor: Colors.cardDark,
