@@ -34,6 +34,82 @@ const EFFORT_OPTIONS = [
   { id: 'cok_zor', emoji: '🥵', label: 'Çok Zor' },
 ];
 
+const DARK_MAP_STYLE = [
+  { elementType: 'geometry', stylers: [{ color: '#1d2c4d' }] },
+  { elementType: 'labels.text.fill', stylers: [{ color: '#8ec3b9' }] },
+  { elementType: 'labels.text.stroke', stylers: [{ color: '#1a3646' }] },
+  {
+    featureType: 'administrative.country',
+    elementType: 'geometry.stroke',
+    stylers: [{ color: '#4b687a' }],
+  },
+  {
+    featureType: 'administrative.province',
+    elementType: 'geometry.stroke',
+    stylers: [{ color: '#4b687a' }],
+  },
+  {
+    featureType: 'landscape.man_made',
+    elementType: 'geometry.stroke',
+    stylers: [{ color: '#334e68' }],
+  },
+  {
+    featureType: 'landscape.natural',
+    elementType: 'geometry',
+    stylers: [{ color: '#023e58' }],
+  },
+  {
+    featureType: 'poi',
+    elementType: 'geometry',
+    stylers: [{ color: '#283d6a' }],
+  },
+  {
+    featureType: 'poi',
+    elementType: 'labels.text.fill',
+    stylers: [{ color: '#6f9ba5' }],
+  },
+  {
+    featureType: 'poi.park',
+    elementType: 'geometry.fill',
+    stylers: [{ color: '#023e58' }],
+  },
+  {
+    featureType: 'road',
+    elementType: 'geometry',
+    stylers: [{ color: '#304a7d' }],
+  },
+  {
+    featureType: 'road',
+    elementType: 'labels.text.fill',
+    stylers: [{ color: '#98a5be' }],
+  },
+  {
+    featureType: 'road.highway',
+    elementType: 'geometry',
+    stylers: [{ color: '#2c4591' }],
+  },
+  {
+    featureType: 'road.highway',
+    elementType: 'geometry.stroke',
+    stylers: [{ color: '#1f2835' }],
+  },
+  {
+    featureType: 'transit',
+    elementType: 'labels.text.fill',
+    stylers: [{ color: '#98a5be' }],
+  },
+  {
+    featureType: 'water',
+    elementType: 'geometry',
+    stylers: [{ color: '#0e1626' }],
+  },
+  {
+    featureType: 'water',
+    elementType: 'labels.text.fill',
+    stylers: [{ color: '#4e6d70' }],
+  },
+];
+
 export const ActiveWorkoutScreen = ({ route, navigation }: any) => {
   const { isDark, toggleTheme, colors } = useTheme();
   const existingManager = ActiveWorkoutManager.getState();
@@ -68,11 +144,20 @@ export const ActiveWorkoutScreen = ({ route, navigation }: any) => {
   const [heartRate, setHeartRate] = useState(0);
   const [activeCalories, setActiveCalories] = useState(0);
   const [locationStats, setLocationStats] = useState<LocationStats | null>(null);
+  const [hasLocationPermission, setHasLocationPermission] = useState(false);
 
   // Modals & Map diagnostics
   const [showConfirmFinishModal, setShowConfirmFinishModal] = useState(false);
   const [showEffortModal, setShowEffortModal] = useState(false);
   const [mapDiagnosticText, setMapDiagnosticText] = useState('Harita başlatılıyor...');
+
+  useEffect(() => {
+    if (isOutdoor) {
+      LocationService.requestPermissions().then((granted) => {
+        setHasLocationPermission(granted);
+      });
+    }
+  }, [isOutdoor]);
 
   // Focus effect for immediate overlay visibility when navigating back/away
   useFocusEffect(
@@ -113,7 +198,8 @@ export const ActiveWorkoutScreen = ({ route, navigation }: any) => {
   };
 
   const handleStartOutdoorRun = async () => {
-    await LocationService.requestPermissions();
+    const granted = await LocationService.requestPermissions();
+    setHasLocationPermission(granted);
     await HealthConnectService.requestPermissions();
     setHasStarted(true);
     setIsActive(true);
@@ -185,6 +271,7 @@ export const ActiveWorkoutScreen = ({ route, navigation }: any) => {
 
     const finalDistance = locationStats?.distanceKm || 0;
     const finalPace = locationStats?.paceMinPerKm || 0;
+    const finalSpeed = locationStats?.currentSpeed || (finalPace > 0 ? 60 / finalPace : 0);
 
     navigation.navigate('WorkoutSummary', {
       training: { title: activityName, category: { emoji: activityEmoji } },
@@ -194,6 +281,7 @@ export const ActiveWorkoutScreen = ({ route, navigation }: any) => {
       maxHeartRate: heartRate > 0 ? heartRate + 10 : null,
       distanceKm: finalDistance,
       avgPaceMinPerKm: finalPace,
+      avgSpeedKmh: finalSpeed,
       perceivedEffort: effortObj.label,
       perceivedEmoji: effortObj.emoji,
     });
@@ -258,13 +346,11 @@ export const ActiveWorkoutScreen = ({ route, navigation }: any) => {
               <View style={styles.outdoorSplitRow}>
                 <View style={styles.outdoorSplitCol}>
                   <Text style={[styles.outdoorSplitVal, { color: colors.textPrimary }]}>
-                    {locationStats?.paceMinPerKm && locationStats.paceMinPerKm > 0
-                      ? `${Math.floor(locationStats.paceMinPerKm)}'${String(
-                          Math.round((locationStats.paceMinPerKm % 1) * 60)
-                        ).padStart(2, '0')}"`
-                      : `--'--`}
+                    {locationStats?.paceMinPerKm && locationStats.paceMinPerKm > 0.05 && locationStats.paceMinPerKm < 60
+                      ? (60 / locationStats.paceMinPerKm).toFixed(1).replace('.', ',')
+                      : '0,0'}
                   </Text>
-                  <Text style={[styles.outdoorSplitLbl, { color: colors.textSecondary }]}>TEMPO</Text>
+                  <Text style={[styles.outdoorSplitLbl, { color: colors.textSecondary }]}>ORT. HIZ (km/s)</Text>
                 </View>
 
                 <View style={[styles.verticalDivider, { backgroundColor: colors.border }]} />
@@ -273,7 +359,7 @@ export const ActiveWorkoutScreen = ({ route, navigation }: any) => {
                   <Text style={[styles.outdoorSplitVal, { color: colors.textPrimary }]}>
                     {(locationStats?.currentSpeed || 0).toFixed(1).replace('.', ',')}
                   </Text>
-                  <Text style={[styles.outdoorSplitLbl, { color: colors.textSecondary }]}>HIZ</Text>
+                  <Text style={[styles.outdoorSplitLbl, { color: colors.textSecondary }]}>ANLIK HIZ (km/s)</Text>
                 </View>
               </View>
             </View>
@@ -311,10 +397,11 @@ export const ActiveWorkoutScreen = ({ route, navigation }: any) => {
                   provider={PROVIDER_GOOGLE}
                   mapType="standard"
                   style={styles.mapViewStyle}
-                  showsUserLocation={true}
-                  followsUserLocation={true}
-                  showsMyLocationButton={true}
+                  showsUserLocation={hasLocationPermission}
+                  followsUserLocation={hasLocationPermission}
+                  showsMyLocationButton={hasLocationPermission}
                   showsCompass={true}
+                  customMapStyle={isDark ? DARK_MAP_STYLE : undefined}
                   onMapReady={() => setMapDiagnosticText('Harita Hazır')}
                   initialRegion={{
                     latitude: currentLat,
@@ -695,14 +782,14 @@ const styles = StyleSheet.create({
   liveMapCardContainer: {
     height: 220,
     borderRadius: 24,
-    overflow: 'hidden',
     borderWidth: 1,
-    backgroundColor: '#E5E5EA',
+    backgroundColor: '#1E1E24',
     position: 'relative',
   },
   mapViewStyle: {
     width: '100%',
     height: '100%',
+    borderRadius: 24,
   },
   mapDiagBadge: {
     position: 'absolute',

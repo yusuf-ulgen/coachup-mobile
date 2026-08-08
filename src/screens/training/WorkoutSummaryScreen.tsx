@@ -19,17 +19,23 @@ import {
   X,
 } from 'lucide-react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
+import { WorkoutShareSheet } from './WorkoutShareSheet';
 
 export const WorkoutSummaryScreen: React.FC = () => {
   const navigation = useNavigation<any>();
   const route = useRoute<any>();
+  const [shareSheetVisible, setShareSheetVisible] = useState(false);
 
   const {
     training = { title: 'Fitness', category: { emoji: '🏋️' } },
     durationSeconds = 1800,
+    distanceKm = 0,
     calories = 1,
     avgHeartRate = null,
     maxHeartRate = null,
+    avgPaceMinPerKm = 0,
+    avgSpeedKmh = 0,
+    routePoints = [],
     perceivedEffort = 'Normal',
     perceivedEmoji = '😐',
   } = route.params || {};
@@ -42,16 +48,8 @@ export const WorkoutSummaryScreen: React.FC = () => {
 
   const todayStr = new Date().toISOString().slice(0, 10);
 
-  const handleShare = async () => {
-    try {
-      await Share.share({
-        message: `CoachUP ile ${training.title} antrenmanımı tamamladım! Süre: ${formatDuration(
-          durationSeconds
-        )}, Kalori: ${calories} kcal 🔥`,
-      });
-    } catch (e) {
-      console.error('Share error:', e);
-    }
+  const handleShare = () => {
+    setShareSheetVisible(true);
   };
 
   return (
@@ -158,6 +156,18 @@ export const WorkoutSummaryScreen: React.FC = () => {
           <Text style={styles.closeMainBtnText}>Kapat</Text>
         </TouchableOpacity>
       </View>
+
+      <WorkoutShareSheet
+        visible={shareSheetVisible}
+        onDismiss={() => setShareSheetVisible(false)}
+        training={training}
+        durationSeconds={durationSeconds}
+        distanceKm={distanceKm}
+        totalCalories={calories}
+        avgPaceMinPerKm={avgPaceMinPerKm}
+        avgSpeedKmh={avgSpeedKmh}
+        routePoints={routePoints || training?.route_points || training?.routePoints || []}
+      />
     </View>
   );
 };

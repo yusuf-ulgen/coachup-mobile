@@ -1,3 +1,5 @@
+import * as Location from 'expo-location';
+
 export interface RouteCoordinate {
   latitude: number;
   longitude: number;
@@ -16,12 +18,14 @@ export interface LocationStats {
 
 export class LocationService {
   private static route: any[] = [];
-  private static watchId: number | null = null;
+  private static subscription: Location.LocationSubscription | null = null;
   private static startTime: number = 0;
+  private static initialAltitude: number | null = null;
 
   static async requestPermissions(): Promise<boolean> {
     try {
-      return true;
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      return status === 'granted';
     } catch (e) {
       console.warn('Location permission error:', e);
       return false;
@@ -38,32 +42,46 @@ export class LocationService {
 
     this.route = [];
     this.startTime = Date.now();
+    this.initialAltitude = null;
 
     // Clear previous subscription if any
     this.stopTracking();
 
-    if (typeof navigator !== 'undefined' && navigator.geolocation) {
-      this.watchId = navigator.geolocation.watchPosition(
-        (position) => {
-          const { latitude, longitude, speed, altitude } = position.coords;
-          const stats = this.addRealCoordinate(
-            latitude,
-            longitude,
-            speed || 0,
-            altitude || 0
-          );
-          onLocationUpdate(stats);
-        },
-        (error) => {
-          console.warn('Geolocation watch error:', error);
-        },
-        {
-          enableHighAccuracy: true,
-          timeout: 15000,
-          maximumAge: 5000,
-        } as any
-      );
+    // Fetch initial location immediately
+    try {
+      const initialLoc = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.Balanced,
+      });
+      if (initialLoc && initialLoc.coords) {
+        const stats = this.addRealCoordinate(
+          initialLoc.coords.latitude,
+          initialLoc.coords.longitude,
+          initialLoc.coords.speed || 0,
+          initialLoc.coords.altitude || 0
+        );
+        onLocationUpdate(stats);
+      }
+    } catch (e) {
+      console.warn('Initial location error:', e);
     }
+
+    this.subscription = await Location.watchPositionAsync(
+      {
+        accuracy: Location.Accuracy.High,
+        timeInterval: 2000,
+        distanceInterval: 3,
+      },
+      (position) => {
+        const { latitude, longitude, speed, altitude } = position.coords;
+        const stats = this.addRealCoordinate(
+          latitude,
+          longitude,
+          speed || 0,
+          altitude || 0
+        );
+        onLocationUpdate(stats);
+      }
+    );
   }
 
   static addRealCoordinate(
@@ -81,14 +99,19 @@ export class LocationService {
       },
       timestamp: Date.now(),
     };
+
+    if (altitude && altitude !== 0 && this.initialAltitude === null) {
+      this.initialAltitude = altitude;
+    }
+
     this.route.push(point);
     return this.calculateStats();
   }
 
   static stopTracking(): void {
-    if (this.watchId !== null && typeof navigator !== 'undefined' && navigator.geolocation) {
-      navigator.geolocation.clearWatch(this.watchId);
-      this.watchId = null;
+    if (this.subscription) {
+      this.subscription.remove();
+      this.subscription = null;
     }
   }
 
@@ -106,6 +129,7 @@ export class LocationService {
 
     const lastLoc = this.route[this.route.length - 1];
     let totalDistanceKm = 0;
+    let cumulativeElevationGain = 0;
 
     for (let i = 1; i < this.route.length; i++) {
       totalDistanceKm += this.haversineDistance(
@@ -114,6 +138,12 @@ export class LocationService {
         this.route[i].coords.latitude,
         this.route[i].coords.longitude
       );
+
+      const prevAlt = this.route[i - 1].coords.altitude;
+      const currAlt = this.route[i].coords.altitude;
+      if (currAlt && prevAlt && currAlt > prevAlt) {
+        cumulativeElevationGain += currAlt - prevAlt;
+      }
     }
 
     const timeElapsedSeconds = (Date.now() - this.startTime) / 1000;
@@ -131,12 +161,20 @@ export class LocationService {
       longitude: l.coords.longitude,
     }));
 
+    // Elevation gain relative to start (+0, +1, +2, +3...)
+    const elevationGainM =
+      cumulativeElevationGain > 0
+        ? cumulativeElevationGain
+        : this.initialAltitude !== null && lastLoc.coords.altitude
+        ? Math.max(0, lastLoc.coords.altitude - this.initialAltitude)
+        : 0;
+
     return {
       distanceKm: totalDistanceKm,
       currentSpeed: lastLoc.coords.speed ? lastLoc.coords.speed * 3.6 : 0,
       avgSpeed: avgSpeedKmh,
       paceMinPerKm: paceMinPerKm,
-      altitude: lastLoc.coords.altitude || 0,
+      altitude: Math.round(elevationGainM),
       route: routeCoords,
       lastLatitude: lastLoc.coords.latitude,
       lastLongitude: lastLoc.coords.longitude,
