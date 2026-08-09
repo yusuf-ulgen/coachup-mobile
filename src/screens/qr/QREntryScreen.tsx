@@ -248,7 +248,7 @@ export const QREntryScreen: React.FC<QREntryScreenProps> = ({ navigation }) => {
 
   return (
     <View style={styles.container}>
-      <Header navigation={navigation} onOpenDrawer={() => setMenuVisible(true)} />
+      <Header navigation={navigation} showMenuButton={false} />
       <SideMenu visible={menuVisible} onClose={() => setMenuVisible(false)} navigation={navigation} />
 
       <ScrollView

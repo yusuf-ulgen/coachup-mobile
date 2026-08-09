@@ -221,10 +221,12 @@ class LocationTrackingService : Service() {
                 lastAltitude = alt
             }
 
-            // Auto-pause
-            if (autoPauseEnabled && speedKmh < AUTO_PAUSE_THRESHOLD) {
+            // Auto-pause (only after initial 15s and at least 10m to prevent instant pause on workout start)
+            val elapsedTotalMs = System.currentTimeMillis() - trackingStartMs
+            val initialGracePeriod = elapsedTotalMs > 15_000L && totalDistanceM > 10.0
+            if (autoPauseEnabled && initialGracePeriod && speedKmh < AUTO_PAUSE_THRESHOLD) {
                 lowSpeedCount++
-                if (lowSpeedCount >= 3 && !_isPaused.value) pauseTracking(manual = false)
+                if (lowSpeedCount >= 5 && !_isPaused.value) pauseTracking(manual = false)
             } else if (speedKmh >= AUTO_RESUME_THRESHOLD && _isPaused.value) {
                 lowSpeedCount = 0
                 resumeTracking()

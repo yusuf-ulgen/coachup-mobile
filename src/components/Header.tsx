@@ -23,10 +23,11 @@ export const Header: React.FC<HeaderProps> = ({
   title,
   onMenuPress,
   onNotificationPress,
-  showMenuButton = false,
+  showMenuButton,
 }) => {
   const insets = useSafeAreaInsets();
   const [unreadCount, setUnreadCount] = useState(0);
+  const canShowMenu = showMenuButton !== undefined ? showMenuButton : Boolean(onMenuPress || onOpenDrawer);
 
   useEffect(() => {
     const checkUnread = async () => {
@@ -55,7 +56,7 @@ export const Header: React.FC<HeaderProps> = ({
 
   return (
     <View style={[styles.headerContainer, { paddingTop: Math.max(12, insets.top + 6) }]}>
-      {showMenuButton ? (
+      {canShowMenu ? (
         <TouchableOpacity style={styles.iconButton} onPress={handleMenu} activeOpacity={0.8}>
           <Menu size={20} color={Colors.textDark} />
         </TouchableOpacity>

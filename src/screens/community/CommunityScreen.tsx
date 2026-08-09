@@ -710,7 +710,7 @@ export const CommunityScreen: React.FC<CommunityScreenProps> = ({ navigation }) 
 
   return (
     <View style={styles.container}>
-      <Header navigation={navigation} onOpenDrawer={() => setMenuVisible(true)} />
+      <Header navigation={navigation} showMenuButton={false} />
       <SideMenu visible={menuVisible} onClose={() => setMenuVisible(false)} navigation={navigation} />
 
       {/* Scope Tab (Genel | Salon) */}
@@ -1196,8 +1196,8 @@ const styles = StyleSheet.create({
   // FAB
   fab: {
     position: 'absolute',
-    right: 24,
-    bottom: 90,
+    right: 20,
+    bottom: 20,
     width: 56,
     height: 56,
     borderRadius: 28,
@@ -1205,6 +1205,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     elevation: 6,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 5,
+    zIndex: 99,
   },
   // Snackbar
   snackbar: {

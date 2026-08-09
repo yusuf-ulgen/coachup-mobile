@@ -3,6 +3,7 @@ import { View, StyleSheet, Text, TouchableOpacity, Platform } from 'react-native
 import { NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   Home,
   Calendar,
@@ -17,6 +18,7 @@ import { SplashView } from '../components/SplashView';
 import { AuthService } from '../services/authService';
 import { UserService } from '../services/userService';
 import PusherService from '../services/pusherService';
+import { supabase } from '../services/supabaseClient';
 
 import { LoginScreen } from '../screens/auth/LoginScreen';
 import { RegisterScreen } from '../screens/auth/RegisterScreen';
@@ -69,6 +71,7 @@ const Tab = createBottomTabNavigator();
 const Stack = createNativeStackNavigator();
 
 const CustomTabBar = ({ state, descriptors, navigation }: any) => {
+  const insets = useSafeAreaInsets();
   const [hasActiveGym, setHasActiveGym] = useState(false);
 
   useEffect(() => {
@@ -80,8 +83,10 @@ const CustomTabBar = ({ state, descriptors, navigation }: any) => {
       .catch(() => setHasActiveGym(false));
   }, []);
 
+  const bottomPadding = Math.max(insets.bottom, Platform.OS === 'ios' ? 20 : 12) + 4;
+
   return (
-    <View style={styles.customTabBarContainer}>
+    <View style={[styles.customTabBarContainer, { paddingBottom: bottomPadding }]}>
       <View style={styles.customTabBarRow}>
         {state.routes.map((route: any, index: number) => {
           if (route.name === 'QRTab' && !hasActiveGym) {
@@ -218,7 +223,6 @@ export const AppNavigator: React.FC = () => {
     // Guardian kontrolu yap
     const checkGuardian = async () => {
       try {
-        const { supabase } = await import('../services/supabaseClient');
         const { data } = await supabase
           .from('guardians')
           .select('id')
@@ -239,7 +243,6 @@ export const AppNavigator: React.FC = () => {
     // Streak sync
     const runStreakSync = async () => {
       try {
-        const { supabase } = await import('../services/supabaseClient');
         // Streak guncelle: son antrenman bugune kadar mi?
         const today = new Date().toISOString().split('T')[0];
         const { data: lastSession } = await supabase
@@ -274,7 +277,6 @@ export const AppNavigator: React.FC = () => {
     // Pusher / Supabase Realtime abonelikleri
     const setupSubscriptions = async () => {
       try {
-        const { supabase } = await import('../services/supabaseClient');
         const { data: profile } = await supabase
           .from('users')
           .select('gym_id')

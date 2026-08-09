@@ -26,7 +26,7 @@ npm-debug.*
 yarn-debug.*
 yarn-error.*
 
-# macOS
+# macOS & OS
 .DS_Store
 *.pem
 
@@ -36,9 +36,17 @@ yarn-error.*
 # typescript
 *.tsbuildinfo
 
-# generated native folders
+# generated native folders & IDE
 /ios
 /android
 rn-temp/
 .rn-gitignore
+.idea/
+.claude/
 
+# build artifacts & temporary logs
+*.aab
+*.apk
+scratch/
+.gradle/
+build/

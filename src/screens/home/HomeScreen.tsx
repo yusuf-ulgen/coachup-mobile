@@ -31,6 +31,7 @@ import { GroupClassService, ClassBooking } from '../../services/groupClassServic
 import { GoalService, UserGoal } from '../../services/goalService';
 import { UserService } from '../../services/userService';
 import { NotificationService } from '../../services/notificationService';
+import { supabase } from '../../services/supabaseClient';
 
 import { HomeTabState } from '../../navigation/HomeTabState';
 
@@ -99,11 +100,15 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
     const todayIndex = weekDays.findIndex((w) => w.isToday);
     if (todayIndex >= 0 && flatListRef.current) {
       setTimeout(() => {
-        flatListRef.current?.scrollToIndex({
-          index: Math.max(0, todayIndex - 2),
-          animated: false,
-        });
-      }, 100);
+        try {
+          flatListRef.current?.scrollToIndex({
+            index: Math.max(0, todayIndex - 2),
+            animated: false,
+          });
+        } catch (e) {
+          // Ignore layout scroll errors
+        }
+      }, 150);
     }
   }, []);
 
@@ -130,7 +135,11 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
             };
             const targetTab = tabMap[profile.default_screen];
             if (targetTab) {
-              navigation?.navigate(targetTab);
+              setTimeout(() => {
+                try {
+                  navigation?.navigate(targetTab);
+                } catch (err) {}
+              }, 100);
             }
           }
         }
@@ -145,7 +154,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
       try {
         const user = await AuthService.getCurrentUser();
         if (user?.id) {
-          const { count } = await (await import('../../services/supabaseClient')).supabase
+          const { count } = await supabase
             .from('notifications')
             .select('*', { count: 'exact', head: true })
             .eq('user_id', user.id)
@@ -293,11 +302,13 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
             initialScrollIndex={28}
             onScrollToIndexFailed={(info) => {
               setTimeout(() => {
-                flatListRef.current?.scrollToIndex({
-                  index: Math.max(0, info.index),
-                  animated: false,
-                });
-              }, 100);
+                try {
+                  flatListRef.current?.scrollToIndex({
+                    index: Math.max(0, info.index),
+                    animated: false,
+                  });
+                } catch (e) {}
+              }, 150);
             }}
             getItemLayout={(_, index) => ({
               length: 64,

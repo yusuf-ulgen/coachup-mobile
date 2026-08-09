@@ -707,11 +707,13 @@ fun CalendarScreen(
                             }
                             val isWaiting = participation != null && GymEventService.isWaitingStatus(participation.status)
                             val currentSeats = eventSeatCounts[gymEvent.id] ?: 0
+                            val isPast = isGymEventPast(selectedDate, gymEvent)
                             GymEventCalendarCard(
                                 gymEvent = gymEvent,
                                 currentSeats = currentSeats,
                                 isRegistered = participation != null,
                                 isWaiting = isWaiting,
+                                isPast = isPast,
                                 onJoin = {
                                     val uid = userId?.id ?: return@GymEventCalendarCard
                                     vm.joinGymEvent(uid, gymEvent.id, selectedDate, effectiveShowAllEvents, effectiveShowGymContent)
@@ -1111,6 +1113,7 @@ private fun GymEventCalendarCard(
     currentSeats: Int = 0,
     isRegistered: Boolean = false,
     isWaiting: Boolean = false,
+    isPast: Boolean = false,
     onJoin: () -> Unit = {},
     onLeave: () -> Unit = {},
     modifier: Modifier = Modifier
@@ -1165,6 +1168,12 @@ private fun GymEventCalendarCard(
                 color = Color(0xFFE53935),
                 modifier = Modifier.clickable { onLeave() }
             )
+            isPast -> Text(
+                "Bitti",
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Normal,
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+            )
             isFull -> Text(
                 "Bekleme Listesi",
                 fontSize = 11.sp,
@@ -1180,6 +1189,19 @@ private fun GymEventCalendarCard(
                 modifier = Modifier.clickable { onJoin() }
             )
         }
+    }
+}
+
+private fun isGymEventPast(date: LocalDate, gymEvent: GymEvent): Boolean {
+    val today = LocalDate.now()
+    if (date.isBefore(today)) return true
+    if (date.isAfter(today)) return false
+    val startTime = gymEvent.formattedStartTime ?: return false
+    return try {
+        val start = java.time.LocalTime.parse(startTime.take(5))
+        start.isBefore(java.time.LocalTime.now())
+    } catch (_: Exception) {
+        false
     }
 }
 

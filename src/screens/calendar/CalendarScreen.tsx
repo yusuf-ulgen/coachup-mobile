@@ -250,7 +250,7 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({ navigation }) =>
 
   return (
     <View style={styles.container}>
-      <Header navigation={navigation} onOpenDrawer={() => setMenuVisible(true)} />
+      <Header navigation={navigation} showMenuButton={false} />
       <SideMenu visible={menuVisible} onClose={() => setMenuVisible(false)} navigation={navigation} />
       {navigation?.canGoBack && navigation.canGoBack() && (
         <View style={styles.header}>
@@ -614,6 +614,17 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({ navigation }) =>
                   {gymEvents.map((evt) => {
                     const participation = eventParticipations.find((p) => p.event_id === evt.id);
                     const isJoined = Boolean(participation);
+                    
+                    // Check if event start time has passed
+                    const now = new Date();
+                    const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+                    let isPast = selectedDateStr < todayStr;
+                    if (selectedDateStr === todayStr && evt.start_time) {
+                      const [h, m] = evt.start_time.split(':').map(Number);
+                      const evtTime = new Date(now.getFullYear(), now.getMonth(), now.getDate(), h || 0, m || 0);
+                      if (evtTime < now) isPast = true;
+                    }
+
                     return (
                       <View key={evt.id} style={styles.cardItem}>
                         <View style={styles.iconBox}>
@@ -629,8 +640,14 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({ navigation }) =>
                           </Text>
                         </View>
                         <TouchableOpacity
-                          style={[styles.joinButton, isJoined && styles.joinedButton]}
+                          disabled={isPast && !isJoined}
+                          style={[
+                            styles.joinButton,
+                            isJoined && styles.joinedButton,
+                            isPast && !isJoined && { backgroundColor: '#333333', opacity: 0.7 }
+                          ]}
                           onPress={async () => {
+                            if (isPast && !isJoined) return;
                             const uid = userProfile?.id || userProfile?.user_id;
                             if (!uid) return;
                             try {
@@ -650,9 +667,10 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({ navigation }) =>
                             style={[
                               styles.joinButtonText,
                               isJoined && styles.joinedButtonText,
+                              isPast && !isJoined && { color: '#888888' }
                             ]}
                           >
-                            {isJoined ? 'Ayrıl' : 'Katıl'}
+                            {isPast && !isJoined ? 'Bitti' : isJoined ? 'Ayrıl' : 'Katıl'}
                           </Text>
                         </TouchableOpacity>
                       </View>
