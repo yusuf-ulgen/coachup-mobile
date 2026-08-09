@@ -1,9 +1,11 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Modal, TextInput, Platform } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Svg, { Circle } from 'react-native-svg';
 import { ChevronDown, ChevronUp, Plus, X, ArrowLeft } from 'lucide-react-native';
 import { Colors } from '../../theme/colors';
+import { Collapsible } from '../../components/motion/Collapsible';
+import { SmoothModal } from '../../components/motion/SmoothModal';
 
 const NUTRITION_GOAL = 2500;
 const CONSUMED = 1850;
@@ -144,7 +146,7 @@ export const NutritionScreen = ({ navigation }: any) => {
                 {isExpanded ? <ChevronUp color={Colors.textSecondaryDark} /> : <ChevronDown color={Colors.textSecondaryDark} />}
               </TouchableOpacity>
               
-              {isExpanded && (
+              <Collapsible expanded={isExpanded}>
                 <View style={styles.mealDetails}>
                   {meal.items.map((item, idx) => (
                     <View key={idx} style={styles.foodItem}>
@@ -157,43 +159,41 @@ export const NutritionScreen = ({ navigation }: any) => {
                     <Text style={styles.addFoodText}>Besin Ekle</Text>
                   </TouchableOpacity>
                 </View>
-              )}
+              </Collapsible>
             </View>
           );
         })}
       </ScrollView>
 
       {/* Besin Ekleme Modal */}
-      <Modal visible={modalVisible} transparent animationType="slide">
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Yeni Besin Ekle</Text>
-              <TouchableOpacity onPress={() => setModalVisible(false)}>
-                <X color={Colors.textSecondaryDark} />
-              </TouchableOpacity>
-            </View>
-            <TextInput
-              style={styles.input}
-              placeholder="Besin Adı"
-              placeholderTextColor={Colors.textSecondaryDark}
-              value={foodName}
-              onChangeText={setFoodName}
-            />
-            <TextInput
-              style={styles.input}
-              placeholder="Kalori (kcal)"
-              placeholderTextColor={Colors.textSecondaryDark}
-              keyboardType="numeric"
-              value={foodCalories}
-              onChangeText={setFoodCalories}
-            />
-            <TouchableOpacity style={styles.saveButton} onPress={handleAddFood}>
-              <Text style={styles.saveButtonText}>Ekle</Text>
+      <SmoothModal visible={modalVisible} onClose={() => setModalVisible(false)} variant="bottom-sheet">
+        <View style={styles.modalContent}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>Yeni Besin Ekle</Text>
+            <TouchableOpacity onPress={() => setModalVisible(false)}>
+              <X color={Colors.textSecondaryDark} />
             </TouchableOpacity>
           </View>
+          <TextInput
+            style={styles.input}
+            placeholder="Besin Adı"
+            placeholderTextColor={Colors.textSecondaryDark}
+            value={foodName}
+            onChangeText={setFoodName}
+          />
+          <TextInput
+            style={styles.input}
+            placeholder="Kalori (kcal)"
+            placeholderTextColor={Colors.textSecondaryDark}
+            keyboardType="numeric"
+            value={foodCalories}
+            onChangeText={setFoodCalories}
+          />
+          <TouchableOpacity style={styles.saveButton} onPress={handleAddFood}>
+            <Text style={styles.saveButtonText}>Ekle</Text>
+          </TouchableOpacity>
         </View>
-      </Modal>
+      </SmoothModal>
     </SafeAreaView>
   );
 };

@@ -4,10 +4,10 @@ import {
   Text,
   StyleSheet,
   TouchableOpacity,
-  Modal,
   TextInput,
   ActivityIndicator,
 } from 'react-native';
+import { SmoothModal } from '../../components/motion/SmoothModal';
 import { ArrowLeft, X, Play, Square, Flag, Timer } from 'lucide-react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { Colors } from '../../theme/colors';
@@ -200,40 +200,45 @@ export const RecordAttemptTimedModesScreen: React.FC = () => {
       {(phase === TimedPhase.RUNNING || phase === TimedPhase.ENTER_REPS || phase === TimedPhase.ENTER_ROUNDS) && renderRunning()}
 
       {/* Reps/Rounds Modal */}
-      <Modal visible={showRepsDialog || showRoundsDialog} transparent animationType="fade">
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>{showRepsDialog ? 'Kaç tekrar yaptın?' : 'Kaç tur yaptın?'}</Text>
-            <TextInput
-              style={styles.input}
-              value={showRepsDialog ? repsInput : roundsInput}
-              onChangeText={showRepsDialog ? setRepsInput : setRoundsInput}
-              keyboardType="number-pad"
-              placeholder={showRepsDialog ? 'Tekrar' : 'Tur'}
-              placeholderTextColor={Colors.textSecondaryDark}
-            />
-            <View style={styles.modalActions}>
-              <TouchableOpacity style={styles.modalButton} onPress={() => {
+      <SmoothModal
+        visible={showRepsDialog || showRoundsDialog}
+        onClose={() => {
+          setShowRepsDialog(false);
+          setShowRoundsDialog(false);
+        }}
+        variant="modal"
+      >
+        <View style={styles.modalContent}>
+          <Text style={styles.modalTitle}>{showRepsDialog ? 'Kaç tekrar yaptın?' : 'Kaç tur yaptın?'}</Text>
+          <TextInput
+            style={styles.input}
+            value={showRepsDialog ? repsInput : roundsInput}
+            onChangeText={showRepsDialog ? setRepsInput : setRoundsInput}
+            keyboardType="number-pad"
+            placeholder={showRepsDialog ? 'Tekrar' : 'Tur'}
+            placeholderTextColor={Colors.textSecondaryDark}
+          />
+          <View style={styles.modalActions}>
+            <TouchableOpacity style={styles.modalButton} onPress={() => {
+              setShowRepsDialog(false);
+              setShowRoundsDialog(false);
+              setPhase(TimedPhase.RUNNING);
+            }}>
+              <Text style={styles.modalButtonText}>Geri</Text>
+            </TouchableOpacity>
+            <TouchableOpacity 
+              style={styles.modalButton} 
+              onPress={() => {
                 setShowRepsDialog(false);
                 setShowRoundsDialog(false);
-                setPhase(TimedPhase.RUNNING);
-              }}>
-                <Text style={styles.modalButtonText}>Geri</Text>
-              </TouchableOpacity>
-              <TouchableOpacity 
-                style={styles.modalButton} 
-                onPress={() => {
-                  setShowRepsDialog(false);
-                  setShowRoundsDialog(false);
-                  finishAttempt();
-                }}
-              >
-                <Text style={[styles.modalButtonText, { color: Colors.primary }]}>Kaydet</Text>
-              </TouchableOpacity>
-            </View>
+                finishAttempt();
+              }}
+            >
+              <Text style={[styles.modalButtonText, { color: Colors.primary }]}>Kaydet</Text>
+            </TouchableOpacity>
           </View>
         </View>
-      </Modal>
+      </SmoothModal>
     </View>
   );
 };

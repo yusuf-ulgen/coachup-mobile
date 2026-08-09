@@ -14,6 +14,7 @@ import { useNavigation } from '@react-navigation/native';
 import { ActiveWorkoutManager } from '../services/activeWorkoutManager';
 import { CustomAlert } from './CustomAlertModal';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { MotionTokens } from '../theme/motion';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -89,8 +90,32 @@ export const FloatingActiveWorkoutOverlay: React.FC = () => {
     })
   ).current;
 
-  // Show when there is an active session and user is NOT on ActiveWorkout screen
-  if (!shouldShow || !workoutState.sessionId) {
+  const isVisible = shouldShow && Boolean(workoutState.sessionId);
+  const [mounted, setMounted] = useState(isVisible);
+  const fadeScaleAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    if (isVisible) {
+      setMounted(true);
+      Animated.timing(fadeScaleAnim, {
+        toValue: 1,
+        duration: MotionTokens.duration.normal,
+        easing: MotionTokens.easing.enter,
+        useNativeDriver: true,
+      }).start();
+    } else if (mounted) {
+      Animated.timing(fadeScaleAnim, {
+        toValue: 0,
+        duration: MotionTokens.duration.fast,
+        easing: MotionTokens.easing.exit,
+        useNativeDriver: true,
+      }).start(({ finished }) => {
+        if (finished) setMounted(false);
+      });
+    }
+  }, [isVisible]);
+
+  if (!mounted) {
     return null;
   }
 
@@ -130,15 +155,22 @@ export const FloatingActiveWorkoutOverlay: React.FC = () => {
     });
   };
 
+  const scale = fadeScaleAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0.85, 1],
+  });
+
   return (
     <Animated.View
       style={[
         styles.container,
         { bottom: Math.max(85, insets.bottom + 65) },
         {
+          opacity: fadeScaleAnim,
           transform: [
             { translateX: pan.x },
             { translateY: pan.y },
+            { scale },
           ],
         },
       ]}

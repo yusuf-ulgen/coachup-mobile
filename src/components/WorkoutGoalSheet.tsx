@@ -4,9 +4,10 @@ import {
   Text,
   TouchableOpacity,
   StyleSheet,
-  Modal,
 } from 'react-native';
 import { Colors } from '../theme/colors';
+import { SmoothModal } from './motion/SmoothModal';
+import { FadeView } from './motion/FadeView';
 
 export interface WorkoutGoal {
   type: 'none' | 'distance' | 'duration';
@@ -70,94 +71,96 @@ export const WorkoutGoalSheet: React.FC<WorkoutGoalSheetProps> = ({
   };
 
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <TouchableOpacity style={styles.overlay} activeOpacity={1} onPress={onClose}>
-        <TouchableOpacity style={styles.sheetBox} activeOpacity={1}>
-          <Text style={styles.sheetTitle}>Hedef Belirle</Text>
+    <SmoothModal
+      visible={visible}
+      onClose={onClose}
+      variant="bottom-sheet"
+    >
+      <View style={styles.sheetBox}>
+        <Text style={styles.sheetTitle}>Hedef Belirle</Text>
 
-          {/* Segmented Tab: Mesafe | Süre (Only show Mesafe if isOutdoor is true) */}
-          {isOutdoor ? (
-            <View style={styles.tabRow}>
-              <TouchableOpacity
-                style={[styles.tabBtn, tab === 'distance' && styles.tabBtnActive]}
-                onPress={() => setTab('distance')}
-              >
-                <Text style={[styles.tabBtnText, tab === 'distance' && styles.tabBtnTextActive]}>
-                  Mesafe
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.tabBtn, tab === 'duration' && styles.tabBtnActive]}
-                onPress={() => setTab('duration')}
-              >
-                <Text style={[styles.tabBtnText, tab === 'duration' && styles.tabBtnTextActive]}>
-                  Süre
-                </Text>
-              </TouchableOpacity>
-            </View>
-          ) : (
-            <View style={styles.tabRow}>
-              <View style={[styles.tabBtn, styles.tabBtnActive]}>
-                <Text style={[styles.tabBtnText, styles.tabBtnTextActive]}>Süre</Text>
-              </View>
-            </View>
-          )}
-
-          {/* Options Grid */}
-          <View style={styles.grid}>
-            {tab === 'distance'
-              ? DISTANCE_OPTIONS.map((km) => {
-                  const isSelected = selectedDistance === km;
-                  return (
-                    <TouchableOpacity
-                      key={km}
-                      style={[styles.gridCell, isSelected && styles.gridCellSelected]}
-                      onPress={() => setSelectedDistance(km)}
-                    >
-                      <Text style={[styles.gridMainText, isSelected && styles.gridTextSelected]}>
-                        {km === Math.floor(km) ? km.toString() : km.toFixed(1)}
-                      </Text>
-                      <Text style={[styles.gridSubText, isSelected && styles.gridTextSelected]}>
-                        km
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })
-              : DURATION_OPTIONS.map((dur) => {
-                  const isSelected = selectedDuration === dur.secs;
-                  return (
-                    <TouchableOpacity
-                      key={dur.secs}
-                      style={[styles.gridCell, isSelected && styles.gridCellSelected]}
-                      onPress={() => setSelectedDuration(dur.secs)}
-                    >
-                      <Text style={[styles.gridMainText, isSelected && styles.gridTextSelected]}>
-                        {dur.label}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
-          </View>
-
-          {/* Actions: Hedefsiz | Tamam */}
-          <View style={styles.actionsRow}>
+        {/* Segmented Tab: Mesafe | Süre (Only show Mesafe if isOutdoor is true) */}
+        {isOutdoor ? (
+          <View style={styles.tabRow}>
             <TouchableOpacity
-              style={styles.freeRunBtn}
-              onPress={() => {
-                onSelectGoal({ type: 'none', label: 'Hedefsiz' });
-                onClose();
-              }}
+              style={[styles.tabBtn, tab === 'distance' && styles.tabBtnActive]}
+              onPress={() => setTab('distance')}
             >
-              <Text style={styles.freeRunBtnText}>Hedefsiz</Text>
+              <Text style={[styles.tabBtnText, tab === 'distance' && styles.tabBtnTextActive]}>
+                Mesafe
+              </Text>
             </TouchableOpacity>
-
-            <TouchableOpacity style={styles.confirmBtn} onPress={handleConfirm}>
-              <Text style={styles.confirmBtnText}>Tamam</Text>
+            <TouchableOpacity
+              style={[styles.tabBtn, tab === 'duration' && styles.tabBtnActive]}
+              onPress={() => setTab('duration')}
+            >
+              <Text style={[styles.tabBtnText, tab === 'duration' && styles.tabBtnTextActive]}>
+                Süre
+              </Text>
             </TouchableOpacity>
           </View>
-        </TouchableOpacity>
-      </TouchableOpacity>
-    </Modal>
+        ) : (
+          <View style={styles.tabRow}>
+            <View style={[styles.tabBtn, styles.tabBtnActive]}>
+              <Text style={[styles.tabBtnText, styles.tabBtnTextActive]}>Süre</Text>
+            </View>
+          </View>
+        )}
+
+        {/* Options Grid with FadeView */}
+        <FadeView activeKey={tab} style={styles.grid}>
+          {tab === 'distance'
+            ? DISTANCE_OPTIONS.map((km) => {
+                const isSelected = selectedDistance === km;
+                return (
+                  <TouchableOpacity
+                    key={km}
+                    style={[styles.gridCell, isSelected && styles.gridCellSelected]}
+                    onPress={() => setSelectedDistance(km)}
+                  >
+                    <Text style={[styles.gridMainText, isSelected && styles.gridTextSelected]}>
+                      {km === Math.floor(km) ? km.toString() : km.toFixed(1)}
+                    </Text>
+                    <Text style={[styles.gridSubText, isSelected && styles.gridTextSelected]}>
+                      km
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })
+            : DURATION_OPTIONS.map((dur) => {
+                const isSelected = selectedDuration === dur.secs;
+                return (
+                  <TouchableOpacity
+                    key={dur.secs}
+                    style={[styles.gridCell, isSelected && styles.gridCellSelected]}
+                    onPress={() => setSelectedDuration(dur.secs)}
+                  >
+                    <Text style={[styles.gridMainText, isSelected && styles.gridTextSelected]}>
+                      {dur.label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+        </FadeView>
+
+        {/* Actions: Hedefsiz | Tamam */}
+        <View style={styles.actionsRow}>
+          <TouchableOpacity
+            style={styles.freeRunBtn}
+            onPress={() => {
+              onSelectGoal({ type: 'none', label: 'Hedefsiz' });
+              onClose();
+            }}
+          >
+            <Text style={styles.freeRunBtnText}>Hedefsiz</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity style={styles.confirmBtn} onPress={handleConfirm}>
+            <Text style={styles.confirmBtnText}>Tamam</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </SmoothModal>
   );
 };
 

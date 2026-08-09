@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Modal, TextInput } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Colors } from '../../theme/colors';
@@ -8,6 +8,7 @@ import { DateTimePickerModal } from '../../components/DateTimePickerModal';
 import { feedback } from '../../services/feedbackService';
 import { supabase } from '../../services/supabaseClient';
 import { AuthService } from '../../services/authService';
+import { SmoothModal } from '../../components/motion/SmoothModal';
 
 export const ReservationsScreen = ({ navigation }: any) => {
   const [reservations, setReservations] = useState<any[]>([]);
@@ -221,61 +222,59 @@ export const ReservationsScreen = ({ navigation }: any) => {
       </View>
 
       {/* Rezervasyon Yapma Dialogu */}
-      <Modal visible={modalVisible} transparent animationType="slide">
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContainer}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Rezervasyon Yap</Text>
-              <TouchableOpacity onPress={() => setModalVisible(false)}>
-                <X color={Colors.text} size={24} />
-              </TouchableOpacity>
-            </View>
-            <Text style={styles.modalSub}>Seçilen Alan: {selectedArea}</Text>
-            
-            <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>Tarih</Text>
-              <TouchableOpacity 
-                onPress={() => setShowDatePicker(true)}
-                style={[styles.input, { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }]}
-              >
-                <Text style={{ color: resDate ? Colors.text : Colors.textSecondary }}>
-                  {resDate || 'Tarih Seçin (YYYY-MM-DD)'}
-                </Text>
-                <Calendar size={18} color={Colors.primary} />
-              </TouchableOpacity>
-            </View>
-            
-            <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>Saat Aralığı</Text>
-              <TouchableOpacity 
-                onPress={() => setShowTimePicker(true)}
-                style={[styles.input, { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }]}
-              >
-                <Text style={{ color: resTime ? Colors.text : Colors.textSecondary }}>
-                  {resTime || 'Saat Seçin (Örn: 18:00 - 19:00)'}
-                </Text>
-                <Clock size={18} color={Colors.primary} />
-              </TouchableOpacity>
-            </View>
-            
-            <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>Not (Opsiyonel)</Text>
-              <TextInput 
-                style={[styles.input, styles.textArea]} 
-                placeholder="Örn: Ekipman talebi..." 
-                placeholderTextColor={Colors.textSecondary}
-                multiline
-                value={reservationNote}
-                onChangeText={setReservationNote}
-              />
-            </View>
-
-            <TouchableOpacity style={styles.submitBtn} onPress={handleMakeReservation}>
-              <Text style={styles.submitBtnText}>Rezervasyonu Tamamla</Text>
+      <SmoothModal visible={modalVisible} onClose={() => setModalVisible(false)} variant="bottom-sheet">
+        <View style={styles.modalContainer}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>Rezervasyon Yap</Text>
+            <TouchableOpacity onPress={() => setModalVisible(false)}>
+              <X color={Colors.text} size={24} />
             </TouchableOpacity>
           </View>
+          <Text style={styles.modalSub}>Seçilen Alan: {selectedArea}</Text>
+          
+          <View style={styles.inputGroup}>
+            <Text style={styles.inputLabel}>Tarih</Text>
+            <TouchableOpacity 
+              onPress={() => setShowDatePicker(true)}
+              style={[styles.input, { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }]}
+            >
+              <Text style={{ color: resDate ? Colors.text : Colors.textSecondary }}>
+                {resDate || 'Tarih Seçin (YYYY-MM-DD)'}
+              </Text>
+              <Calendar size={18} color={Colors.primary} />
+            </TouchableOpacity>
+          </View>
+          
+          <View style={styles.inputGroup}>
+            <Text style={styles.inputLabel}>Saat Aralığı</Text>
+            <TouchableOpacity 
+              onPress={() => setShowTimePicker(true)}
+              style={[styles.input, { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }]}
+            >
+              <Text style={{ color: resTime ? Colors.text : Colors.textSecondary }}>
+                {resTime || 'Saat Seçin (Örn: 18:00 - 19:00)'}
+              </Text>
+              <Clock size={18} color={Colors.primary} />
+            </TouchableOpacity>
+          </View>
+          
+          <View style={styles.inputGroup}>
+            <Text style={styles.inputLabel}>Not (Opsiyonel)</Text>
+            <TextInput 
+              style={[styles.input, styles.textArea]} 
+              placeholder="Örn: Ekipman talebi..." 
+              placeholderTextColor={Colors.textSecondary}
+              multiline
+              value={reservationNote}
+              onChangeText={setReservationNote}
+            />
+          </View>
+
+          <TouchableOpacity style={styles.submitBtn} onPress={handleMakeReservation}>
+            <Text style={styles.submitBtnText}>Rezervasyonu Tamamla</Text>
+          </TouchableOpacity>
         </View>
-      </Modal>
+      </SmoothModal>
 
       {/* Date & Time Picker Modals */}
       <DateTimePickerModal

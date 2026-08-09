@@ -24,6 +24,8 @@ import { Colors } from '../../theme/colors';
 import { AuthService } from '../../services/authService';
 import { UserService } from '../../services/userService';
 import { supabase } from '../../services/supabaseClient';
+import { Collapsible } from '../../components/motion/Collapsible';
+import { FadeView } from '../../components/motion/FadeView';
 
 interface PersonalRecordsScreenProps {
   navigation?: any;
@@ -353,8 +355,9 @@ export const PersonalRecordsScreen: React.FC<PersonalRecordsScreenProps> = ({ na
             </View>
           )}
 
-          {/* ── Tab 0: Antrenmanlar ──────────────────────────────────────── */}
-          {selectedTab === 0 && (
+          <FadeView activeKey={selectedTab}>
+            {/* ── Tab 0: Antrenmanlar ──────────────────────────────────────── */}
+            {selectedTab === 0 && (
             <View style={styles.sectionContainer}>
               <View style={styles.sectionHeaderRow}>
                 <Text style={styles.sectionTitle}>Antrenmanlar</Text>
@@ -371,7 +374,7 @@ export const PersonalRecordsScreen: React.FC<PersonalRecordsScreenProps> = ({ na
               </View>
 
               {/* Dropdown Menu */}
-              {showWorkoutFilterDropdown && !selectedDayStr && (
+              <FadeView visible={showWorkoutFilterDropdown && !selectedDayStr}>
                 <View style={styles.dropdownMenu}>
                   {['Bu hafta', 'Bu ay', 'Tüm zamanlar'].map((option) => (
                     <TouchableOpacity
@@ -393,7 +396,7 @@ export const PersonalRecordsScreen: React.FC<PersonalRecordsScreenProps> = ({ na
                     </TouchableOpacity>
                   ))}
                 </View>
-              )}
+              </FadeView>
 
               {filteredWorkouts.length === 0 ? (
                 <Text style={styles.emptyText}>Bu dönemde tamamlanan antrenman yok.</Text>
@@ -436,7 +439,7 @@ export const PersonalRecordsScreen: React.FC<PersonalRecordsScreenProps> = ({ na
               </View>
 
               {/* Dropdown Menu */}
-              {showRecordFilterDropdown && !selectedDayStr && (
+              <FadeView visible={showRecordFilterDropdown && !selectedDayStr}>
                 <View style={styles.dropdownMenu}>
                   {['Tüm zamanlar', 'Bu hafta', 'Bu ay'].map((option) => (
                     <TouchableOpacity
@@ -458,7 +461,7 @@ export const PersonalRecordsScreen: React.FC<PersonalRecordsScreenProps> = ({ na
                     </TouchableOpacity>
                   ))}
                 </View>
-              )}
+              </FadeView>
 
               {filteredRecords.length === 0 ? (
                 <View style={styles.emptyBox}>
@@ -498,20 +501,21 @@ export const PersonalRecordsScreen: React.FC<PersonalRecordsScreenProps> = ({ na
                         </Text>
                       </View>
 
-                      {isExpanded && (
+                      <Collapsible expanded={isExpanded}>
                         <View style={styles.prCardDetail}>
                           <Text style={styles.prDetailText}>
                             Tekrar: {item.reps || 1} · Ağırlık: {item.weight_kg || 0} kg
                           </Text>
                           {item.notes && <Text style={styles.prNotesText}>Not: {item.notes}</Text>}
                         </View>
-                      )}
+                      </Collapsible>
                     </TouchableOpacity>
                   );
                 })
               )}
             </View>
           )}
+          </FadeView>
         </ScrollView>
       )}
     </View>

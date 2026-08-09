@@ -13,7 +13,6 @@ import {
   Dimensions,
   TouchableWithoutFeedback,
   Keyboard,
-  Modal,
 } from 'react-native';
 import { feedback } from '../../services/feedbackService';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -22,6 +21,7 @@ import { Eye, EyeOff, Mail, Fingerprint } from 'lucide-react-native';
 import { Colors } from '../../theme/colors';
 import { AuthService } from '../../services/authService';
 import { GYM_CONFIG } from '../../config/gym';
+import { SmoothModal } from '../../components/motion/SmoothModal';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -253,54 +253,51 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
         </View>
 
         {/* E-posta Doğrulama Modalı */}
-        <Modal
+        <SmoothModal
           visible={showVerificationModal}
-          transparent
-          animationType="fade"
-          onRequestClose={() => setShowVerificationModal(false)}
+          onClose={() => setShowVerificationModal(false)}
+          variant="modal"
         >
-          <View style={styles.modalOverlay}>
-            <View style={styles.modalContent}>
-              <View style={styles.modalIconContainer}>
-                <Mail size={32} color={Colors.primary} />
-              </View>
-              <Text style={styles.modalTitle}>E-posta Doğrulama</Text>
-              <Text style={styles.modalMessage}>
-                Hesabınızı kullanmaya başlamak için e-posta adresinizi doğrulamanız gerekmektedir. Gelen kutunuzu kontrol edin.
-              </Text>
-              
-              <TouchableOpacity
-                style={[styles.primaryButton, { marginTop: 24 }]}
-                onPress={async () => {
-                  try {
-                    setResendLoading(true);
-                    await AuthService.resendConfirmationEmail(email.trim());
-                    feedback.info({ title: 'Bilgi', message: 'Doğrulama e-postası tekrar gönderildi.' });
-                  } catch (e: any) {
-                    feedback.error({ title: 'Hata', message: e, fallbackMessage: 'Gönderilemedi.' });
-                  } finally {
-                    setResendLoading(false);
-                    setShowVerificationModal(false);
-                  }
-                }}
-                disabled={resendLoading}
-              >
-                {resendLoading ? (
-                  <ActivityIndicator color={Colors.allWhite} />
-                ) : (
-                  <Text style={styles.buttonText}>Tekrar Gönder</Text>
-                )}
-              </TouchableOpacity>
-              
-              <TouchableOpacity
-                style={styles.modalCancelButton}
-                onPress={() => setShowVerificationModal(false)}
-              >
-                <Text style={styles.modalCancelText}>Kapat</Text>
-              </TouchableOpacity>
+          <View style={styles.modalContent}>
+            <View style={styles.modalIconContainer}>
+              <Mail size={32} color={Colors.primary} />
             </View>
+            <Text style={styles.modalTitle}>E-posta Doğrulama</Text>
+            <Text style={styles.modalMessage}>
+              Hesabınızı kullanmaya başlamak için e-posta adresinizi doğrulamanız gerekmektedir. Gelen kutunuzu kontrol edin.
+            </Text>
+            
+            <TouchableOpacity
+              style={[styles.primaryButton, { marginTop: 24 }]}
+              onPress={async () => {
+                try {
+                  setResendLoading(true);
+                  await AuthService.resendConfirmationEmail(email.trim());
+                  feedback.info({ title: 'Bilgi', message: 'Doğrulama e-postası tekrar gönderildi.' });
+                } catch (e: any) {
+                  feedback.error({ title: 'Hata', message: e, fallbackMessage: 'Gönderilemedi.' });
+                } finally {
+                  setResendLoading(false);
+                  setShowVerificationModal(false);
+                }
+              }}
+              disabled={resendLoading}
+            >
+              {resendLoading ? (
+                <ActivityIndicator color={Colors.allWhite} />
+              ) : (
+                <Text style={styles.buttonText}>Tekrar Gönder</Text>
+              )}
+            </TouchableOpacity>
+            
+            <TouchableOpacity
+              style={styles.modalCancelButton}
+              onPress={() => setShowVerificationModal(false)}
+            >
+              <Text style={styles.modalCancelText}>Kapat</Text>
+            </TouchableOpacity>
           </View>
-        </Modal>
+        </SmoothModal>
 
       </ScrollView>
       </KeyboardAvoidingView>

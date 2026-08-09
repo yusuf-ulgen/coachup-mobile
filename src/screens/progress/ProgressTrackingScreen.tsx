@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Modal, TextInput, Image, ActivityIndicator, Platform } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Image, ActivityIndicator, Platform } from 'react-native';
 import { feedback } from '../../services/feedbackService';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Camera, Image as ImageIcon, Plus, X, ArrowLeft } from 'lucide-react-native';
@@ -7,6 +7,8 @@ import * as ImagePicker from 'expo-image-picker';
 import { Colors } from '../../theme/colors';
 import { supabase } from '../../services/supabaseClient';
 import { useAuth } from '../../context/AuthContext';
+import { SmoothModal } from '../../components/motion/SmoothModal';
+import { FadeView } from '../../components/motion/FadeView';
 
 export const ProgressTrackingScreen = ({ navigation }: any) => {
   const { session } = useAuth();
@@ -237,47 +239,47 @@ export const ProgressTrackingScreen = ({ navigation }: any) => {
       </View>
 
       <ScrollView contentContainerStyle={styles.scrollContent}>
-        {activeTab === 'measurements' ? renderMeasurementTab() : renderPhotosTab()}
+        <FadeView activeKey={activeTab}>
+          {activeTab === 'measurements' ? renderMeasurementTab() : renderPhotosTab()}
+        </FadeView>
       </ScrollView>
 
       {/* Yeni Ölçüm Modal */}
-      <Modal visible={modalVisible} transparent animationType="slide">
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Yeni Ölçüm Ekle</Text>
-              <TouchableOpacity onPress={() => setModalVisible(false)}>
-                <X color={Colors.textSecondaryDark} />
-              </TouchableOpacity>
+      <SmoothModal visible={modalVisible} onClose={() => setModalVisible(false)} variant="bottom-sheet">
+        <View style={styles.modalContent}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>Yeni Ölçüm Ekle</Text>
+            <TouchableOpacity onPress={() => setModalVisible(false)}>
+              <X color={Colors.textSecondaryDark} />
+            </TouchableOpacity>
+          </View>
+          <ScrollView style={styles.modalScroll}>
+            <View style={styles.inputGroup}>
+              <Text style={styles.inputLabel}>Kilo (kg)</Text>
+              <TextInput style={styles.input} keyboardType="numeric" value={newMeasurement.weight} onChangeText={t => setNewMeasurement(prev => ({...prev, weight: t}))} />
             </View>
-            <ScrollView style={styles.modalScroll}>
-              <View style={styles.inputGroup}>
-                <Text style={styles.inputLabel}>Kilo (kg)</Text>
-                <TextInput style={styles.input} keyboardType="numeric" value={newMeasurement.weight} onChangeText={t => setNewMeasurement(prev => ({...prev, weight: t}))} />
-              </View>
-              <View style={styles.inputGroup}>
-                <Text style={styles.inputLabel}>Yağ Oranı (%)</Text>
-                <TextInput style={styles.input} keyboardType="numeric" value={newMeasurement.bodyFat} onChangeText={t => setNewMeasurement(prev => ({...prev, bodyFat: t}))} />
-              </View>
-              <View style={styles.inputGroup}>
-                <Text style={styles.inputLabel}>Göğüs (cm)</Text>
-                <TextInput style={styles.input} keyboardType="numeric" value={newMeasurement.chest} onChangeText={t => setNewMeasurement(prev => ({...prev, chest: t}))} />
-              </View>
-              <View style={styles.inputGroup}>
-                <Text style={styles.inputLabel}>Bel (cm)</Text>
-                <TextInput style={styles.input} keyboardType="numeric" value={newMeasurement.waist} onChangeText={t => setNewMeasurement(prev => ({...prev, waist: t}))} />
-              </View>
-              <View style={styles.inputGroup}>
-                <Text style={styles.inputLabel}>Kalça (cm)</Text>
-                <TextInput style={styles.input} keyboardType="numeric" value={newMeasurement.hips} onChangeText={t => setNewMeasurement(prev => ({...prev, hips: t}))} />
-              </View>
-            </ScrollView>
+            <View style={styles.inputGroup}>
+              <Text style={styles.inputLabel}>Yağ Oranı (%)</Text>
+              <TextInput style={styles.input} keyboardType="numeric" value={newMeasurement.bodyFat} onChangeText={t => setNewMeasurement(prev => ({...prev, bodyFat: t}))} />
+            </View>
+            <View style={styles.inputGroup}>
+              <Text style={styles.inputLabel}>Göğüs (cm)</Text>
+              <TextInput style={styles.input} keyboardType="numeric" value={newMeasurement.chest} onChangeText={t => setNewMeasurement(prev => ({...prev, chest: t}))} />
+            </View>
+            <View style={styles.inputGroup}>
+              <Text style={styles.inputLabel}>Bel (cm)</Text>
+              <TextInput style={styles.input} keyboardType="numeric" value={newMeasurement.waist} onChangeText={t => setNewMeasurement(prev => ({...prev, waist: t}))} />
+            </View>
+            <View style={styles.inputGroup}>
+              <Text style={styles.inputLabel}>Kalça (cm)</Text>
+              <TextInput style={styles.input} keyboardType="numeric" value={newMeasurement.hips} onChangeText={t => setNewMeasurement(prev => ({...prev, hips: t}))} />
+            </View>
             <TouchableOpacity style={styles.saveButton} onPress={handleSaveMeasurement}>
               <Text style={styles.saveButtonText}>Kaydet</Text>
             </TouchableOpacity>
-          </View>
+          </ScrollView>
         </View>
-      </Modal>
+      </SmoothModal>
     </SafeAreaView>
   );
 };

@@ -5,9 +5,9 @@ import {
   TouchableOpacity,
   StyleSheet,
   ScrollView,
-  Modal,
   Animated,
 } from 'react-native';
+import { SmoothModal } from '../../components/motion/SmoothModal';
 import { Colors } from '../../theme/colors';
 import { ArrowLeft, X, Flame, Check, AlertCircle } from 'lucide-react-native';
 import { supabase } from '../../services/supabaseClient';
@@ -218,76 +218,73 @@ export const RecordAttemptSessionScreen = ({ route, navigation }: any) => {
       </View>
 
       {/* ── RPE Zorluk Puanı Popup Modal ─────────────────────────────────── */}
-      <Modal
+      <SmoothModal
         visible={showRpeModal}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setShowRpeModal(false)}
+        onClose={() => setShowRpeModal(false)}
+        variant="modal"
       >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalCard}>
-            <View style={styles.modalHeaderRow}>
-              <Flame size={28} color={Colors.primary} />
-              <Text style={styles.modalTitle}>RPE Zorluk Derecesi</Text>
-            </View>
-            <Text style={styles.modalSub}>
-              Bu deneme seni ne kadar zorladı? Zorluk derecesini (1-10) seçin.
-            </Text>
-
-            {/* 1 - 10 Score Rating Buttons Grid */}
-            <View style={styles.rpeGrid}>
-              {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((num) => {
-                const badgeStyle = getRpeBadgeStyle(num);
-                const isSelected = selectedRpe === num;
-                return (
-                  <TouchableOpacity
-                    key={num}
-                    style={[
-                      styles.rpeItemBtn,
-                      isSelected && {
-                        backgroundColor: Colors.primary,
-                        borderColor: Colors.primary,
-                      },
-                    ]}
-                    onPress={() => setSelectedRpe(num)}
-                    activeOpacity={0.8}
-                  >
-                    <Text
-                      style={[
-                        styles.rpeItemNumText,
-                        isSelected && { color: Colors.allWhite, fontWeight: '800' },
-                      ]}
-                    >
-                      {num}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-
-            {/* Selected Rating Description */}
-            <View style={styles.selectedRpeInfoBox}>
-              <Text style={styles.selectedRpeInfoText}>
-                {selectedRpe <= 3
-                  ? '🟢 Çok Kolay (RPE 1-3) · Zahmetsizce yapıldı'
-                  : selectedRpe <= 7
-                  ? '🟠 Orta / İdeal (RPE 4-7) · Zorladı ama form bozulmadı'
-                  : '🔴 Maksimum Efor (RPE 8-10) · Son limite kadar zorlandı'}
-              </Text>
-            </View>
-
-            {/* Modal Actions */}
-            <TouchableOpacity
-              style={styles.modalConfirmBtn}
-              onPress={() => handleConfirmRpe(selectedRpe)}
-              activeOpacity={0.8}
-            >
-              <Check size={20} color={Colors.allWhite} />
-              <Text style={styles.modalConfirmBtnText}>Kaydet ve Devam Et</Text>
-            </TouchableOpacity>
+        <View style={styles.modalCard}>
+          <View style={styles.modalHeaderRow}>
+            <Flame size={28} color={Colors.primary} />
+            <Text style={styles.modalTitle}>RPE Zorluk Derecesi</Text>
           </View>
+          <Text style={styles.modalSub}>
+            Bu deneme seni ne kadar zorladı? Zorluk derecesini (1-10) seçin.
+          </Text>
+
+          {/* 1 - 10 Score Rating Buttons Grid */}
+          <View style={styles.rpeGrid}>
+            {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((num) => {
+              const badgeStyle = getRpeBadgeStyle(num);
+              const isSelected = selectedRpe === num;
+              return (
+                <TouchableOpacity
+                  key={num}
+                  style={[
+                    styles.rpeItemBtn,
+                    isSelected && {
+                      backgroundColor: Colors.primary,
+                      borderColor: Colors.primary,
+                    },
+                  ]}
+                  onPress={() => setSelectedRpe(num)}
+                  activeOpacity={0.8}
+                >
+                  <Text
+                    style={[
+                      styles.rpeItemNumText,
+                      isSelected && { color: Colors.allWhite, fontWeight: '800' },
+                    ]}
+                  >
+                    {num}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+
+          {/* Selected Rating Description */}
+          <View style={styles.selectedRpeInfoBox}>
+            <Text style={styles.selectedRpeInfoText}>
+              {selectedRpe <= 3
+                ? '🟢 Çok Kolay (RPE 1-3) · Zahmetsizce yapıldı'
+                : selectedRpe <= 7
+                ? '🟠 Orta / İdeal (RPE 4-7) · Zorladı ama form bozulmadı'
+                : '🔴 Maksimum Efor (RPE 8-10) · Son limite kadar zorlandı'}
+            </Text>
+          </View>
+
+          {/* Modal Actions */}
+          <TouchableOpacity
+            style={styles.modalConfirmBtn}
+            onPress={() => handleConfirmRpe(selectedRpe)}
+            activeOpacity={0.8}
+          >
+            <Check size={20} color={Colors.allWhite} />
+            <Text style={styles.modalConfirmBtnText}>Kaydet ve Devam Et</Text>
+          </TouchableOpacity>
         </View>
-      </Modal>
+      </SmoothModal>
     </View>
   );
 };

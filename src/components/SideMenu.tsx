@@ -4,10 +4,10 @@ import {
   Text,
   TouchableOpacity,
   StyleSheet,
-  Modal,
   ScrollView,
   Dimensions,
 } from 'react-native';
+import { SmoothModal } from './motion/SmoothModal';
 import { feedback } from '../services/feedbackService';
 import {
   X,
@@ -118,132 +118,123 @@ export const SideMenu: React.FC<SideMenuProps> = ({
   const isAdmin = userProfile?.role === 'admin' || userProfile?.role === 'gym_manager';
 
   return (
-    <Modal
+    <SmoothModal
       visible={visible}
-      animationType="fade"
-      transparent={true}
-      onRequestClose={onClose}
+      onClose={onClose}
+      variant="drawer-left"
+      drawerWidth={DRAWER_WIDTH}
     >
-      <View style={styles.overlay}>
-        {/* Backdrop clickable area */}
-        <TouchableOpacity
-          style={styles.backdrop}
-          activeOpacity={1}
-          onPress={onClose}
-        />
-
-        {/* Drawer Sheet Content */}
-        <View
-          style={[
-            styles.drawerSheet,
-            {
-              paddingTop: Math.max(12, insets.top + 8),
-              paddingBottom: Math.max(16, insets.bottom + 12),
-            },
-          ]}
-        >
-          <View style={{ flex: 1 }}>
-            {/* Top Header Row: User Info (Left) & Close Button (Right) */}
-            <View style={styles.topHeaderRow}>
-              <TouchableOpacity
-                style={styles.userCard}
-                onPress={() => {
-                  onClose();
-                  if (onNavigate) onNavigate('Profile');
-                  else if (navigation) navigation.navigate('Profile');
-                }}
-                activeOpacity={0.8}
-              >
-                <User size={24} color={Colors.primary} />
-                <View style={styles.userInfoText}>
-                  <Text style={styles.userName} numberOfLines={1}>
-                    {displayName}
-                  </Text>
-                  <Text style={styles.userSubtext} numberOfLines={1}>
-                    {gymSubTitle}
-                  </Text>
-                </View>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.closeButton}
-                onPress={onClose}
-                activeOpacity={0.8}
-              >
-                <X size={18} color={Colors.textDark} />
-              </TouchableOpacity>
-            </View>
-
-            {/* Menu Section Title */}
-            <Text style={styles.menuHeading}>Menü</Text>
-
-            {/* Menü Öğeleri Listesi */}
-            <ScrollView
-              style={styles.menuScrollView}
-              showsVerticalScrollIndicator={false}
+      {/* Drawer Sheet Content */}
+      <View
+        style={[
+          styles.drawerSheet,
+          {
+            paddingTop: Math.max(12, insets.top + 8),
+            paddingBottom: Math.max(16, insets.bottom + 12),
+          },
+        ]}
+      >
+        <View style={{ flex: 1 }}>
+          {/* Top Header Row: User Info (Left) & Close Button (Right) */}
+          <View style={styles.topHeaderRow}>
+            <TouchableOpacity
+              style={styles.userCard}
+              onPress={() => {
+                onClose();
+                if (onNavigate) onNavigate('Profile');
+                else if (navigation) navigation.navigate('Profile');
+              }}
+              activeOpacity={0.8}
             >
-              {menuItems
-                .filter((item) => {
-                  // Sadece aktif salon üyelerine salon-only menü göster
-                  if (item.salonOnly && (!hasActiveMembership || userProfile?.is_individual)) return false;
-                  return true;
-                })
-                .map((item) => {
-                const IconComp = item.icon;
-                return (
-                  <TouchableOpacity
-                    key={item.route}
-                    style={styles.menuItemRow}
-                    onPress={() => {
-                      onClose();
-                      if (onNavigate) {
-                        onNavigate(item.route);
-                      } else if (navigation) {
-                        navigation.navigate(item.route);
-                      }
-                    }}
-                    activeOpacity={0.7}
-                  >
-                    <IconComp size={20} color={Colors.primary} />
-                    <Text style={styles.menuItemTitle}>{item.title}</Text>
-                    <ChevronRight size={18} color={Colors.primary} />
-                  </TouchableOpacity>
-                );
-              })}
+              <User size={24} color={Colors.primary} />
+              <View style={styles.userInfoText}>
+                <Text style={styles.userName} numberOfLines={1}>
+                  {displayName}
+                </Text>
+                <Text style={styles.userSubtext} numberOfLines={1}>
+                  {gymSubTitle}
+                </Text>
+              </View>
+            </TouchableOpacity>
 
-              {isAdmin && (
+            <TouchableOpacity
+              style={styles.closeButton}
+              onPress={onClose}
+              activeOpacity={0.8}
+            >
+              <X size={18} color={Colors.textDark} />
+            </TouchableOpacity>
+          </View>
+
+          {/* Menu Section Title */}
+          <Text style={styles.menuHeading}>Menü</Text>
+
+          {/* Menü Öğeleri Listesi */}
+          <ScrollView
+            style={styles.menuScrollView}
+            showsVerticalScrollIndicator={false}
+          >
+            {menuItems
+              .filter((item) => {
+                // Sadece aktif salon üyelerine salon-only menü göster
+                if (item.salonOnly && (!hasActiveMembership || userProfile?.is_individual)) return false;
+                return true;
+              })
+              .map((item) => {
+              const IconComp = item.icon;
+              return (
                 <TouchableOpacity
+                  key={item.route}
                   style={styles.menuItemRow}
                   onPress={() => {
                     onClose();
                     if (onNavigate) {
-                      onNavigate('AdminDashboard');
+                      onNavigate(item.route);
                     } else if (navigation) {
-                      navigation.navigate('AdminDashboard');
+                      navigation.navigate(item.route);
                     }
                   }}
                   activeOpacity={0.7}
                 >
-                  <Shield size={20} color={Colors.primary} />
-                  <Text style={styles.menuItemTitle}>Admin Panel</Text>
+                  <IconComp size={20} color={Colors.primary} />
+                  <Text style={styles.menuItemTitle}>{item.title}</Text>
                   <ChevronRight size={18} color={Colors.primary} />
                 </TouchableOpacity>
-              )}
-            </ScrollView>
-          </View>
+              );
+            })}
 
-          {/* Logout Button Pinned to Bottom */}
-          <TouchableOpacity
-            style={styles.logoutButton}
-            onPress={handleLogout}
-            activeOpacity={0.7}
-          >
-            <LogOut size={20} color={Colors.textSecondaryDark} />
-            <Text style={styles.logoutText}>Çıkış Yap</Text>
-          </TouchableOpacity>
+            {isAdmin && (
+              <TouchableOpacity
+                style={styles.menuItemRow}
+                onPress={() => {
+                  onClose();
+                  if (onNavigate) {
+                    onNavigate('AdminDashboard');
+                  } else if (navigation) {
+                    navigation.navigate('AdminDashboard');
+                  }
+                }}
+                activeOpacity={0.7}
+              >
+                <Shield size={20} color={Colors.primary} />
+                <Text style={styles.menuItemTitle}>Admin Panel</Text>
+                <ChevronRight size={18} color={Colors.primary} />
+              </TouchableOpacity>
+            )}
+          </ScrollView>
         </View>
+
+        {/* Logout Button Pinned to Bottom */}
+        <TouchableOpacity
+          style={styles.logoutButton}
+          onPress={handleLogout}
+          activeOpacity={0.7}
+        >
+          <LogOut size={20} color={Colors.textSecondaryDark} />
+          <Text style={styles.logoutText}>Çıkış Yap</Text>
+        </TouchableOpacity>
       </View>
-    </Modal>
+    </SmoothModal>
   );
 };
 

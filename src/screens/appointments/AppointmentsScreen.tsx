@@ -5,7 +5,6 @@ import {
   StyleSheet,
   TouchableOpacity,
   FlatList,
-  Modal,
   TextInput,
   ActivityIndicator,
   ScrollView,
@@ -20,6 +19,7 @@ import { supabase } from '../../services/supabaseClient';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { CoachService } from '../../services/coachService';
 import { DateTimePickerModal } from '../../components/DateTimePickerModal';
+import { SmoothModal } from '../../components/motion/SmoothModal';
 
 export const AppointmentsScreen = ({ route, navigation }: any) => {
   const { session } = useAuth();
@@ -345,170 +345,162 @@ export const AppointmentsScreen = ({ route, navigation }: any) => {
         />
       )}
 
-      <Modal visible={isModalVisible} animationType="slide" transparent>
-        <View style={styles.modalContainer}>
-          <View style={styles.modalContent}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Yeni Randevu Al</Text>
-              <TouchableOpacity onPress={() => { setIsModalVisible(false); resetForm(); }}>
-                <X color={Colors.allWhite} size={24} />
-              </TouchableOpacity>
+      <SmoothModal visible={isModalVisible} onClose={() => { setIsModalVisible(false); resetForm(); }} variant="bottom-sheet">
+        <View style={styles.modalContent}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>Yeni Randevu Al</Text>
+            <TouchableOpacity onPress={() => { setIsModalVisible(false); resetForm(); }}>
+              <X color={Colors.allWhite} size={24} />
+            </TouchableOpacity>
+          </View>
+
+          <ScrollView contentContainerStyle={styles.formContainer}>
+            <Text style={styles.label}>Koç Seçimi</Text>
+            <TouchableOpacity
+              style={styles.dropdownTrigger}
+              onPress={() => setIsCoachDropdownOpen(true)}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.dropdownTriggerText}>
+                {selectedCoachObj
+                  ? `${selectedCoachObj.name || ''} ${selectedCoachObj.surname || ''}`.trim()
+                  : 'Koç Seçiniz'}
+              </Text>
+              <ChevronDown size={20} color={Colors.textSecondaryDark} />
+            </TouchableOpacity>
+
+            <Text style={styles.label}>Randevu Türü</Text>
+            <View style={styles.typeSelector}>
+              {appointmentTypes.map(t => (
+                <TouchableOpacity
+                  key={t}
+                  style={[styles.typeChip, selectedType === t && styles.activeTypeChip]}
+                  onPress={() => setSelectedType(t)}
+                >
+                  <Text style={[styles.typeChipText, selectedType === t && styles.activeTypeChipText]}>
+                    {t}
+                  </Text>
+                </TouchableOpacity>
+              ))}
             </View>
 
-            <ScrollView contentContainerStyle={styles.formContainer}>
-              <Text style={styles.label}>Koç Seçimi</Text>
-              <TouchableOpacity
-                style={styles.dropdownTrigger}
-                onPress={() => setIsCoachDropdownOpen(true)}
-                activeOpacity={0.8}
-              >
-                <Text style={styles.dropdownTriggerText}>
-                  {selectedCoachObj
-                    ? `${selectedCoachObj.name || ''} ${selectedCoachObj.surname || ''}`.trim()
-                    : 'Koç Seçiniz'}
-                </Text>
-                <ChevronDown size={20} color={Colors.textSecondaryDark} />
-              </TouchableOpacity>
+            <Text style={styles.label}>Tarih</Text>
+            <TouchableOpacity
+              onPress={() => setShowDatePicker(true)}
+              style={[styles.input, { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }]}
+            >
+              <Text style={{ color: dateStr ? Colors.textDark : Colors.textSecondaryDark }}>
+                {dateStr || 'Tarih Seçin (YYYY-MM-DD)'}
+              </Text>
+              <Calendar size={18} color={Colors.primary} />
+            </TouchableOpacity>
 
-              <Text style={styles.label}>Randevu Türü</Text>
-              <View style={styles.typeSelector}>
-                {appointmentTypes.map(t => (
-                  <TouchableOpacity
-                    key={t}
-                    style={[styles.typeChip, selectedType === t && styles.activeTypeChip]}
-                    onPress={() => setSelectedType(t)}
-                  >
-                    <Text style={[styles.typeChipText, selectedType === t && styles.activeTypeChipText]}>
-                      {t}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
+            <Text style={styles.label}>Saat Aralığı</Text>
+            <TouchableOpacity
+              onPress={() => setShowTimePicker(true)}
+              style={[styles.input, { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }]}
+            >
+              <Text style={{ color: timeStr ? Colors.textDark : Colors.textSecondaryDark }}>
+                {timeStr || 'Saat Seçin (Örn: 10:00 - 11:00)'}
+              </Text>
+              <Clock size={18} color={Colors.primary} />
+            </TouchableOpacity>
 
-              <Text style={styles.label}>Tarih</Text>
-              <TouchableOpacity
-                onPress={() => setShowDatePicker(true)}
-                style={[styles.input, { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }]}
-              >
-                <Text style={{ color: dateStr ? Colors.textDark : Colors.textSecondaryDark }}>
-                  {dateStr || 'Tarih Seçin (YYYY-MM-DD)'}
-                </Text>
-                <Calendar size={18} color={Colors.primary} />
-              </TouchableOpacity>
+            <Text style={styles.label}>Not (İsteğe bağlı)</Text>
+            <TextInput
+              style={[styles.input, styles.textArea]}
+              placeholder="Randevu ile ilgili notunuz..."
+              placeholderTextColor={Colors.textSecondaryDark}
+              value={notes}
+              onChangeText={setNotes}
+              multiline
+              textAlignVertical="top"
+            />
 
-              <Text style={styles.label}>Saat Aralığı</Text>
-              <TouchableOpacity
-                onPress={() => setShowTimePicker(true)}
-                style={[styles.input, { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }]}
-              >
-                <Text style={{ color: timeStr ? Colors.textDark : Colors.textSecondaryDark }}>
-                  {timeStr || 'Saat Seçin (Örn: 10:00 - 11:00)'}
-                </Text>
-                <Clock size={18} color={Colors.primary} />
-              </TouchableOpacity>
+            {/* Date & Time Picker Modals */}
+            <DateTimePickerModal
+              visible={showDatePicker}
+              mode="date"
+              title="Randevu Tarihi Seç"
+              initialValue={dateStr}
+              onConfirm={(d) => {
+                setDateStr(d);
+                setShowDatePicker(false);
+              }}
+              onCancel={() => setShowDatePicker(false)}
+            />
 
-              <Text style={styles.label}>Not (İsteğe bağlı)</Text>
-              <TextInput
-                style={[styles.input, styles.textArea]}
-                placeholder="Randevu ile ilgili notunuz..."
-                placeholderTextColor={Colors.textSecondaryDark}
-                value={notes}
-                onChangeText={setNotes}
-                multiline
-                textAlignVertical="top"
-              />
+            <DateTimePickerModal
+              visible={showTimePicker}
+              mode="time"
+              title="Randevu Saati Seç"
+              initialValue={timeStr}
+              onConfirm={(t) => {
+                setTimeStr(t);
+                setShowTimePicker(false);
+              }}
+              onCancel={() => setShowTimePicker(false)}
+            />
 
-              {/* Date & Time Picker Modals */}
-              <DateTimePickerModal
-                visible={showDatePicker}
-                mode="date"
-                title="Randevu Tarihi Seç"
-                initialValue={dateStr}
-                onConfirm={(d) => {
-                  setDateStr(d);
-                  setShowDatePicker(false);
-                }}
-                onCancel={() => setShowDatePicker(false)}
-              />
-
-              <DateTimePickerModal
-                visible={showTimePicker}
-                mode="time"
-                title="Randevu Saati Seç"
-                initialValue={timeStr}
-                onConfirm={(t) => {
-                  setTimeStr(t);
-                  setShowTimePicker(false);
-                }}
-                onCancel={() => setShowTimePicker(false)}
-              />
-
-              <TouchableOpacity 
-                style={styles.saveBtn} 
-                onPress={handleSaveAppointment}
-                disabled={saving}
-              >
-                {saving ? (
-                  <ActivityIndicator color={Colors.allWhite} />
-                ) : (
-                  <Text style={styles.saveBtnText}>Kaydet</Text>
-                )}
-              </TouchableOpacity>
-            </ScrollView>
-          </View>
+            <TouchableOpacity 
+              style={styles.saveBtn} 
+              onPress={handleSaveAppointment}
+              disabled={saving}
+            >
+              {saving ? (
+                <ActivityIndicator color={Colors.allWhite} />
+              ) : (
+                <Text style={styles.saveBtnText}>Kaydet</Text>
+              )}
+            </TouchableOpacity>
+          </ScrollView>
         </View>
-      </Modal>
+      </SmoothModal>
 
       {/* Koç Seçim Dropdown Modalı */}
-      <Modal visible={isCoachDropdownOpen} animationType="fade" transparent>
-        <TouchableOpacity 
-          style={styles.dropdownOverlay} 
-          activeOpacity={1} 
-          onPress={() => setIsCoachDropdownOpen(false)}
-        >
-          <View style={styles.dropdownModalBox}>
-            <View style={styles.dropdownHeader}>
-              <Text style={styles.dropdownHeaderTitle}>Koç Seçin</Text>
-              <TouchableOpacity onPress={() => setIsCoachDropdownOpen(false)}>
-                <X color={Colors.allWhite} size={20} />
-              </TouchableOpacity>
-            </View>
-            <ScrollView style={{ maxHeight: 300 }}>
-              {coaches.length === 0 ? (
-                <Text style={[styles.emptyText, { marginVertical: 20 }]}>Sistemde kayıtlı koç bulunamadı.</Text>
-              ) : (
-                coaches.map((c) => {
-                  const isSelected = c.id === selectedCoach;
-                  const fullName = `${c.name || ''} ${c.surname || ''}`.trim() || 'İsimsiz Koç';
-                  return (
-                    <TouchableOpacity
-                      key={c.id}
-                      style={[styles.dropdownItemRow, isSelected && styles.dropdownItemRowSelected]}
-                      onPress={() => {
-                        setSelectedCoach(c.id);
-                        setIsCoachDropdownOpen(false);
-                      }}
-                      activeOpacity={0.7}
-                    >
-                      <View style={{ flex: 1 }}>
-                        <Text style={[styles.dropdownItemTitle, isSelected && { color: Colors.primary }]}>
-                          {fullName}
-                        </Text>
-                        {c.speciality || c.specialization ? (
-                          <Text style={styles.dropdownItemSubtitle}>
-                            {c.speciality || c.specialization}
-                          </Text>
-                        ) : null}
-                      </View>
-                      {isSelected && <Check size={18} color={Colors.primary} />}
-                    </TouchableOpacity>
-                  );
-                })
-              )}
-            </ScrollView>
+      <SmoothModal visible={isCoachDropdownOpen} onClose={() => setIsCoachDropdownOpen(false)} variant="modal">
+        <View style={styles.dropdownModalBox}>
+          <View style={styles.dropdownHeader}>
+            <Text style={styles.dropdownHeaderTitle}>Koç Seçin</Text>
+            <TouchableOpacity onPress={() => setIsCoachDropdownOpen(false)}>
+              <X color={Colors.allWhite} size={20} />
+            </TouchableOpacity>
           </View>
-        </TouchableOpacity>
-      </Modal>
+          <ScrollView style={{ maxHeight: 300 }}>
+            {coaches.length === 0 ? (
+              <Text style={[styles.emptyText, { marginVertical: 20 }]}>Sistemde kayıtlı koç bulunamadı.</Text>
+            ) : (
+              coaches.map((c) => {
+                const isSelected = c.id === selectedCoach;
+                const fullName = `${c.name || ''} ${c.surname || ''}`.trim() || 'İsimsiz Koç';
+                return (
+                  <TouchableOpacity
+                    key={c.id}
+                    style={[styles.dropdownItemRow, isSelected && styles.dropdownItemRowSelected]}
+                    onPress={() => {
+                      setSelectedCoach(c.id);
+                      setIsCoachDropdownOpen(false);
+                    }}
+                    activeOpacity={0.7}
+                  >
+                    <View style={{ flex: 1 }}>
+                      <Text style={[styles.dropdownItemTitle, isSelected && { color: Colors.primary }]}>
+                        {fullName}
+                      </Text>
+                      {c.speciality || c.specialization ? (
+                        <Text style={styles.dropdownItemSubtitle}>
+                          {c.speciality || c.specialization}
+                        </Text>
+                      ) : null}
+                    </View>
+                    {isSelected && <Check size={18} color={Colors.primary} />}
+                  </TouchableOpacity>
+                );
+              })
+            )}
+          </ScrollView>
+        </View>
+      </SmoothModal>
     </SafeAreaView>
   );
 };

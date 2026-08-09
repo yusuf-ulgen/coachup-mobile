@@ -1,6 +1,5 @@
 import React from 'react';
 import {
-  Modal,
   View,
   Text,
   TouchableOpacity,
@@ -8,6 +7,7 @@ import {
 } from 'react-native';
 import { Colors } from '../theme/colors';
 import { Play } from 'lucide-react-native';
+import { SmoothModal } from './motion/SmoothModal';
 
 interface PreWorkoutStartModalProps {
   visible: boolean;
@@ -25,31 +25,33 @@ export const PreWorkoutStartModal: React.FC<PreWorkoutStartModalProps> = ({
   onStart,
 }) => {
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <View style={styles.overlay}>
-        <View style={styles.container}>
-          {/* Top Emoji */}
-          <Text style={styles.emojiText}>{activityEmoji}</Text>
+    <SmoothModal
+      visible={visible}
+      onClose={onClose}
+      variant="modal"
+    >
+      <View style={styles.container}>
+        {/* Top Emoji */}
+        <Text style={styles.emojiText}>{activityEmoji}</Text>
 
-          {/* Title */}
-          <Text style={styles.titleText}>{activityTitle}</Text>
+        {/* Title */}
+        <Text style={styles.titleText}>{activityTitle}</Text>
 
-          {/* Subtitle */}
-          <Text style={styles.subText}>Antrenmana başlamak ister misiniz?</Text>
+        {/* Subtitle */}
+        <Text style={styles.subText}>Antrenmana başlamak ister misiniz?</Text>
 
-          {/* Primary Action Button: ► Başla */}
-          <TouchableOpacity style={styles.startBtn} onPress={onStart} activeOpacity={0.85}>
-            <Play size={18} color={Colors.allWhite} fill={Colors.allWhite} style={{ marginRight: 6 }} />
-            <Text style={styles.startBtnText}>Başla</Text>
-          </TouchableOpacity>
+        {/* Primary Action Button: ► Başla */}
+        <TouchableOpacity style={styles.startBtn} onPress={onStart} activeOpacity={0.85}>
+          <Play size={18} color={Colors.allWhite} fill={Colors.allWhite} style={{ marginRight: 6 }} />
+          <Text style={styles.startBtnText}>Başla</Text>
+        </TouchableOpacity>
 
-          {/* Secondary Action: Vazgeç */}
-          <TouchableOpacity style={styles.cancelBtn} onPress={onClose} activeOpacity={0.7}>
-            <Text style={styles.cancelBtnText}>Vazgeç</Text>
-          </TouchableOpacity>
-        </View>
+        {/* Secondary Action: Vazgeç */}
+        <TouchableOpacity style={styles.cancelBtn} onPress={onClose} activeOpacity={0.7}>
+          <Text style={styles.cancelBtnText}>Vazgeç</Text>
+        </TouchableOpacity>
       </View>
-    </Modal>
+    </SmoothModal>
   );
 };
 

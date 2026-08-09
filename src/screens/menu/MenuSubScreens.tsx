@@ -32,6 +32,7 @@ import { AuthService } from '../../services/authService';
 import { UserService } from '../../services/userService';
 import { supabase } from '../../services/supabaseClient';
 import { DateTimePickerModal } from '../../components/DateTimePickerModal';
+import { SmoothModal } from '../../components/motion/SmoothModal';
 
 interface ScreenProps {
   navigation?: any;
@@ -566,80 +567,78 @@ export const GoalsScreen: React.FC<ScreenProps> = ({ navigation }) => {
       )}
 
       {/* Yeni Hedef Ekle Modal */}
-      <Modal visible={modalVisible} transparent animationType="slide">
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Yeni Hedef Ekle</Text>
-              <TouchableOpacity onPress={() => setModalVisible(false)}>
-                <X size={24} color={Colors.textDark} />
-              </TouchableOpacity>
+      <SmoothModal visible={modalVisible} onClose={() => setModalVisible(false)} variant="bottom-sheet">
+        <View style={styles.modalContent}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>Yeni Hedef Ekle</Text>
+            <TouchableOpacity onPress={() => setModalVisible(false)}>
+              <X size={24} color={Colors.textDark} />
+            </TouchableOpacity>
+          </View>
+
+          <ScrollView>
+            <Text style={styles.inputLabel}>Hedef Başlığı</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="Örn: Yaza Hazırlık"
+              placeholderTextColor={Colors.textSecondaryDark}
+              value={title}
+              onChangeText={setTitle}
+            />
+
+            <Text style={styles.inputLabel}>Hedef Türü</Text>
+            <View style={styles.typeContainer}>
+              {goalTypes.map(type => (
+                <TouchableOpacity 
+                  key={type} 
+                  style={[styles.typeChip, goalType === type && styles.typeChipActive]}
+                  onPress={() => setGoalType(type)}
+                >
+                  <Text style={[styles.typeChipText, goalType === type && styles.typeChipTextActive]}>
+                    {type}
+                  </Text>
+                </TouchableOpacity>
+              ))}
             </View>
 
-            <ScrollView>
-              <Text style={styles.inputLabel}>Hedef Başlığı</Text>
+            <Text style={styles.inputLabel}>Hedef Değer</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
               <TextInput
-                style={styles.input}
-                placeholder="Örn: Yaza Hazırlık"
+                style={[styles.input, { flex: 1, marginRight: 10 }]}
+                placeholder="Örn: 5"
                 placeholderTextColor={Colors.textSecondaryDark}
-                value={title}
-                onChangeText={setTitle}
+                value={targetValue}
+                onChangeText={setTargetValue}
+                keyboardType="numeric"
               />
+              <Text style={{ color: Colors.textDark, fontSize: 16 }}>{getUnitForType(goalType)}</Text>
+            </View>
 
-              <Text style={styles.inputLabel}>Hedef Türü</Text>
-              <View style={styles.typeContainer}>
-                {goalTypes.map(type => (
-                  <TouchableOpacity 
-                    key={type} 
-                    style={[styles.typeChip, goalType === type && styles.typeChipActive]}
-                    onPress={() => setGoalType(type)}
-                  >
-                    <Text style={[styles.typeChipText, goalType === type && styles.typeChipTextActive]}>
-                      {type}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
+            <Text style={styles.inputLabel}>Bitiş Tarihi (Opsiyonel)</Text>
+            <TouchableOpacity 
+              onPress={() => setShowDatePicker(true)}
+              style={[styles.input, { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }]}
+            >
+              <Text style={{ color: endDate ? Colors.textDark : Colors.textSecondaryDark }}>
+                {endDate || 'YYYY-MM-DD'}
+              </Text>
+              <Calendar size={18} color={Colors.primary} />
+            </TouchableOpacity>
 
-              <Text style={styles.inputLabel}>Hedef Değer</Text>
-              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                <TextInput
-                  style={[styles.input, { flex: 1, marginRight: 10 }]}
-                  placeholder="Örn: 5"
-                  placeholderTextColor={Colors.textSecondaryDark}
-                  value={targetValue}
-                  onChangeText={setTargetValue}
-                  keyboardType="numeric"
-                />
-                <Text style={{ color: Colors.textDark, fontSize: 16 }}>{getUnitForType(goalType)}</Text>
-              </View>
-
-              <Text style={styles.inputLabel}>Bitiş Tarihi (Opsiyonel)</Text>
-              <TouchableOpacity 
-                onPress={() => setShowDatePicker(true)}
-                style={[styles.input, { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }]}
-              >
-                <Text style={{ color: endDate ? Colors.textDark : Colors.textSecondaryDark }}>
-                  {endDate || 'YYYY-MM-DD'}
-                </Text>
-                <Calendar size={18} color={Colors.primary} />
-              </TouchableOpacity>
-
-              <TouchableOpacity 
-                style={styles.saveBtn} 
-                onPress={handleAddGoal}
-                disabled={saving}
-              >
-                {saving ? (
-                  <ActivityIndicator color="#fff" />
-                ) : (
-                  <Text style={styles.saveBtnText}>Kaydet</Text>
-                )}
-              </TouchableOpacity>
-            </ScrollView>
-          </View>
+            <TouchableOpacity 
+              style={styles.saveBtn} 
+              onPress={handleAddGoal}
+              disabled={saving}
+            >
+              {saving ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text style={styles.saveBtnText}>Kaydet</Text>
+              )}
+            </TouchableOpacity>
+          </ScrollView>
         </View>
-      </Modal>
+      </SmoothModal>
 
       {/* Date Picker Modal for Goal End Date */}
       <DateTimePickerModal
@@ -655,67 +654,65 @@ export const GoalsScreen: React.FC<ScreenProps> = ({ navigation }) => {
       />
 
       {/* Özel Kumülatif İlerleme Gir Modal */}
-      <Modal visible={progressModalVisible} transparent animationType="fade">
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>İlerleme Kaydet</Text>
-              <TouchableOpacity onPress={() => setProgressModalVisible(false)}>
-                <X size={24} color={Colors.textDark} />
-              </TouchableOpacity>
-            </View>
-
-            {selectedGoalForProgress && (() => {
-              const currentAccumulated = selectedGoalForProgress.current_progress_value || 0;
-              const hasPreviousProgress = currentAccumulated > 0;
-              
-              return (
-                <View style={{ marginVertical: 10 }}>
-                  <Text style={[styles.inputLabel, { fontSize: 16, color: Colors.primary, marginBottom: 4 }]}>
-                    {selectedGoalForProgress.title} ({selectedGoalForProgress.goal_type || 'Hedef'})
-                  </Text>
-
-                  {hasPreviousProgress ? (
-                    <Text style={[styles.inputLabel, { fontSize: 14, color: Colors.textDark, marginBottom: 12 }]}>
-                      Son ilerlemeniz: <Text style={{ fontWeight: 'bold', color: Colors.primary }}>{currentAccumulated} {selectedGoalForProgress.target_unit}</Text>. Bunun üzerine ne kadar daha eklemek istiyorsunuz?
-                    </Text>
-                  ) : (
-                    <Text style={[styles.inputLabel, { fontSize: 14, marginBottom: 12 }]}>
-                      {getQuestionForType(selectedGoalForProgress.goal_type, selectedGoalForProgress.target_unit)}
-                    </Text>
-                  )}
-
-                  <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                    <TextInput
-                      style={[styles.input, { flex: 1, marginRight: 10 }]}
-                      placeholder="Eklenecek miktar (Örn: 3)"
-                      placeholderTextColor={Colors.textSecondaryDark}
-                      value={progressInputValue}
-                      onChangeText={setProgressInputValue}
-                      keyboardType="numeric"
-                      autoFocus
-                    />
-                    <Text style={{ color: Colors.textDark, fontSize: 16, fontWeight: 'bold' }}>
-                      {selectedGoalForProgress.target_unit || 'birim'}
-                    </Text>
-                  </View>
-
-                  <Text style={{ color: Colors.textSecondaryDark, fontSize: 12, marginTop: 4 }}>
-                    Hedef Değer: {selectedGoalForProgress.target_value} {selectedGoalForProgress.target_unit} {hasPreviousProgress ? `(Mevcut: ${currentAccumulated})` : ''}
-                  </Text>
-
-                  <TouchableOpacity 
-                    style={[styles.saveBtn, { marginTop: 20 }]} 
-                    onPress={handleSaveProgress}
-                  >
-                    <Text style={styles.saveBtnText}>İlerlemeyi Ekle ve Güncelle</Text>
-                  </TouchableOpacity>
-                </View>
-              );
-            })()}
+      <SmoothModal visible={progressModalVisible} onClose={() => setProgressModalVisible(false)} variant="modal">
+        <View style={styles.modalContent}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>İlerleme Kaydet</Text>
+            <TouchableOpacity onPress={() => setProgressModalVisible(false)}>
+              <X size={24} color={Colors.textDark} />
+            </TouchableOpacity>
           </View>
+
+          {selectedGoalForProgress && (() => {
+            const currentAccumulated = selectedGoalForProgress.current_progress_value || 0;
+            const hasPreviousProgress = currentAccumulated > 0;
+            
+            return (
+              <View style={{ marginVertical: 10 }}>
+                <Text style={[styles.inputLabel, { fontSize: 16, color: Colors.primary, marginBottom: 4 }]}>
+                  {selectedGoalForProgress.title} ({selectedGoalForProgress.goal_type || 'Hedef'})
+                </Text>
+
+                {hasPreviousProgress ? (
+                  <Text style={[styles.inputLabel, { fontSize: 14, color: Colors.textDark, marginBottom: 12 }]}>
+                    Son ilerlemeniz: <Text style={{ fontWeight: 'bold', color: Colors.primary }}>{currentAccumulated} {selectedGoalForProgress.target_unit}</Text>. Bunun üzerine ne kadar daha eklemek istiyorsunuz?
+                  </Text>
+                ) : (
+                  <Text style={[styles.inputLabel, { fontSize: 14, marginBottom: 12 }]}>
+                    {getQuestionForType(selectedGoalForProgress.goal_type, selectedGoalForProgress.target_unit)}
+                  </Text>
+                )}
+
+                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                  <TextInput
+                    style={[styles.input, { flex: 1, marginRight: 10 }]}
+                    placeholder="Eklenecek miktar (Örn: 3)"
+                    placeholderTextColor={Colors.textSecondaryDark}
+                    value={progressInputValue}
+                    onChangeText={setProgressInputValue}
+                    keyboardType="numeric"
+                    autoFocus
+                  />
+                  <Text style={{ color: Colors.textDark, fontSize: 16, fontWeight: 'bold' }}>
+                    {selectedGoalForProgress.target_unit || 'birim'}
+                  </Text>
+                </View>
+
+                <Text style={{ color: Colors.textSecondaryDark, fontSize: 12, marginTop: 4 }}>
+                  Hedef Değer: {selectedGoalForProgress.target_value} {selectedGoalForProgress.target_unit} {hasPreviousProgress ? `(Mevcut: ${currentAccumulated})` : ''}
+                </Text>
+
+                <TouchableOpacity 
+                  style={[styles.saveBtn, { marginTop: 20 }]} 
+                  onPress={handleSaveProgress}
+                >
+                  <Text style={styles.saveBtnText}>İlerlemeyi Ekle ve Güncelle</Text>
+                </TouchableOpacity>
+              </View>
+            );
+          })()}
         </View>
-      </Modal>
+      </SmoothModal>
     </View>
   );
 };

@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Modal, TextInput } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, TextInput } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Colors } from '../../theme/colors';
 import { useTheme } from '../../theme/ThemeContext';
 import { Star, CheckCircle, FileText, X, Calendar, ArrowLeft } from 'lucide-react-native';
 import { supabase } from '../../services/supabaseClient';
 import { feedback } from '../../services/feedbackService';
+import { SmoothModal } from '../../components/motion/SmoothModal';
 
 const mockSurveys = [
   {
@@ -162,7 +163,7 @@ export default function SurveysScreen({ navigation }: any) {
       </ScrollView>
 
       {/* Anket Formu Modal */}
-      <Modal visible={modalVisible} animationType="slide" presentationStyle="pageSheet">
+      <SmoothModal visible={modalVisible} onClose={() => setModalVisible(false)} variant="bottom-sheet">
         <SafeAreaView style={[styles.modalContainer, { backgroundColor: colors.bg }]}>
           <View style={[styles.modalHeader, { borderBottomColor: colors.border }]}>
             <Text style={[styles.modalTitle, { color: colors.textPrimary }]}>{selectedSurvey?.title}</Text>
@@ -181,7 +182,7 @@ export default function SurveysScreen({ navigation }: any) {
             </TouchableOpacity>
           </View>
         </SafeAreaView>
-      </Modal>
+      </SmoothModal>
     </SafeAreaView>
   );
 }

@@ -5,8 +5,8 @@ import {
   TouchableOpacity,
   StyleSheet,
   ScrollView,
-  Modal,
 } from 'react-native';
+import { SmoothModal } from '../../components/motion/SmoothModal';
 import MapView, { Marker, Polyline, UrlTile, PROVIDER_GOOGLE } from 'react-native-maps';
 import { useFocusEffect } from '@react-navigation/native';
 import { Colors } from '../../theme/colors';
@@ -335,8 +335,9 @@ export const ActiveWorkoutScreen = ({ route, navigation }: any) => {
               </TouchableOpacity>
 
               <TouchableOpacity
-                onPress={() => setShowConfirmFinishModal(true)}
+                onPress={handleRequestFinish}
                 style={[styles.iconCircleBtn, { backgroundColor: 'rgba(255,96,71,0.2)' }]}
+                activeOpacity={0.8}
               >
                 <Flag size={20} color={Colors.primary} />
               </TouchableOpacity>
@@ -538,42 +539,39 @@ export const ActiveWorkoutScreen = ({ route, navigation }: any) => {
       )}
 
       {/* Effort Modal */}
-      <Modal
+      <SmoothModal
         visible={showEffortModal}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setShowEffortModal(false)}
+        onClose={() => setShowEffortModal(false)}
+        variant="modal"
       >
-        <View style={styles.modalOverlay}>
-          <View style={[styles.effortModalCard, { backgroundColor: colors.cardBg }]}>
-            <Text style={[styles.effortModalTitle, { color: colors.textPrimary }]}>Nasıl Hissediyorsun?</Text>
-            <Text style={[styles.effortModalSub, { color: colors.textSecondary }]}>
-              Antrenmanı nasıl tamamladın? Hissettiğin zorluk derecesini seç:
-            </Text>
+        <View style={[styles.effortModalCard, { backgroundColor: colors.cardBg }]}>
+          <Text style={[styles.effortModalTitle, { color: colors.textPrimary }]}>Nasıl Hissediyorsun?</Text>
+          <Text style={[styles.effortModalSub, { color: colors.textSecondary }]}>
+            Antrenmanı nasıl tamamladın? Hissettiğin zorluk derecesini seç:
+          </Text>
 
-            <View style={{ gap: 10, marginBottom: 20 }}>
-              {EFFORT_OPTIONS.map((item) => (
-                <TouchableOpacity
-                  key={item.id}
-                  style={[styles.effortOptionRow, { backgroundColor: colors.iconBg }]}
-                  onPress={() => handleEffortSelect(item)}
-                  activeOpacity={0.8}
-                >
-                  <Text style={styles.effortEmojiText}>{item.emoji}</Text>
-                  <Text style={[styles.effortOptionLabel, { color: colors.textPrimary }]}>{item.label}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-
-            <TouchableOpacity
-              style={styles.effortCancelBtn}
-              onPress={() => setShowEffortModal(false)}
-            >
-              <Text style={[styles.effortCancelBtnText, { color: colors.textSecondary }]}>İptal</Text>
-            </TouchableOpacity>
+          <View style={{ gap: 10, marginBottom: 20 }}>
+            {EFFORT_OPTIONS.map((item) => (
+              <TouchableOpacity
+                key={item.id}
+                style={[styles.effortOptionRow, { backgroundColor: colors.iconBg }]}
+                onPress={() => handleEffortSelect(item)}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.effortEmojiText}>{item.emoji}</Text>
+                <Text style={[styles.effortOptionLabel, { color: colors.textPrimary }]}>{item.label}</Text>
+              </TouchableOpacity>
+            ))}
           </View>
+
+          <TouchableOpacity
+            style={styles.effortCancelBtn}
+            onPress={() => setShowEffortModal(false)}
+          >
+            <Text style={[styles.effortCancelBtnText, { color: colors.textSecondary }]}>İptal</Text>
+          </TouchableOpacity>
         </View>
-      </Modal>
+      </SmoothModal>
     </View>
   );
 };

@@ -3,12 +3,12 @@ import {
   View,
   Text,
   StyleSheet,
-  Modal,
   TouchableOpacity,
   ScrollView,
 } from 'react-native';
 import { Calendar as CalendarIcon, Clock, ChevronLeft, ChevronRight, X, Check } from 'lucide-react-native';
 import { Colors } from '../theme/colors';
+import { SmoothModal } from './motion/SmoothModal';
 
 interface DateTimePickerModalProps {
   visible: boolean;
@@ -119,123 +119,121 @@ export const DateTimePickerModal: React.FC<DateTimePickerModalProps> = ({
   };
 
   return (
-    <Modal visible={visible} transparent animationType="fade">
-      <View style={styles.overlay}>
-        <View style={styles.modalCard}>
-          {/* Header */}
-          <View style={styles.headerRow}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-              {mode === 'date' ? (
-                <CalendarIcon size={20} color={Colors.primary} />
-              ) : (
-                <Clock size={20} color={Colors.primary} />
-              )}
-              <Text style={styles.headerTitle}>
-                {title || (mode === 'date' ? 'Tarih Seç' : 'Saat Seç')}
-              </Text>
-            </View>
-            <TouchableOpacity onPress={onCancel} style={styles.closeBtn}>
-              <X size={20} color={Colors.textDark} />
-            </TouchableOpacity>
+    <SmoothModal visible={visible} onClose={onCancel} variant="modal">
+      <View style={styles.modalCard}>
+        {/* Header */}
+        <View style={styles.headerRow}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            {mode === 'date' ? (
+              <CalendarIcon size={20} color={Colors.primary} />
+            ) : (
+              <Clock size={20} color={Colors.primary} />
+            )}
+            <Text style={styles.headerTitle}>
+              {title || (mode === 'date' ? 'Tarih Seç' : 'Saat Seç')}
+            </Text>
           </View>
+          <TouchableOpacity onPress={onCancel} style={styles.closeBtn}>
+            <X size={20} color={Colors.textDark} />
+          </TouchableOpacity>
+        </View>
 
-          {mode === 'date' ? (
-            /* DATE MODE: Calendar Grid */
-            <View style={styles.calendarContainer}>
-              {/* Month Navigation */}
-              <View style={styles.monthHeader}>
-                <TouchableOpacity onPress={handlePrevMonth} style={styles.arrowBtn}>
-                  <ChevronLeft size={20} color={Colors.textDark} />
-                </TouchableOpacity>
-                <Text style={styles.monthTitle}>
-                  {MONTH_NAMES[month]} {year}
-                </Text>
-                <TouchableOpacity onPress={handleNextMonth} style={styles.arrowBtn}>
-                  <ChevronRight size={20} color={Colors.textDark} />
-                </TouchableOpacity>
-              </View>
-
-              {/* Day Name Headers */}
-              <View style={styles.dayLabelsRow}>
-                {DAY_LABELS.map((label) => (
-                  <Text key={label} style={styles.dayLabel}>
-                    {label}
-                  </Text>
-                ))}
-              </View>
-
-              {/* Days Grid */}
-              <View style={styles.grid}>
-                {calendarGrid.map((dayNum, idx) => {
-                  if (dayNum === null) {
-                    return <View key={`empty_${idx}`} style={styles.dayCell} />;
-                  }
-                  const formattedMonth = String(month + 1).padStart(2, '0');
-                  const formattedDay = String(dayNum).padStart(2, '0');
-                  const cellDateStr = `${year}-${formattedMonth}-${formattedDay}`;
-                  const isSelected = cellDateStr === selectedDateStr;
-
-                  return (
-                    <TouchableOpacity
-                      key={`day_${dayNum}`}
-                      style={[styles.dayCell, isSelected && styles.selectedDayCell]}
-                      onPress={() => handleSelectDay(dayNum)}
-                    >
-                      <Text
-                        style={[
-                          styles.dayCellText,
-                          isSelected && styles.selectedDayCellText,
-                        ]}
-                      >
-                        {dayNum}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
-
-              {/* Confirm Action */}
-              <TouchableOpacity style={styles.confirmBtn} onPress={handleConfirmDate}>
-                <Check size={18} color="#fff" style={{ marginRight: 6 }} />
-                <Text style={styles.confirmBtnText}>Tarihi Seç ({selectedDateStr})</Text>
+        {mode === 'date' ? (
+          /* DATE MODE: Calendar Grid */
+          <View style={styles.calendarContainer}>
+            {/* Month Navigation */}
+            <View style={styles.monthHeader}>
+              <TouchableOpacity onPress={handlePrevMonth} style={styles.arrowBtn}>
+                <ChevronLeft size={20} color={Colors.textDark} />
+              </TouchableOpacity>
+              <Text style={styles.monthTitle}>
+                {MONTH_NAMES[month]} {year}
+              </Text>
+              <TouchableOpacity onPress={handleNextMonth} style={styles.arrowBtn}>
+                <ChevronRight size={20} color={Colors.textDark} />
               </TouchableOpacity>
             </View>
-          ) : (
-            /* TIME MODE: Time Slots */
-            <View style={{ maxHeight: 340 }}>
-              <ScrollView contentContainerStyle={styles.timeSlotsContainer}>
-                {DEFAULT_TIME_SLOTS.map((slot) => {
-                  const isSelected = slot === selectedTimeSlot;
-                  return (
-                    <TouchableOpacity
-                      key={slot}
-                      style={[
-                        styles.timeSlotChip,
-                        isSelected && styles.selectedTimeSlotChip,
-                      ]}
-                      onPress={() => handleConfirmTime(slot)}
-                    >
-                      <Clock
-                        size={16}
-                        color={isSelected ? '#fff' : Colors.textSecondaryDark}
-                      />
-                      <Text
-                        style={[
-                          styles.timeSlotText,
-                          isSelected && styles.selectedTimeSlotText,
-                        ]}
-                      >
-                        {slot}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </ScrollView>
+
+            {/* Day Name Headers */}
+            <View style={styles.dayLabelsRow}>
+              {DAY_LABELS.map((label) => (
+                <Text key={label} style={styles.dayLabel}>
+                  {label}
+                </Text>
+              ))}
             </View>
-          )}
-        </View>
+
+            {/* Days Grid */}
+            <View style={styles.grid}>
+              {calendarGrid.map((dayNum, idx) => {
+                if (dayNum === null) {
+                  return <View key={`empty_${idx}`} style={styles.dayCell} />;
+                }
+                const formattedMonth = String(month + 1).padStart(2, '0');
+                const formattedDay = String(dayNum).padStart(2, '0');
+                const cellDateStr = `${year}-${formattedMonth}-${formattedDay}`;
+                const isSelected = cellDateStr === selectedDateStr;
+
+                return (
+                  <TouchableOpacity
+                    key={`day_${dayNum}`}
+                    style={[styles.dayCell, isSelected && styles.selectedDayCell]}
+                    onPress={() => handleSelectDay(dayNum)}
+                  >
+                    <Text
+                      style={[
+                        styles.dayCellText,
+                        isSelected && styles.selectedDayCellText,
+                      ]}
+                    >
+                      {dayNum}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+
+            {/* Confirm Action */}
+            <TouchableOpacity style={styles.confirmBtn} onPress={handleConfirmDate}>
+              <Check size={18} color="#fff" style={{ marginRight: 6 }} />
+              <Text style={styles.confirmBtnText}>Tarihi Seç ({selectedDateStr})</Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
+          /* TIME MODE: Time Slots */
+          <View style={{ maxHeight: 340 }}>
+            <ScrollView contentContainerStyle={styles.timeSlotsContainer}>
+              {DEFAULT_TIME_SLOTS.map((slot) => {
+                const isSelected = slot === selectedTimeSlot;
+                return (
+                  <TouchableOpacity
+                    key={slot}
+                    style={[
+                      styles.timeSlotChip,
+                      isSelected && styles.selectedTimeSlotChip,
+                    ]}
+                    onPress={() => handleConfirmTime(slot)}
+                  >
+                    <Clock
+                      size={16}
+                      color={isSelected ? '#fff' : Colors.textSecondaryDark}
+                    />
+                    <Text
+                      style={[
+                        styles.timeSlotText,
+                        isSelected && styles.selectedTimeSlotText,
+                      ]}
+                    >
+                      {slot}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          </View>
+        )}
       </View>
-    </Modal>
+    </SmoothModal>
   );
 };
 

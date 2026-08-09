@@ -31,6 +31,7 @@ import { PreWorkoutStartModal } from '../../components/PreWorkoutStartModal';
 import { CustomAlert } from '../../components/CustomAlertModal';
 import { supabase } from '../../services/supabaseClient';
 import { ActiveWorkoutManager } from '../../services/activeWorkoutManager';
+import { Collapsible } from '../../components/motion/Collapsible';
 
 interface TrainingScreenProps {
   navigation?: any;
@@ -247,7 +248,7 @@ export const TrainingScreen: React.FC<TrainingScreenProps> = ({ navigation }) =>
           )}
         </TouchableOpacity>
 
-        {isExpanded && (
+        <Collapsible expanded={isExpanded}>
           <View style={{ marginTop: 10, paddingHorizontal: 4, gap: 6 }}>
             {prog.program_text ? (
               <Text style={{ fontSize: 13, color: Colors.textDark }}>
@@ -275,7 +276,7 @@ export const TrainingScreen: React.FC<TrainingScreenProps> = ({ navigation }) =>
               </Text>
             )}
           </View>
-        )}
+        </Collapsible>
       </View>
     );
   };
