@@ -6,7 +6,7 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-SplashScreen.preventAutoHideAsync().catch(() => {});
+SplashScreen.hideAsync().catch(() => {});
 import {
   Home,
   Calendar,
