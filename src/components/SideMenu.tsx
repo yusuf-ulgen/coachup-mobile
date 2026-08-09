@@ -28,6 +28,7 @@ import {
   ChevronRight,
 } from 'lucide-react-native';
 import { Colors } from '../theme/colors';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AuthService } from '../services/authService';
 import { UserService } from '../services/userService';
 
@@ -58,7 +59,6 @@ interface MenuItemData {
 const menuItems: MenuItemData[] = [
   { title: 'Aktivite Geçmişi', icon: BarChart2, route: 'PersonalRecords' },
   { title: 'Randevular', icon: Calendar, route: 'Appointments', salonOnly: true },
-  { title: 'Takvim', icon: Calendar, route: 'Calendar' },
   { title: 'Grup Dersleri', icon: Users, route: 'GroupClasses', salonOnly: true },
   { title: 'Beslenme', icon: BookOpen, route: 'Nutrition' },
   { title: 'İlerleme', icon: BarChart2, route: 'Progress' },
@@ -78,6 +78,7 @@ export const SideMenu: React.FC<SideMenuProps> = ({
   onNavigate,
   navigation,
 }) => {
+  const insets = useSafeAreaInsets();
   const [hasActiveMembership, setHasActiveMembership] = useState(false);
 
   React.useEffect(() => {
@@ -132,96 +133,106 @@ export const SideMenu: React.FC<SideMenuProps> = ({
         />
 
         {/* Drawer Sheet Content */}
-        <View style={styles.drawerSheet}>
-          {/* Close Button */}
-          <TouchableOpacity
-            style={styles.closeButton}
-            onPress={onClose}
-            activeOpacity={0.8}
-          >
-            <X size={18} color={Colors.textDark} />
-          </TouchableOpacity>
+        <View
+          style={[
+            styles.drawerSheet,
+            {
+              paddingTop: Math.max(12, insets.top + 8),
+              paddingBottom: Math.max(16, insets.bottom + 12),
+            },
+          ]}
+        >
+          <View style={{ flex: 1 }}>
+            {/* Top Header Row: User Info (Left) & Close Button (Right) */}
+            <View style={styles.topHeaderRow}>
+              <TouchableOpacity
+                style={styles.userCard}
+                onPress={() => {
+                  onClose();
+                  if (onNavigate) onNavigate('Profile');
+                  else if (navigation) navigation.navigate('Profile');
+                }}
+                activeOpacity={0.8}
+              >
+                <User size={24} color={Colors.primary} />
+                <View style={styles.userInfoText}>
+                  <Text style={styles.userName} numberOfLines={1}>
+                    {displayName}
+                  </Text>
+                  <Text style={styles.userSubtext} numberOfLines={1}>
+                    {gymSubTitle}
+                  </Text>
+                </View>
+              </TouchableOpacity>
 
-          {/* User Info Card */}
-          <TouchableOpacity
-            style={styles.userCard}
-            onPress={() => {
-              onClose();
-              if (onNavigate) onNavigate('Profile');
-              else if (navigation) navigation.navigate('Profile');
-            }}
-            activeOpacity={0.8}
-          >
-            <User size={28} color={Colors.primary} />
-            <View style={styles.userInfoText}>
-              <Text style={styles.userName} numberOfLines={1}>
-                {displayName}
-              </Text>
-              <Text style={styles.userSubtext} numberOfLines={1}>
-                {gymSubTitle}
-              </Text>
+              <TouchableOpacity
+                style={styles.closeButton}
+                onPress={onClose}
+                activeOpacity={0.8}
+              >
+                <X size={18} color={Colors.textDark} />
+              </TouchableOpacity>
             </View>
-          </TouchableOpacity>
 
-          {/* Menu Section Title */}
-          <Text style={styles.menuHeading}>Menü</Text>
+            {/* Menu Section Title */}
+            <Text style={styles.menuHeading}>Menü</Text>
 
-          {/* Menü Öğeleri Listesi */}
-          <ScrollView
-            style={styles.menuScrollView}
-            showsVerticalScrollIndicator={false}
-          >
-            {menuItems
-              .filter((item) => {
-                // Sadece aktif salon üyelerine salon-only menü göster
-                if (item.salonOnly && (!hasActiveMembership || userProfile?.is_individual)) return false;
-                return true;
-              })
-              .map((item) => {
-              const IconComp = item.icon;
-              return (
+            {/* Menü Öğeleri Listesi */}
+            <ScrollView
+              style={styles.menuScrollView}
+              showsVerticalScrollIndicator={false}
+            >
+              {menuItems
+                .filter((item) => {
+                  // Sadece aktif salon üyelerine salon-only menü göster
+                  if (item.salonOnly && (!hasActiveMembership || userProfile?.is_individual)) return false;
+                  return true;
+                })
+                .map((item) => {
+                const IconComp = item.icon;
+                return (
+                  <TouchableOpacity
+                    key={item.route}
+                    style={styles.menuItemRow}
+                    onPress={() => {
+                      onClose();
+                      if (onNavigate) {
+                        onNavigate(item.route);
+                      } else if (navigation) {
+                        navigation.navigate(item.route);
+                      }
+                    }}
+                    activeOpacity={0.7}
+                  >
+                    <IconComp size={20} color={Colors.primary} />
+                    <Text style={styles.menuItemTitle}>{item.title}</Text>
+                    <ChevronRight size={18} color={Colors.primary} />
+                  </TouchableOpacity>
+                );
+              })}
+
+              {isAdmin && (
                 <TouchableOpacity
-                  key={item.route}
                   style={styles.menuItemRow}
                   onPress={() => {
                     onClose();
                     if (onNavigate) {
-                      onNavigate(item.route);
+                      onNavigate('AdminDashboard');
                     } else if (navigation) {
-                      navigation.navigate(item.route);
+                      navigation.navigate('AdminDashboard');
                     }
                   }}
                   activeOpacity={0.7}
                 >
-                  <IconComp size={22} color={Colors.primary} />
-                  <Text style={styles.menuItemTitle}>{item.title}</Text>
-                  <ChevronRight size={20} color={Colors.primary} />
+                  <Shield size={20} color={Colors.primary} />
+                  <Text style={styles.menuItemTitle}>Admin Panel</Text>
+                  <ChevronRight size={18} color={Colors.primary} />
                 </TouchableOpacity>
-              );
-            })}
+              )}
+            </ScrollView>
+          </View>
 
-
-            {isAdmin && (
-              <TouchableOpacity
-                style={styles.menuItemRow}
-                onPress={() => {
-                  onClose();
-                  if (onNavigate) {
-                    onNavigate('AdminDashboard');
-                  } else if (navigation) {
-                    navigation.navigate('AdminDashboard');
-                  }
-                }}
-                activeOpacity={0.7}
-              >
-                <Shield size={22} color={Colors.primary} />
-                <Text style={styles.menuItemTitle}>Admin Panel</Text>
-                <ChevronRight size={20} color={Colors.primary} />
-              </TouchableOpacity>
-            )}
-          </ScrollView>
-
-          {/* Logout Button */}
+          {/* Logout Button Pinned to Bottom */}
           <TouchableOpacity
             style={styles.logoutButton}
             onPress={handleLogout}
@@ -249,51 +260,57 @@ const styles = StyleSheet.create({
     width: DRAWER_WIDTH,
     height: '100%',
     backgroundColor: Colors.backgroundDark,
-    paddingHorizontal: 24,
-    paddingTop: 50,
-    paddingBottom: 24,
+    paddingHorizontal: 20,
     position: 'absolute',
     left: 0,
     top: 0,
     bottom: 0,
+    flexDirection: 'column',
+    justifyContent: 'space-between',
   },
-  closeButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: Colors.cardDark,
-    justifyContent: 'center',
+  topHeaderRow: {
+    flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 20,
+    justifyContent: 'space-between',
+    marginBottom: 12,
   },
   userCard: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: Colors.cardDark,
     borderRadius: 100,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    marginBottom: 28,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    marginRight: 10,
+  },
+  closeButton: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: Colors.cardDark,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   userInfoText: {
-    marginLeft: 12,
+    marginLeft: 10,
     flex: 1,
   },
   userName: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '600',
     color: Colors.textDark,
   },
   userSubtext: {
-    fontSize: 13,
+    fontSize: 12,
     color: Colors.textSecondaryDark,
-    marginTop: 2,
+    marginTop: 1,
   },
   menuHeading: {
-    fontSize: 24,
+    fontSize: 20,
     fontWeight: '600',
     color: Colors.textDark,
-    marginBottom: 16,
+    marginBottom: 12,
   },
   menuScrollView: {
     flex: 1,
@@ -301,25 +318,27 @@ const styles = StyleSheet.create({
   menuItemRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 14,
+    paddingVertical: 12,
   },
   menuItemTitle: {
     flex: 1,
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '500',
     color: Colors.textDark,
-    marginLeft: 14,
+    marginLeft: 12,
   },
   logoutButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 16,
-    marginTop: 8,
+    paddingVertical: 10,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255, 255, 255, 0.08)',
+    marginTop: 2,
   },
   logoutText: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '500',
     color: Colors.textSecondaryDark,
-    marginLeft: 12,
+    marginLeft: 10,
   },
 });

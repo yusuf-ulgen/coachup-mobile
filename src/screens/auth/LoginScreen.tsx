@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -16,7 +16,9 @@ import {
   Modal,
 } from 'react-native';
 import { feedback } from '../../services/feedbackService';
-import { Eye, EyeOff, Mail } from 'lucide-react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as LocalAuthentication from 'expo-local-authentication';
+import { Eye, EyeOff, Mail, Fingerprint } from 'lucide-react-native';
 import { Colors } from '../../theme/colors';
 import { AuthService } from '../../services/authService';
 import { GYM_CONFIG } from '../../config/gym';
@@ -38,7 +40,24 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
   const [showPassword, setShowPassword] = useState(false);
   const [showVerificationModal, setShowVerificationModal] = useState(false);
   const [resendLoading, setResendLoading] = useState(false);
+  const [biometricsAvailable, setBiometricsAvailable] = useState(false);
   const passwordRef = useRef<TextInput>(null);
+
+  useEffect(() => {
+    const checkBiometrics = async () => {
+      try {
+        const stored = await AsyncStorage.getItem('@app_setting_biometrics_enabled');
+        if (stored === 'true') {
+          const hasHW = await LocalAuthentication.hasHardwareAsync();
+          const enrolled = await LocalAuthentication.isEnrolledAsync();
+          if (hasHW && enrolled) {
+            setBiometricsAvailable(true);
+          }
+        }
+      } catch {}
+    };
+    checkBiometrics();
+  }, []);
 
   const handleLogin = async () => {
     if (!email.trim() || !password) {
@@ -64,6 +83,34 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
           fallbackMessage: 'Giriş yapılamadı. Lütfen tekrar deneyin.',
         });
       }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleBiometricLogin = async () => {
+    try {
+      const result = await LocalAuthentication.authenticateAsync({
+        promptMessage: 'CoachUP Girişi için doğrulanın',
+        fallbackLabel: 'Şifre Kullan',
+      });
+
+      if (result.success) {
+        setLoading(true);
+        const user = await AuthService.getCurrentUser();
+        if (user) {
+          await AuthService.ensureProfileFromAuthIfMissing();
+          if (onLoginSuccess) onLoginSuccess();
+          feedback.toast('Biyometrik kimlik doğrulama başarılı.', 'success');
+        } else {
+          feedback.warning({
+            title: 'Oturum Bilgisi Bulunamadı',
+            message: 'Biyometrik giriş öncesinde lütfen en az 1 kez email ve şifre ile giriş yapın.',
+          });
+        }
+      }
+    } catch (e) {
+      console.error('Biometric auth error:', e);
     } finally {
       setLoading(false);
     }
@@ -169,6 +216,28 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
               </>
             )}
           </TouchableOpacity>
+
+          {biometricsAvailable && (
+            <TouchableOpacity
+              style={[
+                styles.primaryButton,
+                {
+                  backgroundColor: Colors.cardDark || '#222',
+                  marginTop: 10,
+                  borderWidth: 1,
+                  borderColor: Colors.primary,
+                },
+              ]}
+              onPress={handleBiometricLogin}
+              disabled={loading}
+              activeOpacity={0.85}
+            >
+              <Fingerprint size={20} color={Colors.primary} style={{ marginRight: 8 }} />
+              <Text style={[styles.buttonText, { color: Colors.textDark }]}>
+                Biyometrik ile Giriş Yap
+              </Text>
+            </TouchableOpacity>
+          )}
 
           {/* Register Link */}
           <TouchableOpacity

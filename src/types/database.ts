@@ -10,6 +10,8 @@ export interface UserProfile {
   birth_date?: string | null;
   gender?: string | null;
   role?: Role | string | null;
+  is_individual?: boolean;
+  gym_name?: string;
   avatar_url?: string | null;
   gym_id?: string | null;
   height_cm?: number | null;

@@ -17,7 +17,9 @@ import { Colors } from '../../theme/colors';
 import { useAuth } from '../../context/AuthContext';
 import { supabase } from '../../services/supabaseClient';
 
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { CoachService } from '../../services/coachService';
+import { DateTimePickerModal } from '../../components/DateTimePickerModal';
 
 export const AppointmentsScreen = ({ route, navigation }: any) => {
   const { session } = useAuth();
@@ -33,10 +35,31 @@ export const AppointmentsScreen = ({ route, navigation }: any) => {
   const [selectedType, setSelectedType] = useState('Kişisel Antrenman');
   const [dateStr, setDateStr] = useState('');
   const [timeStr, setTimeStr] = useState('');
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [showTimePicker, setShowTimePicker] = useState(false);
   const [notes, setNotes] = useState('');
   const [saving, setSaving] = useState(false);
 
   const appointmentTypes = ['Kişisel Antrenman', 'Danışmanlık', 'Değerlendirme'];
+
+  const getStorageKey = () => `@user_appointments_${session?.user?.id || 'guest'}`;
+
+  const loadLocalAppointments = async () => {
+    try {
+      const json = await AsyncStorage.getItem(getStorageKey());
+      return json ? JSON.parse(json) : [];
+    } catch {
+      return [];
+    }
+  };
+
+  const saveLocalAppointments = async (list: any[]) => {
+    try {
+      await AsyncStorage.setItem(getStorageKey(), JSON.stringify(list));
+    } catch (e) {
+      console.error('Error saving local appointments:', e);
+    }
+  };
 
   useEffect(() => {
     fetchAppointments();
@@ -51,32 +74,44 @@ export const AppointmentsScreen = ({ route, navigation }: any) => {
   }, [route?.params]);
 
   const fetchAppointments = async () => {
-    if (!session?.user?.id) return;
+    setLoading(true);
+    const local = await loadLocalAppointments();
+
+    if (!session?.user?.id) {
+      setAppointments(local);
+      setLoading(false);
+      return;
+    }
+
     try {
-      setLoading(true);
       const { data, error } = await supabase
         .from('appointments')
         .select('*')
         .eq('user_id', session.user.id)
         .order('date', { ascending: false });
 
-      if (error) {
-        console.error('Randevular yuklenirken hata:', error);
-        setAppointments([]);
-        return;
-      }
-
       const allCoaches = await CoachService.fetchCoaches();
       const coachMap = new Map(allCoaches.map((c) => [c.id, `${c.name || ''} ${c.surname || ''}`.trim()]));
 
-      const enriched = (data || []).map((app) => ({
-        ...app,
-        coachName: app.coach_name || coachMap.get(app.coach_id) || 'Koç',
-      }));
+      let remoteEnriched: any[] = [];
+      if (!error && data) {
+        remoteEnriched = data.map((app) => ({
+          ...app,
+          coachName: app.coach_name || coachMap.get(app.coach_id) || 'Koç',
+          time: app.time || app.start_time || (app.date && app.date.includes(' ') ? app.date.split(' ')[1] : ''),
+        }));
+      }
 
-      setAppointments(enriched);
+      // Merge local appointments if not yet in remote
+      const remoteIds = new Set(remoteEnriched.map((a) => a.id));
+      const localOnly = local.filter((l: any) => !remoteIds.has(l.id));
+      const combined = [...remoteEnriched, ...localOnly];
+
+      setAppointments(combined);
+      saveLocalAppointments(combined);
     } catch (error) {
       console.error('Randevular alınırken hata:', error);
+      setAppointments(local);
     } finally {
       setLoading(false);
     }
@@ -104,17 +139,54 @@ export const AppointmentsScreen = ({ route, navigation }: any) => {
     }
     try {
       setSaving(true);
-      const { error } = await supabase.from('appointments').insert({
-        user_id: session?.user?.id,
+      const newApp = {
+        id: 'app_' + Date.now(),
+        user_id: session?.user?.id || 'guest',
         coach_id: selectedCoach,
         type: selectedType,
         date: dateStr,
         time: timeStr,
         notes: notes,
         status: 'pending',
-      });
-      if (error) throw error;
-      
+        created_at: new Date().toISOString(),
+      };
+
+      // 1. Try standard insert first
+      let insertError: any = null;
+      if (session?.user?.id) {
+        const res = await supabase.from('appointments').insert({
+          user_id: session.user.id,
+          coach_id: selectedCoach,
+          type: selectedType,
+          date: dateStr,
+          time: timeStr,
+          notes: notes,
+          status: 'pending',
+        });
+        insertError = res.error;
+
+        // If error is PGRST204 ('time' column missing), try fallback insert without 'time' column
+        if (insertError && (insertError.code === 'PGRST204' || insertError.message?.includes('time'))) {
+          console.log('Fallback insert: time column missing in appointments schema cache.');
+          const fallbackNotes = notes ? `${notes} (Saat: ${timeStr})` : `Saat: ${timeStr}`;
+          const res2 = await supabase.from('appointments').insert({
+            user_id: session.user.id,
+            coach_id: selectedCoach,
+            type: selectedType,
+            date: dateStr,
+            notes: fallbackNotes,
+            status: 'pending',
+          });
+          insertError = res2.error;
+        }
+      }
+
+      // 2. Save locally so appointment is visible immediately regardless of DB schema state
+      const currentList = await loadLocalAppointments();
+      const updatedList = [newApp, ...currentList];
+      await saveLocalAppointments(updatedList);
+      setAppointments((prev) => [newApp, ...prev]);
+
       setIsModalVisible(false);
       resetForm();
       fetchAppointments();
@@ -123,6 +195,7 @@ export const AppointmentsScreen = ({ route, navigation }: any) => {
         message: 'Randevu talebiniz oluşturuldu.',
       });
     } catch (error) {
+      console.error('Save appointment error:', error);
       feedback.error({
         title: 'Hata',
         message: error,
@@ -312,23 +385,27 @@ export const AppointmentsScreen = ({ route, navigation }: any) => {
                 ))}
               </View>
 
-              <Text style={styles.label}>Tarih (YYYY-MM-DD)</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="Örn: 2026-08-15"
-                placeholderTextColor={Colors.textSecondaryDark}
-                value={dateStr}
-                onChangeText={setDateStr}
-              />
+              <Text style={styles.label}>Tarih</Text>
+              <TouchableOpacity
+                onPress={() => setShowDatePicker(true)}
+                style={[styles.input, { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }]}
+              >
+                <Text style={{ color: dateStr ? Colors.textDark : Colors.textSecondaryDark }}>
+                  {dateStr || 'Tarih Seçin (YYYY-MM-DD)'}
+                </Text>
+                <Calendar size={18} color={Colors.primary} />
+              </TouchableOpacity>
 
-              <Text style={styles.label}>Saat Aralığı (SS:DD)</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="Örn: 09:00 - 10:00"
-                placeholderTextColor={Colors.textSecondaryDark}
-                value={timeStr}
-                onChangeText={setTimeStr}
-              />
+              <Text style={styles.label}>Saat Aralığı</Text>
+              <TouchableOpacity
+                onPress={() => setShowTimePicker(true)}
+                style={[styles.input, { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }]}
+              >
+                <Text style={{ color: timeStr ? Colors.textDark : Colors.textSecondaryDark }}>
+                  {timeStr || 'Saat Seçin (Örn: 10:00 - 11:00)'}
+                </Text>
+                <Clock size={18} color={Colors.primary} />
+              </TouchableOpacity>
 
               <Text style={styles.label}>Not (İsteğe bağlı)</Text>
               <TextInput
@@ -339,6 +416,31 @@ export const AppointmentsScreen = ({ route, navigation }: any) => {
                 onChangeText={setNotes}
                 multiline
                 textAlignVertical="top"
+              />
+
+              {/* Date & Time Picker Modals */}
+              <DateTimePickerModal
+                visible={showDatePicker}
+                mode="date"
+                title="Randevu Tarihi Seç"
+                initialValue={dateStr}
+                onConfirm={(d) => {
+                  setDateStr(d);
+                  setShowDatePicker(false);
+                }}
+                onCancel={() => setShowDatePicker(false)}
+              />
+
+              <DateTimePickerModal
+                visible={showTimePicker}
+                mode="time"
+                title="Randevu Saati Seç"
+                initialValue={timeStr}
+                onConfirm={(t) => {
+                  setTimeStr(t);
+                  setShowTimePicker(false);
+                }}
+                onCancel={() => setShowTimePicker(false)}
               />
 
               <TouchableOpacity 

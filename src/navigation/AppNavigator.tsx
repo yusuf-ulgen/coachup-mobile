@@ -1,9 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { View, StyleSheet, Text, TouchableOpacity, Platform } from 'react-native';
+import * as SplashScreen from 'expo-splash-screen';
 import { NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
+SplashScreen.preventAutoHideAsync().catch(() => {});
 import {
   Home,
   Calendar,
@@ -75,13 +78,19 @@ const CustomTabBar = ({ state, descriptors, navigation }: any) => {
   const [hasActiveGym, setHasActiveGym] = useState(false);
 
   useEffect(() => {
+    let isMounted = true;
     AuthService.getCurrentProfile()
       .then(async (p) => {
         const active = await UserService.hasActiveMembership(p);
-        setHasActiveGym(active);
+        if (isMounted) setHasActiveGym(active);
       })
-      .catch(() => setHasActiveGym(false));
-  }, []);
+      .catch(() => {
+        if (isMounted) setHasActiveGym(false);
+      });
+    return () => {
+      isMounted = false;
+    };
+  }, [state.index]);
 
   const bottomPadding = Math.max(insets.bottom, Platform.OS === 'ios' ? 20 : 12) + 4;
 
@@ -151,9 +160,24 @@ const CustomTabBar = ({ state, descriptors, navigation }: any) => {
   );
 };
 
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
 const MainTabNavigator: React.FC = () => {
+  const [initialRoute, setInitialRoute] = useState<string>('HomeTab');
+
+  useEffect(() => {
+    AsyncStorage.getItem('@user_default_screen').then((pref: string | null) => {
+      if (pref === 'calendar') setInitialRoute('CalendarTab');
+      else if (pref === 'training') setInitialRoute('TrainingTab');
+      else if (pref === 'qr') setInitialRoute('QRTab');
+      else setInitialRoute('HomeTab');
+    }).catch(() => {});
+  }, []);
+
   return (
     <Tab.Navigator
+      key={initialRoute}
+      initialRouteName={initialRoute}
       tabBar={(props) => <CustomTabBar {...props} />}
       screenOptions={{ headerShown: false }}
     >
@@ -303,6 +327,12 @@ export const AppNavigator: React.FC = () => {
       PusherService.unsubscribeAll();
     };
   }, [session]);
+
+  useEffect(() => {
+    if (!loading) {
+      SplashScreen.hideAsync().catch(() => {});
+    }
+  }, [loading]);
 
   if (loading || showSplash || (session && !guardianChecked)) {
     return <SplashView onAnimationFinish={() => setShowSplash(false)} />;

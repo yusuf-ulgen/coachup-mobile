@@ -13,10 +13,12 @@ import { Colors } from '../theme/colors';
 import { useNavigation } from '@react-navigation/native';
 import { ActiveWorkoutManager } from '../services/activeWorkoutManager';
 import { CustomAlert } from './CustomAlertModal';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 export const FloatingActiveWorkoutOverlay: React.FC = () => {
+  const insets = useSafeAreaInsets();
   const pan = useRef(new Animated.ValueXY()).current;
   const currentPos = useRef({ x: 0, y: 0 });
   const navigation = useNavigation<any>();
@@ -132,8 +134,12 @@ export const FloatingActiveWorkoutOverlay: React.FC = () => {
     <Animated.View
       style={[
         styles.container,
+        { bottom: Math.max(85, insets.bottom + 65) },
         {
-          transform: [{ translateX: pan.x }, { translateY: pan.y }],
+          transform: [
+            { translateX: pan.x },
+            { translateY: pan.y },
+          ],
         },
       ]}
       {...panResponder.panHandlers}

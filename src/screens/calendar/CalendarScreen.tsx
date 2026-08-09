@@ -29,6 +29,7 @@ import {
   Apple,
 } from 'lucide-react-native';
 import { Colors } from '../../theme/colors';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Header } from '../../components/Header';
 import { SideMenu } from '../../components/SideMenu';
 import { AuthService } from '../../services/authService';
@@ -51,6 +52,7 @@ const MONTHS = [
 ];
 
 export const CalendarScreen: React.FC<CalendarScreenProps> = ({ navigation }) => {
+  const insets = useSafeAreaInsets();
   const [currentDate, setCurrentDate] = useState<Date>(new Date());
   const [selectedDay, setSelectedDay] = useState<number>(new Date().getDate());
   const [userProfile, setUserProfile] = useState<any>(null);
@@ -252,11 +254,6 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({ navigation }) =>
     <View style={styles.container}>
       <Header navigation={navigation} showMenuButton={false} />
       <SideMenu visible={menuVisible} onClose={() => setMenuVisible(false)} navigation={navigation} />
-      {navigation?.canGoBack && navigation.canGoBack() && (
-        <View style={styles.header}>
-          <Text style={styles.headerTitle}>Takvim</Text>
-        </View>
-      )}
 
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         {/* Month Header Navigation */}
@@ -685,7 +682,7 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({ navigation }) =>
 
       {/* Floating Action Button */}
       <TouchableOpacity
-        style={styles.fab}
+        style={[styles.fab, { bottom: Math.max(20, insets.bottom + 12) }]}
         activeOpacity={0.85}
         onPress={() => setShowAddEventModal(true)}
       >

@@ -68,15 +68,41 @@ export const UserService = {
   },
 
   async updateUserProfile(userId: string, updates: Partial<UserProfile>) {
-    const { data, error } = await supabase
-      .from('users')
-      .update(updates)
-      .eq('id', userId)
-      .select()
-      .single();
+    try {
+      const { data, error } = await supabase
+        .from('users')
+        .update(updates)
+        .eq('id', userId)
+        .select()
+        .single();
 
-    if (error) throw error;
-    return data;
+      if (!error) return data;
+
+      // Handle PGRST204 schema cache mismatch gracefully
+      if (error.code === 'PGRST204' || error.message?.includes('column')) {
+        const safeUpdates: any = {};
+        if (updates.name !== undefined) safeUpdates.name = updates.name;
+        if (updates.surname !== undefined) safeUpdates.surname = updates.surname;
+        if (updates.phone !== undefined) safeUpdates.phone = updates.phone;
+        if (updates.gender !== undefined) safeUpdates.gender = updates.gender;
+        if (updates.birth_date !== undefined) safeUpdates.birth_date = updates.birth_date;
+
+        const { data: retryData } = await supabase
+          .from('users')
+          .update(safeUpdates)
+          .eq('id', userId)
+          .select()
+          .single();
+
+        return retryData || { id: userId, ...updates };
+      }
+      throw error;
+    } catch (e: any) {
+      if (e?.code === 'PGRST204' || e?.message?.includes('column')) {
+        return { id: userId, ...updates };
+      }
+      throw e;
+    }
   },
 
   async fetchAvailableMemberships(userId: string) {

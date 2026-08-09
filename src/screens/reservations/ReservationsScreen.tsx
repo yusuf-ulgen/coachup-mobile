@@ -1,22 +1,141 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Modal, TextInput } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Colors } from '../../theme/colors';
-import { Info, MapPin, CheckCircle, Clock, XCircle, X, ArrowLeft } from 'lucide-react-native';
+import { Info, MapPin, CheckCircle, Clock, XCircle, X, ArrowLeft, Calendar } from 'lucide-react-native';
+import { DateTimePickerModal } from '../../components/DateTimePickerModal';
+import { feedback } from '../../services/feedbackService';
+import { supabase } from '../../services/supabaseClient';
+import { AuthService } from '../../services/authService';
 
 export const ReservationsScreen = ({ navigation }: any) => {
+  const [reservations, setReservations] = useState<any[]>([]);
   const [modalVisible, setModalVisible] = useState(false);
   const [selectedArea, setSelectedArea] = useState('');
   const [reservationNote, setReservationNote] = useState('');
+  const [resDate, setResDate] = useState('');
+  const [resTime, setResTime] = useState('');
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [showTimePicker, setShowTimePicker] = useState(false);
+
+  const STORAGE_KEY = '@user_reservations_cache';
+
+  const saveLocalReservations = async (list: any[]) => {
+    try {
+      await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(list));
+    } catch (e) {
+      console.error('Error saving reservations locally:', e);
+    }
+  };
+
+  const loadReservations = async () => {
+    let localData: any[] = [];
+    try {
+      const stored = await AsyncStorage.getItem(STORAGE_KEY);
+      if (stored) localData = JSON.parse(stored);
+    } catch (e) {
+      console.error('Error loading local reservations:', e);
+    }
+
+    try {
+      const user = await AuthService.getCurrentUser();
+      if (user?.id) {
+        const { data, error } = await supabase
+          .from('user_reservations')
+          .select('*')
+          .eq('user_id', user.id)
+          .order('created_at', { ascending: false });
+
+        if (!error && data && data.length > 0) {
+          const remoteIds = new Set(data.map((r) => r.id));
+          const localOnly = localData.filter((lr) => !remoteIds.has(lr.id));
+          const merged = [...data, ...localOnly];
+          setReservations(merged);
+          saveLocalReservations(merged);
+          return;
+        }
+      }
+    } catch (e) {
+      console.error('Error fetching remote reservations:', e);
+    }
+
+    setReservations(localData);
+  };
+
+  useEffect(() => {
+    loadReservations();
+  }, []);
 
   const openReservationModal = (area: string) => {
     setSelectedArea(area);
     setModalVisible(true);
   };
 
-  const handleMakeReservation = () => {
+  const handleMakeReservation = async () => {
+    if (!resDate || !resTime) {
+      feedback.warning({ title: 'Hata', message: 'Lütfen tarih ve saat aralığı seçin.' });
+      return;
+    }
+
+    const user = await AuthService.getCurrentUser();
+    const newRes = {
+      id: 'res_' + Date.now(),
+      user_id: user?.id || 'guest',
+      area: selectedArea,
+      date: resDate,
+      time: resTime,
+      notes: reservationNote,
+      status: 'pending',
+      created_at: new Date().toISOString(),
+    };
+
+    const updated = [newRes, ...reservations];
+    setReservations(updated);
+    await saveLocalReservations(updated);
+
+    if (user?.id) {
+      try {
+        await supabase.from('user_reservations').insert([
+          {
+            user_id: user.id,
+            area: selectedArea,
+            date: resDate,
+            time: resTime,
+            notes: reservationNote,
+            status: 'pending',
+          },
+        ]);
+      } catch {}
+    }
+
     setModalVisible(false);
     setReservationNote('');
+    setResDate('');
+    setResTime('');
+
+    feedback.success({ title: 'Başarılı', message: `${selectedArea} alanına rezervasyon talebiniz alındı.` });
+  };
+
+  const handleCancelReservation = async (id: string) => {
+    const confirmed = await feedback.destructive({
+      title: 'Rezervasyonu İptal Et',
+      message: 'Bu rezervasyonu iptal etmek istediğinize emin misiniz?',
+      confirmText: 'İptal Et',
+      cancelText: 'Vazgeç',
+    });
+
+    if (!confirmed) return;
+
+    const updated = reservations.map((r) => (r.id === id ? { ...r, status: 'cancelled' } : r));
+    setReservations(updated);
+    await saveLocalReservations(updated);
+
+    try {
+      await supabase.from('user_reservations').update({ status: 'cancelled' }).eq('id', id);
+    } catch {}
+
+    feedback.toast('Rezervasyon iptal edildi.', 'info');
   };
 
   return (
@@ -62,44 +181,43 @@ export const ReservationsScreen = ({ navigation }: any) => {
       {/* Aktif Rezervasyonlarım */}
       <Text style={styles.sectionTitle}>Aktif Rezervasyonlarım</Text>
       <View style={styles.reservationList}>
-        <View style={styles.reservationItem}>
-          <View style={styles.resInfo}>
-            <Text style={styles.resArea}>Stüdyo (Pilates)</Text>
-            <Text style={styles.resDate}>15.09.2026 - 18:00</Text>
-            <View style={[styles.statusBadge, { backgroundColor: Colors.success + '20' }]}>
-              <CheckCircle color={Colors.success} size={14} />
-              <Text style={[styles.statusText, { color: Colors.success }]}>Onaylandı</Text>
-            </View>
+        {reservations.length === 0 ? (
+          <View style={{ padding: 20, alignItems: 'center' }}>
+            <Text style={{ color: Colors.textSecondary, fontSize: 14 }}>Henüz aktif bir rezervasyonunuz bulunmamaktadır.</Text>
           </View>
-          <TouchableOpacity style={styles.cancelBtn}>
-            <Text style={styles.cancelBtnText}>İptal Et</Text>
-          </TouchableOpacity>
-        </View>
-
-        <View style={styles.reservationItem}>
-          <View style={styles.resInfo}>
-            <Text style={styles.resArea}>Tenis Kortu</Text>
-            <Text style={styles.resDate}>16.09.2026 - 19:00</Text>
-            <View style={[styles.statusBadge, { backgroundColor: Colors.warning + '20' }]}>
-              <Clock color={Colors.warning} size={14} />
-              <Text style={[styles.statusText, { color: Colors.warning }]}>Bekliyor</Text>
+        ) : (
+          reservations.map((item) => (
+            <View key={item.id} style={styles.reservationItem}>
+              <View style={styles.resInfo}>
+                <Text style={styles.resArea}>{item.area}</Text>
+                <Text style={styles.resDate}>{item.date} - {item.time}</Text>
+                {item.status === 'approved' && (
+                  <View style={[styles.statusBadge, { backgroundColor: Colors.success + '20' }]}>
+                    <CheckCircle color={Colors.success} size={14} />
+                    <Text style={[styles.statusText, { color: Colors.success }]}>Onaylandı</Text>
+                  </View>
+                )}
+                {item.status === 'pending' && (
+                  <View style={[styles.statusBadge, { backgroundColor: Colors.warning + '20' }]}>
+                    <Clock color={Colors.warning} size={14} />
+                    <Text style={[styles.statusText, { color: Colors.warning }]}>Bekliyor</Text>
+                  </View>
+                )}
+                {item.status === 'cancelled' && (
+                  <View style={[styles.statusBadge, { backgroundColor: Colors.error + '20' }]}>
+                    <XCircle color={Colors.error} size={14} />
+                    <Text style={[styles.statusText, { color: Colors.error }]}>İptal</Text>
+                  </View>
+                )}
+              </View>
+              {item.status !== 'cancelled' && (
+                <TouchableOpacity style={styles.cancelBtn} onPress={() => handleCancelReservation(item.id)}>
+                  <Text style={styles.cancelBtnText}>İptal Et</Text>
+                </TouchableOpacity>
+              )}
             </View>
-          </View>
-          <TouchableOpacity style={styles.cancelBtn}>
-            <Text style={styles.cancelBtnText}>İptal Et</Text>
-          </TouchableOpacity>
-        </View>
-
-        <View style={styles.reservationItem}>
-          <View style={styles.resInfo}>
-            <Text style={styles.resArea}>Sauna</Text>
-            <Text style={styles.resDate}>14.09.2026 - 20:00</Text>
-            <View style={[styles.statusBadge, { backgroundColor: Colors.error + '20' }]}>
-              <XCircle color={Colors.error} size={14} />
-              <Text style={[styles.statusText, { color: Colors.error }]}>İptal</Text>
-            </View>
-          </View>
-        </View>
+          ))
+        )}
       </View>
 
       {/* Rezervasyon Yapma Dialogu */}
@@ -116,12 +234,28 @@ export const ReservationsScreen = ({ navigation }: any) => {
             
             <View style={styles.inputGroup}>
               <Text style={styles.inputLabel}>Tarih</Text>
-              <TextInput style={styles.input} placeholder="15.09.2026" placeholderTextColor={Colors.textSecondary} />
+              <TouchableOpacity 
+                onPress={() => setShowDatePicker(true)}
+                style={[styles.input, { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }]}
+              >
+                <Text style={{ color: resDate ? Colors.text : Colors.textSecondary }}>
+                  {resDate || 'Tarih Seçin (YYYY-MM-DD)'}
+                </Text>
+                <Calendar size={18} color={Colors.primary} />
+              </TouchableOpacity>
             </View>
             
             <View style={styles.inputGroup}>
               <Text style={styles.inputLabel}>Saat Aralığı</Text>
-              <TextInput style={styles.input} placeholder="18:00 - 19:00" placeholderTextColor={Colors.textSecondary} />
+              <TouchableOpacity 
+                onPress={() => setShowTimePicker(true)}
+                style={[styles.input, { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }]}
+              >
+                <Text style={{ color: resTime ? Colors.text : Colors.textSecondary }}>
+                  {resTime || 'Saat Seçin (Örn: 18:00 - 19:00)'}
+                </Text>
+                <Clock size={18} color={Colors.primary} />
+              </TouchableOpacity>
             </View>
             
             <View style={styles.inputGroup}>
@@ -142,6 +276,31 @@ export const ReservationsScreen = ({ navigation }: any) => {
           </View>
         </View>
       </Modal>
+
+      {/* Date & Time Picker Modals */}
+      <DateTimePickerModal
+        visible={showDatePicker}
+        mode="date"
+        title="Rezervasyon Tarihi Seç"
+        initialValue={resDate}
+        onConfirm={(d) => {
+          setResDate(d);
+          setShowDatePicker(false);
+        }}
+        onCancel={() => setShowDatePicker(false)}
+      />
+
+      <DateTimePickerModal
+        visible={showTimePicker}
+        mode="time"
+        title="Rezervasyon Saati Seç"
+        initialValue={resTime}
+        onConfirm={(t) => {
+          setResTime(t);
+          setShowTimePicker(false);
+        }}
+        onCancel={() => setShowTimePicker(false)}
+      />
       </ScrollView>
     </SafeAreaView>
   );

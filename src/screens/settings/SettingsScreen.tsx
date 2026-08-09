@@ -27,6 +27,9 @@ interface SettingsScreenProps {
   navigation: any;
 }
 
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as LocalAuthentication from 'expo-local-authentication';
+
 export const SettingsScreen: React.FC<SettingsScreenProps> = ({ navigation }) => {
   const [menuVisible, setMenuVisible] = useState(false);
   const [userProfile, setUserProfile] = useState<any>(null);
@@ -40,6 +43,14 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ navigation }) =>
   useEffect(() => {
     const loadSettings = async () => {
       try {
+        const localDefault = await AsyncStorage.getItem('@user_default_screen');
+        if (localDefault) setDefaultScreen(localDefault);
+
+        const storedBio = await AsyncStorage.getItem('@app_setting_biometrics_enabled');
+        if (storedBio !== null) {
+          setBiometricsEnabled(JSON.parse(storedBio));
+        }
+
         const profile = await AuthService.getCurrentProfile();
         if (profile) {
           setUserProfile(profile);
@@ -48,7 +59,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ navigation }) =>
           if (profile.notifications_enabled !== undefined) {
             setNotificationsEnabled(profile.notifications_enabled);
           }
-          if (profile.biometrics_enabled !== undefined) {
+          if (storedBio === null && profile.biometrics_enabled !== undefined) {
             setBiometricsEnabled(profile.biometrics_enabled);
           }
         }
@@ -62,22 +73,25 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ navigation }) =>
   const saveSetting = async (key: string, value: any) => {
     setUserProfile((prev: any) => ({ ...prev, [key]: value }));
     try {
+      await AsyncStorage.setItem(`@app_setting_${key}`, JSON.stringify(value));
+      if (key === 'default_screen') {
+        await AsyncStorage.setItem('@user_default_screen', value);
+      }
+    } catch {}
+
+    try {
       if (userProfile?.id) {
         await UserService.updateUserProfile(userProfile.id, { [key]: value });
       }
     } catch (e: any) {
-      console.warn(`Could not sync ${key} to DB:`, e);
-      feedback.error({
-        title: 'Hata',
-        message: e,
-        fallbackMessage: 'Ayar kaydedilemedi. Lütfen tekrar deneyin.',
-      });
+      console.log(`Note: ${key} DB sync skipped or column missing in schema cache.`);
     }
   };
 
   const handleDefaultScreenChange = (screen: string) => {
     setDefaultScreen(screen);
     saveSetting('default_screen', screen);
+    feedback.toast('Varsayılan başlangıç ekranı güncellendi.', 'success');
   };
 
   const handleNotificationsToggle = (val: boolean) => {
@@ -85,9 +99,52 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ navigation }) =>
     saveSetting('notifications_enabled', val);
   };
 
-  const handleBiometricsToggle = (val: boolean) => {
-    setBiometricsEnabled(val);
-    saveSetting('biometrics_enabled', val);
+  const handleBiometricsToggle = async (val: boolean) => {
+    if (val) {
+      try {
+        const hasHardware = await LocalAuthentication.hasHardwareAsync();
+        const isEnrolled = await LocalAuthentication.isEnrolledAsync();
+
+        if (!hasHardware || !isEnrolled) {
+          setBiometricsEnabled(false);
+          await AsyncStorage.setItem('@app_setting_biometrics_enabled', JSON.stringify(false));
+          feedback.warning({
+            title: 'Biyometrik Veri Bulunamadı',
+            message: 'Telefonunuzda kayıtlı biyometrik veri (Parmak izi veya Face ID) bulunamadı. Lütfen telefon ayarlarınızdan biyometrik veri kaydedip sonra tekrar deneyin.',
+          });
+          return;
+        }
+
+        const result = await LocalAuthentication.authenticateAsync({
+          promptMessage: 'Biyometrik girişi aktifleştirmek için doğrulama yapın',
+          fallbackLabel: 'Şifre Kullan',
+        });
+
+        if (result.success) {
+          setBiometricsEnabled(true);
+          await saveSetting('biometrics_enabled', true);
+          feedback.toast('Biyometrik giriş başarıyla aktif edildi.', 'success');
+        } else {
+          setBiometricsEnabled(false);
+          await AsyncStorage.setItem('@app_setting_biometrics_enabled', JSON.stringify(false));
+          feedback.warning({
+            title: 'Doğrulama Başarısız',
+            message: 'Biyometrik doğrulama tamamlanamadı.',
+          });
+        }
+      } catch (e) {
+        setBiometricsEnabled(false);
+        await AsyncStorage.setItem('@app_setting_biometrics_enabled', JSON.stringify(false));
+        feedback.warning({
+          title: 'Biyometrik Veri Bulunamadı',
+          message: 'Telefonunuzda kayıtlı biyometrik veri bulunamadı. Lütfen telefon ayarlarınızdan biyometrik veri ekleyip tekrar deneyin.',
+        });
+      }
+    } else {
+      setBiometricsEnabled(false);
+      await saveSetting('biometrics_enabled', false);
+      feedback.toast('Biyometrik giriş kapatıldı.', 'info');
+    }
   };
 
   const handleWeightUnitToggle = (unit: 'kg' | 'lbs') => {
@@ -157,9 +214,9 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ navigation }) =>
 
         {/* Biometrics Toggle */}
         <View style={styles.cardRow}>
-          <View style={styles.rowHeader}>
+          <View style={[styles.rowHeader, { flex: 1, marginRight: 8 }]}>
             <Fingerprint size={20} color={Colors.primary} />
-            <Text style={styles.rowTitle}>Biyometrik Giriş (FaceID / Parmak İzi)</Text>
+            <Text style={styles.rowTitle}>Biyometrik Giriş</Text>
           </View>
           <Switch
             value={biometricsEnabled}

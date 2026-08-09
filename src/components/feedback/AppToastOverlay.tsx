@@ -5,9 +5,9 @@ import {
   TouchableOpacity,
   StyleSheet,
   Animated,
-  SafeAreaView,
   Platform,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { CheckCircle2, AlertTriangle, XCircle, Info, X } from 'lucide-react-native';
 import { ToastOptions, feedback } from '../../services/feedbackService';
 import { useTheme } from '../../theme/ThemeContext';

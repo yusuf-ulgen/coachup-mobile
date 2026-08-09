@@ -9,6 +9,7 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { feedback } from '../../services/feedbackService';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   ArrowLeft,
   Calendar,
@@ -30,6 +31,7 @@ import { Colors } from '../../theme/colors';
 import { AuthService } from '../../services/authService';
 import { UserService } from '../../services/userService';
 import { supabase } from '../../services/supabaseClient';
+import { DateTimePickerModal } from '../../components/DateTimePickerModal';
 
 interface ScreenProps {
   navigation?: any;
@@ -252,31 +254,83 @@ export const GoalsScreen: React.FC<ScreenProps> = ({ navigation }) => {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'active' | 'completed'>('active');
 
+  // Add Modal State
   const [modalVisible, setModalVisible] = useState(false);
   const [title, setTitle] = useState('');
   const [goalType, setGoalType] = useState('Kilo Verme');
   const [targetValue, setTargetValue] = useState('');
   const [targetUnit, setTargetUnit] = useState('kg');
   const [endDate, setEndDate] = useState('');
+  const [showDatePicker, setShowDatePicker] = useState(false);
   const [saving, setSaving] = useState(false);
 
+  // Progress Entry Modal State
+  const [progressModalVisible, setProgressModalVisible] = useState(false);
+  const [selectedGoalForProgress, setSelectedGoalForProgress] = useState<any>(null);
+  const [progressInputValue, setProgressInputValue] = useState('');
+
   const goalTypes = ['Kilo Verme', 'Kilo Alma', 'Kas Geliştirme', 'Dayanıklılık', 'Koşu Mesafesi'];
+
   const getUnitForType = (type: string) => {
     if (type.includes('Kilo')) return 'kg';
     if (type.includes('Mesafe')) return 'km';
     return 'tekrar';
   };
 
+  const getQuestionForType = (type?: string, unit?: string) => {
+    if (type === 'Kilo Verme') return 'Kaç kilo verdiniz?';
+    if (type === 'Kilo Alma') return 'Kaç kilo aldınız?';
+    if (type === 'Kas Geliştirme') return 'Ne kadarlık kas gelişimi sağladınız? (kg)';
+    if (type === 'Koşu Mesafesi') return 'Kaç km koştunuz?';
+    return `Mevcut kaydettiğiniz / ulaştığınız değer nedir? (${unit || 'birim'})`;
+  };
+
+  const STORAGE_KEY = '@user_goals_cache';
+
+  const saveLocalGoals = async (goalsList: any[]) => {
+    try {
+      await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(goalsList));
+    } catch (e) {
+      console.error('Error saving goals locally:', e);
+    }
+  };
+
   const loadGoals = async () => {
     setLoading(true);
-    const user = await AuthService.getCurrentUser();
-    if (!user) return;
-    const { data } = await supabase
-      .from('user_goals')
-      .select('*')
-      .eq('user_id', user.id)
-      .order('created_at', { ascending: false });
-    setGoals(data || []);
+    let localGoals: any[] = [];
+    try {
+      const stored = await AsyncStorage.getItem(STORAGE_KEY);
+      if (stored) {
+        localGoals = JSON.parse(stored);
+      }
+    } catch (e) {
+      console.error('Error loading local goals:', e);
+    }
+
+    try {
+      const user = await AuthService.getCurrentUser();
+      if (user?.id) {
+        const { data, error } = await supabase
+          .from('user_goals')
+          .select('*')
+          .eq('user_id', user.id)
+          .order('created_at', { ascending: false });
+
+        if (!error && data && data.length > 0) {
+          const remoteIds = new Set(data.map((g) => g.id));
+          const localOnly = localGoals.filter((lg) => !remoteIds.has(lg.id));
+          const merged = [...data, ...localOnly];
+          setGoals(merged);
+          saveLocalGoals(merged);
+          setLoading(false);
+          return;
+        }
+      }
+    } catch (e) {
+      console.error('Error loading remote goals:', e);
+    }
+
+    setGoals(localGoals);
     setLoading(false);
   };
 
@@ -301,11 +355,14 @@ export const GoalsScreen: React.FC<ScreenProps> = ({ navigation }) => {
         target_unit: getUnitForType(goalType),
         end_date: endDate || null,
         status: 'active',
-        progress_percentage: 50,
+        current_progress_value: 0,
+        progress_percentage: 0,
         created_at: new Date().toISOString(),
       };
 
-      setGoals((prev) => [newGoal, ...prev]);
+      const updated = [newGoal, ...goals];
+      setGoals(updated);
+      await saveLocalGoals(updated);
 
       if (user?.id) {
         await supabase.from('user_goals').insert([
@@ -317,7 +374,7 @@ export const GoalsScreen: React.FC<ScreenProps> = ({ navigation }) => {
             target_unit: getUnitForType(goalType),
             end_date: endDate || null,
             status: 'active',
-            progress_percentage: 50,
+            progress_percentage: 0,
           },
         ]);
       }
@@ -326,7 +383,7 @@ export const GoalsScreen: React.FC<ScreenProps> = ({ navigation }) => {
       setTitle('');
       setTargetValue('');
       setEndDate('');
-      feedback.success({ title: 'Başarılı', message: 'Yeni hedefiniz eklendi.' });
+      feedback.success({ title: 'Başarılı', message: 'Yeni hedefiniz %0 ilerleme ile eklendi.' });
     } catch (e: any) {
       console.error('Goal save error:', e);
       feedback.error({ title: 'Hata', message: e, fallbackMessage: 'Hedef eklenirken bir hata oluştu.' });
@@ -335,15 +392,67 @@ export const GoalsScreen: React.FC<ScreenProps> = ({ navigation }) => {
     }
   };
 
+  const handleOpenProgressModal = (goal: any) => {
+    setSelectedGoalForProgress(goal);
+    setProgressInputValue('');
+    setProgressModalVisible(true);
+  };
+
+  const handleSaveProgress = async () => {
+    if (!selectedGoalForProgress || !progressInputValue) {
+      feedback.warning({ title: 'Hata', message: 'Lütfen eklenecek değeri girin.' });
+      return;
+    }
+
+    const addedVal = Number(progressInputValue);
+    const prevVal = Number(selectedGoalForProgress.current_progress_value) || 0;
+    const newTotal = prevVal + addedVal;
+    const targetVal = Number(selectedGoalForProgress.target_value) || 1;
+    const calcPct = Math.min(100, Math.max(0, Math.round((newTotal / targetVal) * 100)));
+
+    const updatedGoals = goals.map((g) =>
+      g.id === selectedGoalForProgress.id
+        ? {
+            ...g,
+            current_progress_value: newTotal,
+            progress_percentage: calcPct,
+            status: calcPct >= 100 ? 'completed' : g.status,
+            is_success: calcPct >= 100 ? true : g.is_success,
+          }
+        : g
+    );
+
+    setGoals(updatedGoals);
+    await saveLocalGoals(updatedGoals);
+
+    try {
+      await supabase
+        .from('user_goals')
+        .update({
+          progress_percentage: calcPct,
+          status: calcPct >= 100 ? 'completed' : selectedGoalForProgress.status,
+        })
+        .eq('id', selectedGoalForProgress.id);
+    } catch {}
+
+    setProgressModalVisible(false);
+    setProgressInputValue('');
+
+    feedback.success({
+      title: 'İlerleme Güncellendi',
+      message: `%${calcPct}'ı tamamlandı (Toplam: ${newTotal} / ${targetVal} ${selectedGoalForProgress.target_unit}).`,
+    });
+  };
+
   const handleCompleteGoal = async (id: string, success: boolean = true) => {
-    const nextStatus = success ? 'completed' : 'failed';
     const nextPct = success ? 100 : 0;
 
-    setGoals((prev) =>
-      prev.map((g) =>
-        g.id === id ? { ...g, status: 'completed', is_success: success, progress_percentage: nextPct } : g
-      )
+    const updatedGoals = goals.map((g) =>
+      g.id === id ? { ...g, status: 'completed', is_success: success, progress_percentage: nextPct } : g
     );
+
+    setGoals(updatedGoals);
+    await saveLocalGoals(updatedGoals);
 
     try {
       await supabase.from('user_goals').update({ status: 'completed', progress_percentage: nextPct }).eq('id', id);
@@ -390,53 +499,73 @@ export const GoalsScreen: React.FC<ScreenProps> = ({ navigation }) => {
               <Text style={styles.emptyText}>Bu kategoride hedefiniz bulunmuyor.</Text>
             </View>
           ) : (
-            filteredGoals.map((g) => (
-              <View key={g.id} style={styles.card}>
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                  <Text style={styles.cardTitle}>{g.title}</Text>
-                  {g.goal_type && (
-                    <View style={styles.activeBadge}>
-                      <Text style={styles.activeBadgeText}>{g.goal_type}</Text>
+            filteredGoals.map((g) => {
+              const currentPct = g.progress_percentage ?? 0;
+              const currentVal = g.current_progress_value ?? 0;
+              return (
+                <View key={g.id} style={styles.card}>
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                    <Text style={styles.cardTitle}>{g.title}</Text>
+                    {g.goal_type && (
+                      <View style={styles.activeBadge}>
+                        <Text style={styles.activeBadgeText}>{g.goal_type}</Text>
+                      </View>
+                    )}
+                  </View>
+                  
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 }}>
+                    <Text style={styles.cardDetail}>Hedef: {g.target_value} {g.target_unit}</Text>
+                    {g.end_date && <Text style={styles.cardDetail}>Bitiş: {g.end_date}</Text>}
+                  </View>
+
+                  <View style={styles.progressContainer}>
+                    <View style={[styles.progressBar, { width: `${currentPct}%` }]} />
+                  </View>
+
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 4 }}>
+                    <Text style={styles.cardDetail}>
+                      Mevcut: {currentVal} {g.target_unit}
+                    </Text>
+                    <Text style={[styles.cardDetail, { fontWeight: 'bold', color: Colors.primary }]}>
+                      %{currentPct} Tamamlandı
+                    </Text>
+                  </View>
+
+                  {activeTab === 'active' && (
+                    <View style={{ flexDirection: 'row', gap: 6, marginTop: 12 }}>
+                      <TouchableOpacity 
+                        style={[styles.completeBtn, { flex: 1, backgroundColor: '#4CAF50', paddingHorizontal: 6 }]}
+                        onPress={() => handleCompleteGoal(g.id, true)}
+                      >
+                        <CheckCircle2 size={14} color="#fff" style={{ marginRight: 2 }} />
+                        <Text style={[styles.completeBtnText, { fontSize: 12 }]}>Başarılı</Text>
+                      </TouchableOpacity>
+
+                      <TouchableOpacity 
+                        style={[styles.completeBtn, { flex: 1, backgroundColor: Colors.primary, paddingHorizontal: 6 }]}
+                        onPress={() => handleOpenProgressModal(g)}
+                      >
+                        <TrendingUp size={14} color="#fff" style={{ marginRight: 2 }} />
+                        <Text style={[styles.completeBtnText, { fontSize: 12 }]}>İlerleme Gir</Text>
+                      </TouchableOpacity>
+
+                      <TouchableOpacity 
+                        style={[styles.completeBtn, { flex: 1, backgroundColor: '#F44336', paddingHorizontal: 6 }]}
+                        onPress={() => handleCompleteGoal(g.id, false)}
+                      >
+                        <X size={14} color="#fff" style={{ marginRight: 2 }} />
+                        <Text style={[styles.completeBtnText, { fontSize: 12 }]}>Başarısız</Text>
+                      </TouchableOpacity>
                     </View>
                   )}
                 </View>
-                
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 }}>
-                  <Text style={styles.cardDetail}>Hedef: {g.target_value} {g.target_unit}</Text>
-                  {g.end_date && <Text style={styles.cardDetail}>Bitiş: {g.end_date}</Text>}
-                </View>
-
-                <View style={styles.progressContainer}>
-                  <View style={[styles.progressBar, { width: `${g.progress_percentage || 50}%` }]} />
-                </View>
-                <Text style={[styles.cardDetail, { textAlign: 'right', marginTop: 4 }]}>
-                  %{g.progress_percentage || 50} Tamamlandı
-                </Text>
-
-                {activeTab === 'active' && (
-                  <View style={{ flexDirection: 'row', gap: 10, marginTop: 12 }}>
-                    <TouchableOpacity 
-                      style={[styles.completeBtn, { flex: 1, backgroundColor: '#4CAF50' }]}
-                      onPress={() => handleCompleteGoal(g.id, true)}
-                    >
-                      <CheckCircle2 size={16} color="#fff" style={{ marginRight: 4 }} />
-                      <Text style={styles.completeBtnText}>Başarılı</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity 
-                      style={[styles.completeBtn, { flex: 1, backgroundColor: '#F44336' }]}
-                      onPress={() => handleCompleteGoal(g.id, false)}
-                    >
-                      <X size={16} color="#fff" style={{ marginRight: 4 }} />
-                      <Text style={styles.completeBtnText}>Başarısız</Text>
-                    </TouchableOpacity>
-                  </View>
-                )}
-              </View>
-            ))
+              );
+            })
           )}
         </ScrollView>
       )}
 
+      {/* Yeni Hedef Ekle Modal */}
       <Modal visible={modalVisible} transparent animationType="slide">
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
@@ -486,13 +615,15 @@ export const GoalsScreen: React.FC<ScreenProps> = ({ navigation }) => {
               </View>
 
               <Text style={styles.inputLabel}>Bitiş Tarihi (Opsiyonel)</Text>
-              <TextInput
-                style={styles.input}
-                placeholder="YYYY-MM-DD"
-                placeholderTextColor={Colors.textSecondaryDark}
-                value={endDate}
-                onChangeText={setEndDate}
-              />
+              <TouchableOpacity 
+                onPress={() => setShowDatePicker(true)}
+                style={[styles.input, { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }]}
+              >
+                <Text style={{ color: endDate ? Colors.textDark : Colors.textSecondaryDark }}>
+                  {endDate || 'YYYY-MM-DD'}
+                </Text>
+                <Calendar size={18} color={Colors.primary} />
+              </TouchableOpacity>
 
               <TouchableOpacity 
                 style={styles.saveBtn} 
@@ -506,6 +637,82 @@ export const GoalsScreen: React.FC<ScreenProps> = ({ navigation }) => {
                 )}
               </TouchableOpacity>
             </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Date Picker Modal for Goal End Date */}
+      <DateTimePickerModal
+        visible={showDatePicker}
+        mode="date"
+        title="Bitiş Tarihi Seç"
+        initialValue={endDate}
+        onConfirm={(d) => {
+          setEndDate(d);
+          setShowDatePicker(false);
+        }}
+        onCancel={() => setShowDatePicker(false)}
+      />
+
+      {/* Özel Kumülatif İlerleme Gir Modal */}
+      <Modal visible={progressModalVisible} transparent animationType="fade">
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>İlerleme Kaydet</Text>
+              <TouchableOpacity onPress={() => setProgressModalVisible(false)}>
+                <X size={24} color={Colors.textDark} />
+              </TouchableOpacity>
+            </View>
+
+            {selectedGoalForProgress && (() => {
+              const currentAccumulated = selectedGoalForProgress.current_progress_value || 0;
+              const hasPreviousProgress = currentAccumulated > 0;
+              
+              return (
+                <View style={{ marginVertical: 10 }}>
+                  <Text style={[styles.inputLabel, { fontSize: 16, color: Colors.primary, marginBottom: 4 }]}>
+                    {selectedGoalForProgress.title} ({selectedGoalForProgress.goal_type || 'Hedef'})
+                  </Text>
+
+                  {hasPreviousProgress ? (
+                    <Text style={[styles.inputLabel, { fontSize: 14, color: Colors.textDark, marginBottom: 12 }]}>
+                      Son ilerlemeniz: <Text style={{ fontWeight: 'bold', color: Colors.primary }}>{currentAccumulated} {selectedGoalForProgress.target_unit}</Text>. Bunun üzerine ne kadar daha eklemek istiyorsunuz?
+                    </Text>
+                  ) : (
+                    <Text style={[styles.inputLabel, { fontSize: 14, marginBottom: 12 }]}>
+                      {getQuestionForType(selectedGoalForProgress.goal_type, selectedGoalForProgress.target_unit)}
+                    </Text>
+                  )}
+
+                  <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                    <TextInput
+                      style={[styles.input, { flex: 1, marginRight: 10 }]}
+                      placeholder="Eklenecek miktar (Örn: 3)"
+                      placeholderTextColor={Colors.textSecondaryDark}
+                      value={progressInputValue}
+                      onChangeText={setProgressInputValue}
+                      keyboardType="numeric"
+                      autoFocus
+                    />
+                    <Text style={{ color: Colors.textDark, fontSize: 16, fontWeight: 'bold' }}>
+                      {selectedGoalForProgress.target_unit || 'birim'}
+                    </Text>
+                  </View>
+
+                  <Text style={{ color: Colors.textSecondaryDark, fontSize: 12, marginTop: 4 }}>
+                    Hedef Değer: {selectedGoalForProgress.target_value} {selectedGoalForProgress.target_unit} {hasPreviousProgress ? `(Mevcut: ${currentAccumulated})` : ''}
+                  </Text>
+
+                  <TouchableOpacity 
+                    style={[styles.saveBtn, { marginTop: 20 }]} 
+                    onPress={handleSaveProgress}
+                  >
+                    <Text style={styles.saveBtnText}>İlerlemeyi Ekle ve Güncelle</Text>
+                  </TouchableOpacity>
+                </View>
+              );
+            })()}
           </View>
         </View>
       </Modal>
