@@ -3,8 +3,10 @@ import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput } from 
 import { Search, ChevronLeft, Dumbbell } from 'lucide-react-native';
 import { Colors } from '../../theme/colors';
 import { useNavigation } from '@react-navigation/native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export const ResultsScreen = () => {
+  const insets = useSafeAreaInsets();
   const navigation = useNavigation();
   const [isKg, setIsKg] = useState(true);
   const [activeTab, setActiveTab] = useState<'my_results' | 'all'>('my_results');
@@ -28,7 +30,7 @@ export const ResultsScreen = () => {
 
   return (
     <View style={styles.container}>
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: Math.max(16, insets.top + 8) }]}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
           <ChevronLeft color={Colors.textPrimaryDark} size={24} />
         </TouchableOpacity>
@@ -38,7 +40,7 @@ export const ResultsScreen = () => {
         </TouchableOpacity>
       </View>
 
-      <ScrollView contentContainerStyle={styles.scrollContent}>
+      <ScrollView contentContainerStyle={[styles.scrollContent, { paddingBottom: 24 + insets.bottom }]}>
         {/* Üst Özet Bandı */}
         <View style={styles.summaryBand}>
           <View style={styles.summaryItem}>

@@ -1,12 +1,13 @@
 import React from 'react';
-import { View, Text, StyleSheet, FlatList } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { View, Text, StyleSheet } from 'react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Colors } from '../../theme/colors';
 
 export const GuardianChildrenScreen = () => {
+  const insets = useSafeAreaInsets();
   return (
-    <SafeAreaView style={styles.container}>
-      <View style={styles.content}>
+    <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
+      <View style={[styles.content, { paddingBottom: 100 + insets.bottom }]}>
         <Text style={styles.title}>Çocuklarım</Text>
         <View style={styles.card}>
           <Text style={styles.cardTitle}>Giriş/Çıkış Takibi</Text>

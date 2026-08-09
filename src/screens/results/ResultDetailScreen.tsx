@@ -3,9 +3,11 @@ import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-nati
 import { ChevronLeft } from 'lucide-react-native';
 import { Colors } from '../../theme/colors';
 import { useNavigation, useRoute } from '@react-navigation/native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Path, Circle, Polyline } from 'react-native-svg';
 
 export const ResultDetailScreen = () => {
+  const insets = useSafeAreaInsets();
   const navigation = useNavigation();
   const route = useRoute<any>();
   const { exerciseName = 'Egzersiz Detayı', isKg = true } = route.params || {};
@@ -41,7 +43,7 @@ export const ResultDetailScreen = () => {
 
   return (
     <View style={styles.container}>
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: Math.max(16, insets.top + 8) }]}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
           <ChevronLeft color={Colors.textPrimaryDark} size={24} />
         </TouchableOpacity>
@@ -49,7 +51,7 @@ export const ResultDetailScreen = () => {
         <View style={{ width: 24 }} />
       </View>
 
-      <ScrollView contentContainerStyle={styles.scrollContent}>
+      <ScrollView contentContainerStyle={[styles.scrollContent, { paddingBottom: 24 + insets.bottom }]}>
         {/* En Ağır Kaldırma Kartı */}
         <View style={styles.maxCard}>
           <Text style={styles.cardTitle}>En İyi Performans</Text>

@@ -18,10 +18,12 @@ import {
   X,
 } from 'lucide-react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { WorkoutShareSheet } from './WorkoutShareSheet';
 import { ScreenContainer } from '../../components/ScreenContainer';
 
 export const WorkoutSummaryScreen: React.FC = () => {
+  const insets = useSafeAreaInsets();
   const navigation = useNavigation<any>();
   const route = useRoute<any>();
   const [shareSheetVisible, setShareSheetVisible] = useState(false);
@@ -68,7 +70,7 @@ export const WorkoutSummaryScreen: React.FC = () => {
           <View style={{ width: 40 }} />
         </View>
 
-        <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+        <ScrollView contentContainerStyle={[styles.scrollContent, { paddingBottom: 100 + insets.bottom }]} showsVerticalScrollIndicator={false}>
           {/* ── Activity Header Banner ─────────────────────────────────── */}
           <View style={styles.activityBanner}>
             <View style={styles.emojiBadgeCircle}>
@@ -164,7 +166,7 @@ export const WorkoutSummaryScreen: React.FC = () => {
         </ScrollView>
 
         {/* ── Bottom Actions Row (Share & Kapat) ──────────────────────────── */}
-        <View style={styles.bottomBarRow}>
+        <View style={[styles.bottomBarRow, { bottom: Math.max(20, insets.bottom + 12) }]}>
           <TouchableOpacity style={styles.shareBtnCircle} onPress={handleShare} activeOpacity={0.8}>
             <Share2 size={22} color={Colors.primary} />
           </TouchableOpacity>

@@ -34,6 +34,8 @@ import { supabase } from '../../services/supabaseClient';
 import { DateTimePickerModal } from '../../components/DateTimePickerModal';
 import { SmoothModal } from '../../components/motion/SmoothModal';
 
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
 interface ScreenProps {
   navigation?: any;
 }
@@ -42,6 +44,7 @@ interface ScreenProps {
 // 1. Membership Screen (Salonlarım & Üyeliklerim)
 // ---------------------------------------------------------------------------
 export const MembershipScreen: React.FC<ScreenProps> = ({ navigation }) => {
+  const insets = useSafeAreaInsets();
   const [profile, setProfile] = useState<any>(null);
   const [plans, setPlans] = useState<any[]>([]);
   const [activeMembership, setActiveMembership] = useState<any>(null);
@@ -124,7 +127,7 @@ export const MembershipScreen: React.FC<ScreenProps> = ({ navigation }) => {
 
   return (
     <View style={styles.container}>
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: Math.max(16, insets.top + 8) }]}>
         <TouchableOpacity onPress={() => navigation?.goBack()} style={styles.backBtn}>
           <ArrowLeft size={22} color={Colors.textDark} />
         </TouchableOpacity>
@@ -133,7 +136,7 @@ export const MembershipScreen: React.FC<ScreenProps> = ({ navigation }) => {
       {loading ? (
         <ActivityIndicator size="large" color={Colors.primary} style={{ marginTop: 40 }} />
       ) : (
-        <ScrollView contentContainerStyle={styles.content}>
+        <ScrollView contentContainerStyle={[styles.content, { paddingBottom: 24 + insets.bottom }]}>
           <View style={styles.card}>
             <Text style={styles.cardHeader}>Aktif Salon Üyeliği</Text>
             <Text style={styles.cardTitle}>{profile?.gym_name || 'Kayıtlı Salon Yok'}</Text>
@@ -187,6 +190,7 @@ export const MembershipScreen: React.FC<ScreenProps> = ({ navigation }) => {
 // 2. Training History Screen (Geçmiş & İstatistikler)
 // ---------------------------------------------------------------------------
 export const TrainingHistoryScreen: React.FC<ScreenProps> = ({ navigation }) => {
+  const insets = useSafeAreaInsets();
   const [activities, setActivities] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -207,7 +211,7 @@ export const TrainingHistoryScreen: React.FC<ScreenProps> = ({ navigation }) => 
 
   return (
     <View style={styles.container}>
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: Math.max(16, insets.top + 8) }]}>
         <TouchableOpacity onPress={() => navigation?.goBack()} style={styles.backBtn}>
           <ArrowLeft size={22} color={Colors.textDark} />
         </TouchableOpacity>
@@ -223,8 +227,8 @@ export const TrainingHistoryScreen: React.FC<ScreenProps> = ({ navigation }) => 
       ) : (
         <FlatList
           data={activities}
-          keyExtractor={(item) => item.id}
-          contentContainerStyle={styles.content}
+          keyExtractor={(item) => item.id.toString()}
+          contentContainerStyle={[styles.content, { paddingBottom: 24 + insets.bottom }]}
           renderItem={({ item }) => (
             <View style={styles.rowCard}>
               <View style={styles.iconCircle}>
@@ -251,6 +255,7 @@ import { Modal, TextInput } from 'react-native';
 // 3. Goals Screen (Hedeflerim)
 // ---------------------------------------------------------------------------
 export const GoalsScreen: React.FC<ScreenProps> = ({ navigation }) => {
+  const insets = useSafeAreaInsets();
   const [goals, setGoals] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'active' | 'completed'>('active');
@@ -466,7 +471,7 @@ export const GoalsScreen: React.FC<ScreenProps> = ({ navigation }) => {
 
   return (
     <View style={styles.container}>
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: Math.max(16, insets.top + 8) }]}>
         <TouchableOpacity onPress={() => navigation?.goBack()} style={styles.backBtn}>
           <ArrowLeft size={22} color={Colors.textDark} />
         </TouchableOpacity>
@@ -873,17 +878,18 @@ export const GenericMenuScreen: React.FC<{ title: string; navigation?: any }> = 
   title,
   navigation,
 }) => {
+  const insets = useSafeAreaInsets();
   return (
     <View style={styles.container}>
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: Math.max(16, insets.top + 8) }]}>
         <TouchableOpacity onPress={() => navigation?.goBack()} style={styles.backBtn}>
           <ArrowLeft size={22} color={Colors.textDark} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>{title}</Text>
       </View>
-      <View style={styles.emptyBox}>
+      <ScrollView contentContainerStyle={[styles.content, { paddingBottom: 24 + insets.bottom }]}>
         <Text style={styles.emptyText}>{title} bilgileriniz bu ekranda yer alacaktır.</Text>
-      </View>
+      </ScrollView>
     </View>
   );
 };

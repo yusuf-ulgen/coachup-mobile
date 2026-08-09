@@ -255,7 +255,7 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({ navigation }) =>
       <Header navigation={navigation} showMenuButton={false} />
       <SideMenu visible={menuVisible} onClose={() => setMenuVisible(false)} navigation={navigation} />
 
-      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+      <ScrollView contentContainerStyle={[styles.scrollContent, { paddingBottom: 100 + insets.bottom }]} showsVerticalScrollIndicator={false}>
         {/* Month Header Navigation */}
         <View style={styles.monthHeader}>
           <TouchableOpacity onPress={handlePrevMonth} style={styles.monthArrow}>
@@ -682,7 +682,7 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({ navigation }) =>
 
       {/* Floating Action Button */}
       <TouchableOpacity
-        style={[styles.fab, { bottom: Math.max(20, insets.bottom + 12) }]}
+        style={[styles.fab, { bottom: 90 + insets.bottom }]}
         activeOpacity={0.85}
         onPress={() => setShowAddEventModal(true)}
       >

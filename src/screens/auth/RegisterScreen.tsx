@@ -20,6 +20,8 @@ import { GYM_CONFIG } from '../../config/gym';
 import { supabase } from '../../services/supabaseClient';
 import { UserService } from '../../services/userService';
 
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 interface RegisterScreenProps {
@@ -31,6 +33,7 @@ export const RegisterScreen: React.FC<RegisterScreenProps> = ({
   onNavigateToLogin,
   onRegisterSuccess,
 }) => {
+  const insets = useSafeAreaInsets();
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -143,13 +146,13 @@ export const RegisterScreen: React.FC<RegisterScreenProps> = ({
           />
           <Image
             source={GYM_CONFIG.LOGIN_LOGO}
-            style={styles.logoImage}
+            style={[styles.logoImage, { top: Math.max(36, insets.top + 16) }]}
             resizeMode="contain"
           />
         </View>
 
         {/* Sliding Form Card */}
-        <View style={styles.cardContainer}>
+        <View style={[styles.cardContainer, { paddingBottom: Math.max(40, 20 + insets.bottom) }]}>
           <Text style={styles.title}>Kayıt Ol</Text>
           <Text style={styles.subtitle}>
             Bireysel hesabınızı oluşturun,{'\n'}salon üyeliği gerekmez.

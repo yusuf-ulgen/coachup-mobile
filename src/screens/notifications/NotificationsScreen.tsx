@@ -12,6 +12,7 @@ import { Colors } from '../../theme/colors';
 import { AuthService } from '../../services/authService';
 import { NotificationService, AppNotification } from '../../services/notificationService';
 import { supabase } from '../../services/supabaseClient';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const getNotifIcon = (type: string) => {
   switch (type) {
@@ -30,6 +31,7 @@ interface NotificationsScreenProps {
 }
 
 export const NotificationsScreen: React.FC<NotificationsScreenProps> = ({ navigation }) => {
+  const insets = useSafeAreaInsets();
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -82,7 +84,7 @@ export const NotificationsScreen: React.FC<NotificationsScreenProps> = ({ naviga
   return (
     <View style={styles.container}>
       {/* Header */}
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: Math.max(16, insets.top + 8) }]}>
         <TouchableOpacity onPress={() => navigation?.goBack()} style={styles.backBtn}>
           <ArrowLeft size={22} color={Colors.textDark} />
         </TouchableOpacity>
@@ -113,14 +115,16 @@ export const NotificationsScreen: React.FC<NotificationsScreenProps> = ({ naviga
       ) : notifications.length === 0 ? (
         <View style={styles.centerBox}>
           <Bell size={48} color={Colors.textSecondaryDark} />
-          <Text style={styles.emptyTitle}>Henüz bildiriminiz yok</Text>
-          <Text style={styles.emptySubtitle}>Tüm bildirimleriniz burada görüntülenecektir.</Text>
+          <Text style={styles.emptyTitle}>Bildiriminiz Bulunmuyor</Text>
+          <Text style={styles.emptySubtitle}>
+            Antrenman, üyelik ve randevu güncellemeleri burada görünecektir.
+          </Text>
         </View>
       ) : (
         <FlatList
           data={notifications}
           keyExtractor={(item) => item.id}
-          contentContainerStyle={styles.listContent}
+          contentContainerStyle={[styles.listContent, { paddingBottom: 24 + insets.bottom }]}
           renderItem={({ item }) => {
             const { icon: IconComponent, color: iconColor } = getNotifIcon(item.type || 'system');
             return (

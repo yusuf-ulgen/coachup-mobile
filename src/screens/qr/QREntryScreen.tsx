@@ -28,6 +28,8 @@ import { AuthService } from '../../services/authService';
 import { QRService, EntryHistory, validateCode, resolveCodeType } from '../../services/qrService';
 import { feedback } from '../../services/feedbackService';
 
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
 interface QREntryScreenProps {
   navigation?: any;
 }
@@ -105,6 +107,7 @@ const ScanLineOverlay: React.FC = () => {
 // ── Main Screen ──────────────────────────────────────────────────────────────
 
 export const QREntryScreen: React.FC<QREntryScreenProps> = ({ navigation }) => {
+  const insets = useSafeAreaInsets();
   const [menuVisible, setMenuVisible] = useState(false);
   const [permission, requestPermission] = useCameraPermissions();
 
@@ -252,7 +255,7 @@ export const QREntryScreen: React.FC<QREntryScreenProps> = ({ navigation }) => {
       <SideMenu visible={menuVisible} onClose={() => setMenuVisible(false)} navigation={navigation} />
 
       <ScrollView
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={[styles.scrollContent, { paddingBottom: 100 + insets.bottom }]}
         showsVerticalScrollIndicator={false}
       >
         {/* Page Header */}

@@ -25,6 +25,7 @@ import {
 import { Colors } from '../../theme/colors';
 import { AuthService } from '../../services/authService';
 import { QRService, EntryHistory } from '../../services/qrService';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 type FilterType = 'all' | 'qr' | 'manual';
 
@@ -55,6 +56,7 @@ interface AllEntryHistoryScreenProps {
 }
 
 export const AllEntryHistoryScreen: React.FC<AllEntryHistoryScreenProps> = ({ navigation }) => {
+  const insets = useSafeAreaInsets();
   const [entries, setEntries] = useState<EntryHistory[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -130,7 +132,7 @@ export const AllEntryHistoryScreen: React.FC<AllEntryHistoryScreenProps> = ({ na
   return (
     <View style={styles.container}>
       {/* Header */}
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: Math.max(16, insets.top + 8) }]}>
         <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()} activeOpacity={0.7}>
           <ChevronLeft size={18} color={Colors.textDark} />
         </TouchableOpacity>
@@ -230,7 +232,7 @@ export const AllEntryHistoryScreen: React.FC<AllEntryHistoryScreenProps> = ({ na
           data={filtered}
           keyExtractor={(item) => item.id}
           renderItem={renderItem}
-          contentContainerStyle={{ paddingBottom: 100 }}
+          contentContainerStyle={{ paddingBottom: 24 + insets.bottom }}
         />
       )}
     </View>

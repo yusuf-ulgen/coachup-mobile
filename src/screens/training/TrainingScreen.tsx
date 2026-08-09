@@ -33,6 +33,8 @@ import { supabase } from '../../services/supabaseClient';
 import { ActiveWorkoutManager } from '../../services/activeWorkoutManager';
 import { Collapsible } from '../../components/motion/Collapsible';
 
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
 interface TrainingScreenProps {
   navigation?: any;
 }
@@ -53,6 +55,7 @@ const BUILTIN_ACTIVITIES = [
 ];
 
 export const TrainingScreen: React.FC<TrainingScreenProps> = ({ navigation }) => {
+  const insets = useSafeAreaInsets();
   const [searchText, setSearchText] = useState('');
   const [userProfile, setUserProfile] = useState<any>(null);
   const [gymPrograms, setGymPrograms] = useState<TrainingProgram[]>([]);
@@ -303,7 +306,7 @@ export const TrainingScreen: React.FC<TrainingScreenProps> = ({ navigation }) =>
         </TouchableOpacity>
       </View>
 
-      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+      <ScrollView contentContainerStyle={[styles.scrollContent, { paddingBottom: 100 + insets.bottom }]} showsVerticalScrollIndicator={false}>
         {/* Search Bar */}
         <View style={styles.searchBar}>
           <Search size={18} color={Colors.textSecondaryDark} />

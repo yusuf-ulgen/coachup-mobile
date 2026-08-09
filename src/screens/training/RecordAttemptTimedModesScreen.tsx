@@ -13,6 +13,8 @@ import { useNavigation, useRoute } from '@react-navigation/native';
 import { Colors } from '../../theme/colors';
 import { feedback } from '../../services/feedbackService';
 
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
 // Mocks for types that would normally come from services/models
 enum TimedPhase { IDLE, COUNTDOWN, RUNNING, ENTER_REPS, ENTER_ROUNDS }
 
@@ -25,6 +27,7 @@ const formatStopwatch = (ms: number) => {
 };
 
 export const RecordAttemptTimedModesScreen: React.FC = () => {
+  const insets = useSafeAreaInsets();
   const navigation = useNavigation<any>();
   const route = useRoute<any>();
   
@@ -185,7 +188,7 @@ export const RecordAttemptTimedModesScreen: React.FC = () => {
 
   return (
     <View style={styles.container}>
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: Math.max(16, insets.top + 8) }]}>
         <TouchableOpacity style={styles.iconButton} onPress={handleAbandon}>
           <ArrowLeft size={24} color={Colors.textLight} />
         </TouchableOpacity>

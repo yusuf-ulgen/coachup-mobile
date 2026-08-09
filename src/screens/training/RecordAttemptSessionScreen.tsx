@@ -14,7 +14,10 @@ import { supabase } from '../../services/supabaseClient';
 import { useAuth } from '../../context/AuthContext';
 import { feedback } from '../../services/feedbackService';
 
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
 export const RecordAttemptSessionScreen = ({ route, navigation }: any) => {
+  const insets = useSafeAreaInsets();
   const { session } = useAuth();
   const userId = session?.user?.id;
 
@@ -149,7 +152,7 @@ export const RecordAttemptSessionScreen = ({ route, navigation }: any) => {
   return (
     <View style={styles.container}>
       {/* ── Header ────────────────────────────────────────────────────────── */}
-      <View style={styles.headerRow}>
+      <View style={[styles.headerRow, { paddingTop: Math.max(16, insets.top + 8) }]}>
         <TouchableOpacity
           onPress={handleAbandon}
           style={styles.headerIconBtn}
@@ -172,7 +175,7 @@ export const RecordAttemptSessionScreen = ({ route, navigation }: any) => {
       </View>
       <View style={styles.headerDividerLine} />
 
-      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+      <ScrollView contentContainerStyle={[styles.scrollContent, { paddingBottom: 100 + insets.bottom }]} showsVerticalScrollIndicator={false}>
         {/* ── Flame Cluster Visual ────────────────────────────────────────── */}
         <View style={styles.flameCluster}>
           <Flame size={20} color="rgba(255,152,0,0.6)" style={{ marginBottom: 4 }} />
@@ -197,7 +200,7 @@ export const RecordAttemptSessionScreen = ({ route, navigation }: any) => {
       </ScrollView>
 
       {/* ── Bottom Action Buttons ────────────────────────────────────────── */}
-      <View style={styles.bottomBar}>
+      <View style={[styles.bottomBar, { bottom: Math.max(20, insets.bottom + 12) }]}>
         <TouchableOpacity
           style={[styles.actionBtn, styles.failBtn]}
           onPress={handleYapamadamClick}

@@ -23,6 +23,8 @@ import { AuthService } from '../../services/authService';
 import { GYM_CONFIG } from '../../config/gym';
 import { SmoothModal } from '../../components/motion/SmoothModal';
 
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 interface LoginScreenProps {
@@ -34,6 +36,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
   onNavigateToRegister,
   onLoginSuccess,
 }) => {
+  const insets = useSafeAreaInsets();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -127,22 +130,22 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
         keyboardShouldPersistTaps="handled"
         bounces={false}
       >
-        {/* Top Hero Image & Logo */}
+        {/* Hero Image Section */}
         <View style={styles.heroSection}>
           <Image
-            source={GYM_CONFIG.LOGIN_HERO}
+            source={typeof GYM_CONFIG.LOGIN_HERO === 'string' ? { uri: GYM_CONFIG.LOGIN_HERO } : GYM_CONFIG.LOGIN_HERO}
             style={styles.heroImage}
             resizeMode="cover"
           />
           <Image
-            source={GYM_CONFIG.LOGIN_LOGO}
-            style={styles.logoImage}
+            source={typeof GYM_CONFIG.LOGIN_LOGO === 'string' ? { uri: GYM_CONFIG.LOGIN_LOGO } : GYM_CONFIG.LOGIN_LOGO}
+            style={[styles.logoImage, { top: Math.max(36, insets.top + 16) }]}
             resizeMode="contain"
           />
         </View>
 
-        {/* Sliding Card Container */}
-        <View style={styles.cardContainer}>
+        {/* Card Section */}
+        <View style={[styles.cardContainer, { paddingBottom: Math.max(40, 20 + insets.bottom) }]}>
           <Text style={styles.title}>Giriş Yap</Text>
           <Text style={styles.subtitle}>
             Kaldığın yerden devam etmek için{'\n'}giriş yap.

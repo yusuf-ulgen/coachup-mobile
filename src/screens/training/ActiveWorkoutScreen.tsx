@@ -26,6 +26,7 @@ import { HealthConnectService } from '../../services/healthConnectService';
 import { LocationService, LocationStats } from '../../services/locationService';
 import { ActiveWorkoutManager } from '../../services/activeWorkoutManager';
 import { feedback } from '../../services/feedbackService';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const EFFORT_OPTIONS = [
   { id: 'harika', emoji: '😁', label: 'Harika' },
@@ -112,6 +113,7 @@ const DARK_MAP_STYLE = [
 ];
 
 export const ActiveWorkoutScreen = ({ route, navigation }: any) => {
+  const insets = useSafeAreaInsets();
   const { isDark, toggleTheme, colors } = useTheme();
   const existingManager = ActiveWorkoutManager.getState();
 
@@ -305,7 +307,7 @@ export const ActiveWorkoutScreen = ({ route, navigation }: any) => {
       {isOutdoor ? (
         <View style={styles.outdoorContainer}>
           {/* Header Bar */}
-          <View style={styles.outdoorHeader}>
+          <View style={[styles.outdoorHeader, { paddingTop: Math.max(16, insets.top + 8) }]}>
             <TouchableOpacity
               onPress={handleBackPress}
               style={[styles.iconCircleBtn, { backgroundColor: colors.iconBg, borderColor: colors.iconBorder }]}
@@ -447,7 +449,7 @@ export const ActiveWorkoutScreen = ({ route, navigation }: any) => {
 
           {/* Bottom Controls */}
           {!hasStarted ? (
-            <View style={[styles.readyModalCardOverlay, { backgroundColor: colors.cardBg }]}>
+            <View style={[styles.readyModalCardOverlay, { backgroundColor: colors.cardBg, bottom: Math.max(20, insets.bottom + 12) }]}>
               <Text style={[styles.readyModalTitle, { color: colors.textPrimary }]}>Hazır mısın?</Text>
               <Text style={[styles.readyModalSub, { color: colors.textSecondary }]}>
                 Başlat'a bastığında süre ve GPS takibi başlar.
@@ -461,7 +463,7 @@ export const ActiveWorkoutScreen = ({ route, navigation }: any) => {
               </TouchableOpacity>
             </View>
           ) : (
-            <View style={styles.outdoorBottomControl}>
+            <View style={[styles.outdoorBottomControl, { bottom: Math.max(20, insets.bottom + 12) }]}>
               <TouchableOpacity
                 style={[styles.playPauseLargeBtn, { backgroundColor: colors.pausePlayBg }]}
                 onPress={() => setIsActive(!isActive)}
@@ -479,7 +481,7 @@ export const ActiveWorkoutScreen = ({ route, navigation }: any) => {
       ) : (
         /* ── INDOOR WORKOUT UI ── */
         <View style={styles.indoorContainer}>
-          <View style={styles.indoorHeader}>
+          <View style={[styles.indoorHeader, { paddingTop: Math.max(16, insets.top + 8) }]}>
             <TouchableOpacity
               onPress={handleBackPress}
               style={[styles.iconCircleBtn, { backgroundColor: colors.iconBg }]}
@@ -501,7 +503,7 @@ export const ActiveWorkoutScreen = ({ route, navigation }: any) => {
             <Heart size={28} color="#FF3B30" fill="#FF3B30" style={{ marginTop: 12 }} />
           </View>
 
-          <View style={[styles.bottomDrawerSheet, { backgroundColor: colors.cardBg }]}>
+          <View style={[styles.bottomDrawerSheet, { backgroundColor: colors.cardBg, paddingBottom: Math.max(24, insets.bottom + 12) }]}>
             <View style={styles.drawerHandleBar} />
 
             {!isActive ? (

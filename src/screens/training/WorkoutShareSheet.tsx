@@ -18,6 +18,7 @@ import * as Sharing from 'expo-sharing';
 import ViewShot, { captureRef } from 'react-native-view-shot';
 import Svg, { Path, Circle, Line } from 'react-native-svg';
 import { Colors } from '../../theme/colors';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const normalizeRoutePoints = (
   points: Array<{ latitude: number; longitude: number } | [number, number]>,
@@ -210,6 +211,7 @@ export const WorkoutShareSheet: React.FC<{
   routePoints = [],
   onDismiss,
 }) => {
+  const insets = useSafeAreaInsets();
   const [activeTemplate, setActiveTemplate] = useState<number>(0);
   const [backgroundUri, setBackgroundUri] = useState<string | null>(null);
   const [showRouteLine, setShowRouteLine] = useState<boolean>(true);
@@ -449,7 +451,7 @@ export const WorkoutShareSheet: React.FC<{
 
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={onDismiss}>
-      <View style={styles.container}>
+      <View style={[styles.container, { paddingTop: Math.max(16, insets.top + 8) }]}>
         {/* ── Top Bar ──────────────────────────────────────────────────────── */}
         <View style={styles.header}>
           <TouchableOpacity style={styles.iconButton} onPress={onDismiss} activeOpacity={0.8}>
@@ -541,7 +543,7 @@ export const WorkoutShareSheet: React.FC<{
         </View>
 
         {/* ── Footer Buttons ────────────────────────────────────────────────── */}
-        <View style={styles.footer}>
+        <View style={[styles.footer, { paddingBottom: Math.max(20, insets.bottom + 12) }]}>
           {backgroundUri ? (
             <View style={styles.twoButtonRow}>
               <TouchableOpacity

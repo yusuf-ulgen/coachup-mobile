@@ -15,11 +15,13 @@ interface AppearanceSettingsScreenProps {
   navigation: any;
 }
 
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../../theme/ThemeContext';
 
 export const AppearanceSettingsScreen: React.FC<AppearanceSettingsScreenProps> = ({
   navigation,
 }) => {
+  const insets = useSafeAreaInsets();
   const { themeMode, setThemeMode } = useTheme();
   const [userId, setUserId] = useState<string | null>(null);
 
@@ -76,8 +78,7 @@ export const AppearanceSettingsScreen: React.FC<AppearanceSettingsScreenProps> =
 
   return (
     <View style={styles.container}>
-      {/* Header */}
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: Math.max(16, insets.top + 8) }]}>
         <TouchableOpacity
           style={styles.backButton}
           onPress={() => navigation.goBack()}

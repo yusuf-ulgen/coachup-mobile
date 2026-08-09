@@ -7,8 +7,10 @@ import { ArrowLeft, Send, Check, CheckCheck } from 'lucide-react-native';
 import { Colors } from '../../theme/colors';
 import { supabase } from '../../services/supabaseClient';
 import { useAuth } from '../../context/AuthContext';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export const CoachChatScreen: React.FC<any> = ({ route, navigation }) => {
+  const insets = useSafeAreaInsets();
   const { coachId, coachName } = route.params;
   const { session } = useAuth();
   const [messages, setMessages] = useState<any[]>([]);
@@ -144,7 +146,7 @@ export const CoachChatScreen: React.FC<any> = ({ route, navigation }) => {
       style={styles.container}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: Math.max(16, insets.top + 8) }]}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
           <ArrowLeft size={24} color={Colors.textDark} />
         </TouchableOpacity>
@@ -166,7 +168,7 @@ export const CoachChatScreen: React.FC<any> = ({ route, navigation }) => {
         />
       )}
 
-      <View style={styles.inputContainer}>
+      <View style={[styles.inputContainer, { paddingBottom: Math.max(12, insets.bottom + 6) }]}>
         <TextInput
           style={styles.input}
           placeholder="Mesaj yazın..."

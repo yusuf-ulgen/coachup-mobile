@@ -13,6 +13,7 @@ import { ArrowLeft, MapPin } from 'lucide-react-native';
 import { Colors } from '../../theme/colors';
 import { AuthService } from '../../services/authService';
 import { UserService } from '../../services/userService';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 interface AddressScreenProps {
   navigation: any;
@@ -32,6 +33,7 @@ const TURKEY_CITIES = [
 ];
 
 export const AddressSettingsScreen: React.FC<AddressScreenProps> = ({ navigation }) => {
+  const insets = useSafeAreaInsets();
   const [title, setTitle] = useState('Ev Adresi');
   const [city, setCity] = useState('İstanbul');
   const [district, setDistrict] = useState('');
@@ -109,7 +111,7 @@ export const AddressSettingsScreen: React.FC<AddressScreenProps> = ({ navigation
   return (
     <View style={styles.container}>
       {/* Header */}
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: Math.max(16, insets.top + 8) }]}>
         <TouchableOpacity
           style={styles.backButton}
           onPress={() => navigation.goBack()}
@@ -120,7 +122,7 @@ export const AddressSettingsScreen: React.FC<AddressScreenProps> = ({ navigation
         <View style={{ width: 40 }} />
       </View>
 
-      <ScrollView contentContainerStyle={styles.scrollContent}>
+      <ScrollView contentContainerStyle={[styles.scrollContent, { paddingBottom: 24 + insets.bottom }]}>
         {/* Title */}
         <View style={styles.inputWrapper}>
           <Text style={styles.label}>Adres Başlığı</Text>

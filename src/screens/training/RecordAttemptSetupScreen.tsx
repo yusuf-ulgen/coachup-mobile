@@ -29,6 +29,8 @@ import {
   measureLabel,
 } from '../../models/recordAttemptCategories';
 
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
 interface RecordAttemptSetupScreenProps {
   navigation?: any;
 }
@@ -36,6 +38,7 @@ interface RecordAttemptSetupScreenProps {
 type SetupStep = 'category' | 'exercise' | 'detail';
 
 export const RecordAttemptSetupScreen: React.FC<RecordAttemptSetupScreenProps> = ({ navigation }) => {
+  const insets = useSafeAreaInsets();
   const { session } = useAuth();
   const userId = session?.user?.id;
 
@@ -249,7 +252,7 @@ export const RecordAttemptSetupScreen: React.FC<RecordAttemptSetupScreenProps> =
   return (
     <View style={styles.container}>
       {/* ── Header ────────────────────────────────────────────────────────── */}
-      <View style={styles.headerRow}>
+      <View style={[styles.headerRow, { paddingTop: Math.max(16, insets.top + 8) }]}>
         <TouchableOpacity onPress={handleBack} style={styles.backBtn} activeOpacity={0.8}>
           <ArrowLeft size={20} color={Colors.textDark} />
         </TouchableOpacity>
@@ -271,7 +274,7 @@ export const RecordAttemptSetupScreen: React.FC<RecordAttemptSetupScreenProps> =
         </View>
       </View>
 
-      <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+      <ScrollView contentContainerStyle={[styles.scrollContent, { paddingBottom: 24 + insets.bottom }]} showsVerticalScrollIndicator={false}>
         {/* ── Step 1: Category Selection ──────────────────────────────────── */}
         {step === 'category' && (
           <View style={styles.cardsList}>

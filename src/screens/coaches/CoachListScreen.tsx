@@ -13,12 +13,14 @@ import {
 import { ArrowLeft, User as UserIcon, Search } from 'lucide-react-native';
 import { Colors } from '../../theme/colors';
 import { CoachService, Coach } from '../../services/coachService';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 interface CoachListScreenProps {
   navigation?: any;
 }
 
 export const CoachListScreen: React.FC<CoachListScreenProps> = ({ navigation }) => {
+  const insets = useSafeAreaInsets();
   const [coaches, setCoaches] = useState<Coach[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
@@ -53,7 +55,7 @@ export const CoachListScreen: React.FC<CoachListScreenProps> = ({ navigation }) 
 
   return (
     <View style={styles.container}>
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: Math.max(16, insets.top + 8) }]}>
         {navigation?.canGoBack() && (
           <TouchableOpacity
             onPress={() => navigation.goBack()}
@@ -103,7 +105,7 @@ export const CoachListScreen: React.FC<CoachListScreenProps> = ({ navigation }) 
         <FlatList
           data={filteredCoaches}
           keyExtractor={(item) => item.id}
-          contentContainerStyle={styles.listContent}
+          contentContainerStyle={[styles.listContent, { paddingBottom: 24 + insets.bottom }]}
           renderItem={({ item }) => {
             const fullName = `${item.name || ''} ${item.surname || ''}`.trim() || 'Koç';
             return (

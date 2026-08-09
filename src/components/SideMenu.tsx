@@ -6,6 +6,7 @@ import {
   StyleSheet,
   ScrollView,
   Dimensions,
+  Platform,
 } from 'react-native';
 import { SmoothModal } from './motion/SmoothModal';
 import { feedback } from '../services/feedbackService';
@@ -129,7 +130,7 @@ export const SideMenu: React.FC<SideMenuProps> = ({
         style={[
           styles.drawerSheet,
           {
-            paddingTop: Math.max(12, insets.top + 8),
+            paddingTop: Math.max(Platform.OS === 'android' ? 44 : 20, (insets.top || 24) + 20),
             paddingBottom: Math.max(16, insets.bottom + 12),
           },
         ]}

@@ -10,6 +10,7 @@ import {
   ViewStyle,
   ModalProps,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MotionTokens, useReducedMotion } from '../../theme/motion';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
@@ -47,6 +48,7 @@ export const SmoothModal: React.FC<SmoothModalProps> = ({
   drawerWidth = SCREEN_WIDTH * 0.75,
   testID,
 }) => {
+  const insets = useSafeAreaInsets();
   const isReducedMotion = useReducedMotion();
   const [mounted, setMounted] = useState(visible);
 
@@ -187,8 +189,8 @@ export const SmoothModal: React.FC<SmoothModalProps> = ({
             isDrawer
               ? [styles.drawerContainer, { width: drawerWidth }]
               : isBottomSheet
-              ? styles.bottomSheetContainer
-              : styles.modalCardContainer,
+              ? [styles.bottomSheetContainer, { paddingBottom: insets.bottom }]
+              : [styles.modalCardContainer, { paddingTop: insets.top, paddingBottom: insets.bottom }],
             containerStyle,
             {
               opacity: containerOpacity,

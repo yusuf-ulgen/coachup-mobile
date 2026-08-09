@@ -27,6 +27,7 @@ import {
 } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { Colors } from '../../theme/colors';
+import { useTheme } from '../../theme/ThemeContext';
 import { Header } from '../../components/Header';
 import { SideMenu } from '../../components/SideMenu';
 import { AuthService } from '../../services/authService';
@@ -38,6 +39,8 @@ import {
 import { UserService } from '../../services/userService';
 
 // ── Types ────────────────────────────────────────────────────────────────────
+
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 type ScopeTab = 'general' | 'gym';
 
@@ -72,9 +75,10 @@ function formatPostTime(iso: string): string {
 
 // ── Snackbar component ───────────────────────────────────────────────────────
 
-const Snackbar: React.FC<{ message: string | null; onHide: () => void }> = ({
+const Snackbar: React.FC<{ message: string | null; onHide: () => void; style?: any }> = ({
   message,
   onHide,
+  style,
 }) => {
   const opacity = React.useRef(new Animated.Value(0)).current;
 
@@ -91,7 +95,7 @@ const Snackbar: React.FC<{ message: string | null; onHide: () => void }> = ({
   if (!message) return null;
 
   return (
-    <Animated.View style={[styles.snackbar, { opacity }]}>
+    <Animated.View style={[styles.snackbar, { opacity }, style]}>
       <Text style={styles.snackbarText}>{message}</Text>
     </Animated.View>
   );
@@ -420,7 +424,9 @@ const PostCard: React.FC<PostCardProps> = ({
 
 // ── Main Screen ──────────────────────────────────────────────────────────────
 
-export const CommunityScreen: React.FC<CommunityScreenProps> = ({ navigation }) => {
+export const CommunityScreen = ({ navigation }: any) => {
+  const insets = useSafeAreaInsets();
+  const { isDark } = useTheme();
   const [menuVisible, setMenuVisible] = useState(false);
   const [selectedTab, setSelectedTab] = useState<ScopeTab>('general');
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
@@ -812,7 +818,7 @@ export const CommunityScreen: React.FC<CommunityScreenProps> = ({ navigation }) 
       {/* FAB */}
       {canAccess && !loading && (
         <TouchableOpacity
-          style={styles.fab}
+          style={[styles.fab, { bottom: 90 + insets.bottom }]}
           onPress={handleOpenComposer}
           activeOpacity={0.85}
         >
@@ -821,11 +827,11 @@ export const CommunityScreen: React.FC<CommunityScreenProps> = ({ navigation }) 
       )}
 
       {/* Snackbar */}
-      <Snackbar message={snackbar} onHide={() => setSnackbar(null)} />
+      <Snackbar message={snackbar} onHide={() => setSnackbar(null)} style={{ bottom: 140 + insets.bottom }} />
 
       {/* Composer Overlay */}
       {showComposer && (
-        <View style={styles.composerOverlay}>
+        <View style={[styles.composerOverlay, { paddingTop: insets.top + 20, paddingBottom: insets.bottom + 20 }]}>
           <View style={styles.composerBox}>
             <View style={styles.composerHeader}>
               <Text style={styles.composerTitle}>Yeni Paylaşım</Text>

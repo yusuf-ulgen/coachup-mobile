@@ -2,6 +2,7 @@ import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { ArrowLeft } from 'lucide-react-native';
 import { Colors } from '../theme/colors';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 interface PlaceholderScreenProps {
   route: { name: string };
@@ -14,11 +15,12 @@ export const PlaceholderScreen: React.FC<PlaceholderScreenProps> = ({
   navigation,
   title,
 }) => {
+  const insets = useSafeAreaInsets();
   const screenTitle = title || route.name;
 
   return (
     <View style={styles.container}>
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: Math.max(16, insets.top + 8) }]}>
         <TouchableOpacity
           onPress={() => navigation.goBack()}
           style={styles.backButton}

@@ -3,8 +3,10 @@ import { View, Text, StyleSheet, Image, TouchableOpacity, ScrollView, ActivityIn
 import { ArrowLeft, MessageCircle, Calendar } from 'lucide-react-native';
 import { Colors } from '../../theme/colors';
 import { CoachService, Coach } from '../../services/coachService';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export const CoachDetailScreen: React.FC<any> = ({ route, navigation }) => {
+  const insets = useSafeAreaInsets();
   const { coachId } = route.params;
   const [coach, setCoach] = useState<Coach | null>(null);
   const [loading, setLoading] = useState(true);
@@ -53,7 +55,7 @@ export const CoachDetailScreen: React.FC<any> = ({ route, navigation }) => {
 
   return (
     <View style={styles.container}>
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: Math.max(16, insets.top + 8) }]}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
           <ArrowLeft size={24} color={Colors.textDark} />
         </TouchableOpacity>
@@ -118,7 +120,7 @@ export const CoachDetailScreen: React.FC<any> = ({ route, navigation }) => {
         </View>
       </ScrollView>
 
-      <View style={styles.footer}>
+      <View style={[styles.footer, { paddingBottom: Math.max(20, insets.bottom + 12) }]}>
         <TouchableOpacity 
           style={styles.messageButton}
           onPress={() => navigation.navigate('CoachChat', { coachId: coach.id, coachName: fullName })}

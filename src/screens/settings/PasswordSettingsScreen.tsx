@@ -13,6 +13,8 @@ import { Eye, EyeOff, Lock, Check, ArrowLeft } from 'lucide-react-native';
 import { Colors } from '../../theme/colors';
 import { supabase } from '../../services/supabaseClient';
 
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
 interface PasswordSettingsScreenProps {
   navigation: any;
 }
@@ -20,6 +22,7 @@ interface PasswordSettingsScreenProps {
 export const PasswordSettingsScreen: React.FC<PasswordSettingsScreenProps> = ({
   navigation,
 }) => {
+  const insets = useSafeAreaInsets();
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -74,7 +77,7 @@ export const PasswordSettingsScreen: React.FC<PasswordSettingsScreenProps> = ({
   return (
     <View style={styles.container}>
       {/* Header */}
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: Math.max(16, insets.top + 8) }]}>
         <TouchableOpacity
           style={styles.backButton}
           onPress={() => navigation.goBack()}
@@ -85,7 +88,7 @@ export const PasswordSettingsScreen: React.FC<PasswordSettingsScreenProps> = ({
         <View style={{ width: 40 }} />
       </View>
 
-      <ScrollView contentContainerStyle={styles.scrollContent}>
+      <ScrollView contentContainerStyle={[styles.scrollContent, { paddingBottom: 24 + insets.bottom }]}>
         <Text style={styles.description}>
           Hesap güvenliğinizi korumak için güçlü ve en az 6 karakterli bir şifre belirleyin.
         </Text>

@@ -16,9 +16,14 @@ import { GuardianProfileScreen } from './GuardianProfileScreen';
 
 const Tab = createBottomTabNavigator();
 
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
 const GuardianTabBar = ({ state, descriptors, navigation }: any) => {
+  const insets = useSafeAreaInsets();
+  const bottomPadding = Math.max(insets.bottom, Platform.OS === 'ios' ? 20 : 12) + 4;
+
   return (
-    <View style={styles.customTabBarContainer}>
+    <View style={[styles.customTabBarContainer, { paddingBottom: bottomPadding }]}>
       <View style={styles.customTabBarRow}>
         {state.routes.map((route: any, index: number) => {
           const { options } = descriptors[route.key];

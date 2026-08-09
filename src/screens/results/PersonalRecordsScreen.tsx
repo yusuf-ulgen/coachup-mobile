@@ -27,6 +27,8 @@ import { supabase } from '../../services/supabaseClient';
 import { Collapsible } from '../../components/motion/Collapsible';
 import { FadeView } from '../../components/motion/FadeView';
 
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
 interface PersonalRecordsScreenProps {
   navigation?: any;
 }
@@ -48,6 +50,7 @@ const MONTH_NAMES = [
 ];
 
 export const PersonalRecordsScreen: React.FC<PersonalRecordsScreenProps> = ({ navigation }) => {
+  const insets = useSafeAreaInsets();
   const [loading, setLoading] = useState(true);
   const [selectedTab, setSelectedTab] = useState<number>(0); // 0: Antrenmanlar, 1: Kişisel Rekorlar
   const [streakCount, setStreakCount] = useState<number>(1);
@@ -237,7 +240,7 @@ export const PersonalRecordsScreen: React.FC<PersonalRecordsScreenProps> = ({ na
   return (
     <View style={styles.container}>
       {/* ── Header ────────────────────────────────────────────────────────── */}
-      <View style={styles.headerRow}>
+      <View style={[styles.headerRow, { paddingTop: Math.max(16, insets.top + 8) }]}>
         <TouchableOpacity onPress={() => navigation?.goBack()} style={styles.backBtn} activeOpacity={0.8}>
           <ArrowLeft size={20} color={Colors.textDark} />
         </TouchableOpacity>

@@ -5,8 +5,10 @@ import { Colors } from '../../theme/colors';
 import { GYM_CONFIG } from '../../config/gym';
 import { Users, LogIn, Clock, DollarSign, Check, X, Megaphone, ArrowLeft } from 'lucide-react-native';
 import { supabase } from '../../services/supabaseClient';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export const AdminDashboardScreen = ({ navigation }: any) => {
+  const insets = useSafeAreaInsets();
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState({
     totalMembers: 0,
@@ -76,14 +78,14 @@ export const AdminDashboardScreen = ({ navigation }: any) => {
 
   return (
     <View style={styles.container}>
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: Math.max(16, insets.top + 8) }]}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
           <ArrowLeft size={24} color={Colors.allWhite} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Admin Paneli</Text>
       </View>
 
-      <ScrollView style={styles.content}>
+      <ScrollView style={styles.content} contentContainerStyle={{ paddingBottom: 24 + insets.bottom }}>
         <View style={styles.statsGrid}>
           <View style={styles.statCard}>
             <Users size={24} color={Colors.primary} />

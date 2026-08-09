@@ -3,8 +3,10 @@ import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-nati
 import { Flame, Trophy, CalendarCheck, Quote, ChevronLeft } from 'lucide-react-native';
 import { Colors } from '../../theme/colors';
 import { useNavigation } from '@react-navigation/native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export const StreakScreen = () => {
+  const insets = useSafeAreaInsets();
   const navigation = useNavigation();
   const [currentStreak] = useState(12);
   const [longestStreak] = useState(24);
@@ -28,7 +30,7 @@ export const StreakScreen = () => {
 
   return (
     <View style={styles.container}>
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: Math.max(16, insets.top + 8) }]}>
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
           <ChevronLeft color={Colors.textPrimaryDark} size={24} />
         </TouchableOpacity>
@@ -36,7 +38,7 @@ export const StreakScreen = () => {
         <View style={{ width: 24 }} />
       </View>
 
-      <ScrollView contentContainerStyle={styles.scrollContent}>
+      <ScrollView contentContainerStyle={[styles.scrollContent, { paddingBottom: 24 + insets.bottom }]}>
         {/* Büyük Alev İkonu ve Gün Sayısı */}
         <View style={styles.fireContainer}>
           <Flame size={80} color={Colors.primary} fill={Colors.primary} />
