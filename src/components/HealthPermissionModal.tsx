@@ -1,7 +1,6 @@
 import React from 'react';
-import { Modal, View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
-import { Watch, HeartHandshake, ShieldAlert, X, Bluetooth } from 'lucide-react-native';
-import { Colors } from '../theme/colors';
+import { Modal, View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { Watch, X } from 'lucide-react-native';
 
 interface HealthPermissionModalProps {
   visible: boolean;
@@ -22,92 +21,57 @@ export const HealthPermissionModal: React.FC<HealthPermissionModalProps> = ({
     <Modal
       visible={visible}
       transparent
-      animationType="slide"
+      animationType="fade"
       onRequestClose={onDismiss}
     >
       <View style={styles.overlay}>
-        <View style={styles.sheetContainer}>
-          {/* Close button */}
+        <View style={styles.dialogCard}>
+          {/* Top Close Button */}
           <TouchableOpacity style={styles.closeBtn} onPress={onDismiss} activeOpacity={0.7}>
-            <X size={20} color="#8E8E93" />
+            <X size={18} color="#8E92A4" />
           </TouchableOpacity>
 
-          {/* Header Icon */}
-          <View style={styles.iconGlowRing}>
-            <View style={styles.iconCircle}>
-              <Watch size={32} color="#FF3B30" />
-            </View>
+          {/* Top Icon */}
+          <View style={styles.iconCircle}>
+            <Watch size={28} color="#007AFF" />
           </View>
 
-          {/* Titles */}
+          {/* Title & Prompt */}
           <Text style={styles.title}>Nabız & Akıllı Saat Bağlantısı</Text>
           <Text style={styles.subtitle}>
-            Antrenman sırasında nabız ve kalori takibini nasıl yapmak istersiniz? Tercihinizi seçin:
+            Nabız ve kalori verilerinizi nasıl almak istersiniz?
           </Text>
 
-          <ScrollView style={{ width: '100%', maxHeight: 380 }} showsVerticalScrollIndicator={false}>
-            {/* OPTION 1: Direct Bluetooth SmartWatch */}
+          {/* Stacked Clean Text Action Buttons */}
+          <View style={styles.actionsContainer}>
             <TouchableOpacity
-              style={[styles.optionCard, styles.recommendedCard]}
+              style={styles.actionBtn}
               onPress={onSelectBleSmartWatch}
-              activeOpacity={0.85}
+              activeOpacity={0.7}
             >
-              <View style={styles.optionHeaderRow}>
-                <View style={[styles.optionIconBadge, { backgroundColor: 'rgba(255, 59, 48, 0.2)' }]}>
-                  <Bluetooth size={22} color="#FF3B30" />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <View style={styles.tagRow}>
-                    <Text style={styles.optionTitle}>1. Doğrudan Akıllı Saat (Bluetooth)</Text>
-                    <View style={styles.recommendedBadge}>
-                      <Text style={styles.recommendedText}>ÖNERİLEN</Text>
-                    </View>
-                  </View>
-                  <Text style={styles.optionSub}>
-                    Ek hiçbir uygulama indirmeden saatinizdeki (Apple, Samsung, Xiaomi, Huawei, Garmin vb.) sensörden Bluetooth ile anlık nabız okur.
-                  </Text>
-                </View>
-              </View>
+              <Text style={styles.actionTextPrimary}>Doğrudan Akıllı Saat (Bluetooth)</Text>
             </TouchableOpacity>
 
-            {/* OPTION 2: Health Connect */}
+            <View style={styles.divider} />
+
             <TouchableOpacity
-              style={styles.optionCard}
+              style={styles.actionBtn}
               onPress={onSelectHealthConnect}
-              activeOpacity={0.85}
+              activeOpacity={0.7}
             >
-              <View style={styles.optionHeaderRow}>
-                <View style={[styles.optionIconBadge, { backgroundColor: 'rgba(0, 122, 255, 0.2)' }]}>
-                  <HeartHandshake size={22} color="#007AFF" />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.optionTitle}>2. Health Connect / Apple Health</Text>
-                  <Text style={styles.optionSub}>
-                    Google Health Connect veya Apple Health uygulamanızdaki kaydedilmiş nabız ve kalori verilerini senkronize eder.
-                  </Text>
-                </View>
-              </View>
+              <Text style={styles.actionTextPrimary}>Health Connect / Apple Health</Text>
             </TouchableOpacity>
 
-            {/* OPTION 3: No Permission */}
+            <View style={styles.divider} />
+
             <TouchableOpacity
-              style={[styles.optionCard, { borderColor: '#2A2D3E' }]}
+              style={styles.actionBtn}
               onPress={onSelectNoPermission}
-              activeOpacity={0.85}
+              activeOpacity={0.7}
             >
-              <View style={styles.optionHeaderRow}>
-                <View style={[styles.optionIconBadge, { backgroundColor: 'rgba(142, 142, 147, 0.2)' }]}>
-                  <ShieldAlert size={22} color="#8E8E93" />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={[styles.optionTitle, { color: '#B0B3C7' }]}>3. İzinsiz Devam Et</Text>
-                  <Text style={styles.optionSub}>
-                    Sensör bağlantısı olmadan devam eder. Nabız ve kalori metrikleri "-" olarak gösterilir (rastgele veri üretilmez).
-                  </Text>
-                </View>
-              </View>
+              <Text style={styles.actionTextCancel}>İzin Verme</Text>
             </TouchableOpacity>
-          </ScrollView>
+          </View>
         </View>
       </View>
     </Modal>
@@ -117,114 +81,86 @@ export const HealthPermissionModal: React.FC<HealthPermissionModalProps> = ({
 const styles = StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.8)',
-    justifyContent: 'flex-end',
-  },
-  sheetContainer: {
-    backgroundColor: '#12131A',
-    borderTopLeftRadius: 28,
-    borderTopRightRadius: 28,
-    paddingHorizontal: 20,
-    paddingTop: 24,
-    paddingBottom: 32,
-    borderWidth: 1,
-    borderColor: '#242736',
+    backgroundColor: 'rgba(0, 0, 0, 0.75)',
+    justifyContent: 'center',
     alignItems: 'center',
+    paddingHorizontal: 24,
+  },
+  dialogCard: {
+    width: '100%',
+    maxWidth: 340,
+    backgroundColor: '#232530',
+    borderRadius: 24,
+    paddingTop: 28,
+    paddingBottom: 20,
+    paddingHorizontal: 20,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#323545',
+    elevation: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.4,
+    shadowRadius: 12,
   },
   closeBtn: {
     position: 'absolute',
-    top: 16,
-    right: 16,
-    padding: 8,
-    borderRadius: 20,
-    backgroundColor: '#1C1E2B',
-    zIndex: 10,
-  },
-  iconGlowRing: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
-    backgroundColor: 'rgba(255, 59, 48, 0.12)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 14,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 59, 48, 0.3)',
+    top: 14,
+    right: 14,
+    padding: 6,
+    borderRadius: 16,
+    backgroundColor: 'rgba(255, 255, 255, 0.06)',
   },
   iconCircle: {
-    width: 54,
-    height: 54,
-    borderRadius: 27,
-    backgroundColor: '#1C1E2B',
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: 'rgba(0, 122, 255, 0.12)',
     alignItems: 'center',
     justifyContent: 'center',
+    marginBottom: 16,
   },
   title: {
-    fontSize: 21,
+    fontSize: 18,
     fontWeight: '700',
     color: '#FFFFFF',
-    marginBottom: 6,
+    marginBottom: 8,
     textAlign: 'center',
   },
   subtitle: {
     fontSize: 13,
-    color: '#989BAA',
+    color: '#A0A4B8',
     textAlign: 'center',
     lineHeight: 18,
-    marginBottom: 20,
-    paddingHorizontal: 8,
+    marginBottom: 24,
+    paddingHorizontal: 10,
   },
-  optionCard: {
+  actionsContainer: {
     width: '100%',
-    backgroundColor: '#1A1C28',
-    borderRadius: 16,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: '#2A2D3F',
-    marginBottom: 12,
+    alignItems: 'center',
   },
-  recommendedCard: {
-    borderColor: 'rgba(255, 59, 48, 0.5)',
-    backgroundColor: '#1E1D2B',
-  },
-  optionHeaderRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-  },
-  optionIconBadge: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
+  actionBtn: {
+    width: '100%',
+    paddingVertical: 14,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 12,
+    borderRadius: 12,
   },
-  tagRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 4,
-  },
-  optionTitle: {
+  actionTextPrimary: {
     fontSize: 15,
-    fontWeight: '700',
+    fontWeight: '600',
     color: '#FFFFFF',
+    textAlign: 'center',
   },
-  recommendedBadge: {
-    backgroundColor: '#FF3B30',
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderRadius: 10,
+  actionTextCancel: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#FF453A',
+    textAlign: 'center',
   },
-  recommendedText: {
-    fontSize: 9,
-    fontWeight: '800',
-    color: '#FFFFFF',
-  },
-  optionSub: {
-    fontSize: 12,
-    color: '#8E92A4',
-    lineHeight: 16,
-    marginTop: 2,
+  divider: {
+    width: '100%',
+    height: 1,
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
   },
 });
