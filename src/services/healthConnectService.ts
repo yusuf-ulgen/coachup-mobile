@@ -1,67 +1,80 @@
-import { Alert } from 'react-native';
+import { NativeModules, Platform } from 'react-native';
+
+const { HealthConnectModule } = NativeModules;
 
 export class HealthConnectService {
   private static isConnected: boolean | null = null;
-  private static isPromptOpen = false;
 
-  /**
-   * Antrenman öncesinde Sağlık (Health Connect / Apple Health / Akıllı Saat) izni sorar.
-   * Kullanıcı izin verirse `true`, reddederse `false` döner.
-   */
-  static async requestPermissions(): Promise<boolean> {
-    if (this.isConnected !== null) {
-      return this.isConnected;
-    }
-
-    if (this.isPromptOpen) {
+  static async isAvailable(): Promise<boolean> {
+    if (Platform.OS !== 'android' || !HealthConnectModule) return false;
+    try {
+      return await HealthConnectModule.isAvailable();
+    } catch (_: any) {
       return false;
     }
-
-    this.isPromptOpen = true;
-
-    return new Promise((resolve) => {
-      Alert.alert(
-        'Sağlık ve Akıllı Saat İzni',
-        'Antrenman sırasında nabız ve kalori verilerinizi akıllı saatinizden / Sağlık uygulamasından (Health Connect / Apple Health) senkronize edebilmemiz için erişim izni gerekmektedir.',
-        [
-          {
-            text: 'Şimdi Değil',
-            style: 'cancel',
-            onPress: () => {
-              this.isPromptOpen = false;
-              this.isConnected = false;
-              resolve(false);
-            },
-          },
-          {
-            text: 'İzin Ver',
-            onPress: () => {
-              this.isPromptOpen = false;
-              this.isConnected = true;
-              resolve(true);
-            },
-          },
-        ],
-        { cancelable: false }
-      );
-    });
   }
 
   static async checkPermissions(): Promise<boolean> {
-    return this.isConnected === true;
-  }
-
-  static async getLiveHeartRate(): Promise<number> {
-    if (this.isConnected !== true) return 0;
-    // Gerçek bir akıllı saat sensörü bağlı olmadığı sürece 0 döner. Kesinlikle sahte/rastgele nabız üretilmez.
-    return 0;
+    if (Platform.OS !== 'android' || !HealthConnectModule) {
+      return this.isConnected === true;
+    }
+    try {
+      const hasAll = await HealthConnectModule.hasPermissions();
+      this.isConnected = hasAll;
+      return hasAll;
+    } catch (_: any) {
+      return false;
+    }
   }
 
   /**
-   * Aktif kalori hesaplama
-   * Yalnızca akıllı saat veya Sağlık uygulamasından geçerli nabız verisi (> 0) alınıyorsa hesaplanır.
-   * Sensör/sağlık verisi yoksa 0 döner (tahmini / rastgele kalori hesaplanmaz).
+   * Android Health Connect sistem izin aktivitesini açar.
    */
+  static async openSystemPermissions(): Promise<boolean> {
+    if (Platform.OS !== 'android' || !HealthConnectModule) {
+      this.isConnected = true;
+      return true;
+    }
+    try {
+      const result = await HealthConnectModule.openHealthConnectPermissions();
+      const hasAll = await HealthConnectModule.hasPermissions();
+      this.isConnected = hasAll;
+      return result;
+    } catch (_: any) {
+      return false;
+    }
+  }
+
+  /**
+   * Sistemdeki Health Connect verisinden anlık nabzı okur. Veri yoksa 0 döner.
+   */
+  static async getLiveHeartRate(): Promise<number> {
+    if (Platform.OS !== 'android' || !HealthConnectModule) {
+      return 0;
+    }
+    try {
+      const hr = await HealthConnectModule.getLiveHeartRate();
+      return hr > 0 ? hr : 0;
+    } catch (_: any) {
+      return 0;
+    }
+  }
+
+  /**
+   * Sistemdeki Health Connect verisinden yakılan aktif ve toplam kaloriyi çeker.
+   */
+  static async fetchCaloriesBurned(startTimeMs: number, endTimeMs: number): Promise<number> {
+    if (Platform.OS !== 'android' || !HealthConnectModule) {
+      return 0;
+    }
+    try {
+      const calories = await HealthConnectModule.fetchCaloriesBurned(startTimeMs, endTimeMs);
+      return calories > 0 ? calories : 0;
+    } catch (_: any) {
+      return 0;
+    }
+  }
+
   static calculateActiveCalories(
     durationSeconds: number,
     averageHeartRate: number,
@@ -69,10 +82,7 @@ export class HealthConnectService {
     age: number = 25,
     isMale: boolean = true
   ): number {
-    if (durationSeconds <= 0 || !this.isConnected || averageHeartRate <= 0) {
-      return 0;
-    }
-
+    if (durationSeconds <= 0 || averageHeartRate <= 0) return 0;
     const durationMinutes = durationSeconds / 60;
     let calories = 0;
     if (isMale) {
@@ -81,12 +91,6 @@ export class HealthConnectService {
       calories = ((age * 0.074) - (weightKg * 0.05741) + (averageHeartRate * 0.4472) - 20.4022) * durationMinutes / 4.184;
     }
     return Math.max(0, Math.ceil(calories));
-  }
-
-  // Adım sayısı okuma
-  static async getStepCount(startTime: Date, endTime: Date): Promise<number> {
-    if (this.isConnected !== true) return 0;
-    return 0;
   }
 
   // Nabız bölgeleri (HR Zones: Isınma, Yağ Yakımı, Kardiyo, Ekstrem)
@@ -107,6 +111,5 @@ export class HealthConnectService {
 
   static resetPermissions() {
     this.isConnected = null;
-    this.isPromptOpen = false;
   }
 }

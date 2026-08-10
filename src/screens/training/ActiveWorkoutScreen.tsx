@@ -27,6 +27,7 @@ import { LocationService, LocationStats } from '../../services/locationService';
 import { ActiveWorkoutManager } from '../../services/activeWorkoutManager';
 import { feedback } from '../../services/feedbackService';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { HealthPermissionModal } from '../../components/HealthPermissionModal';
 
 const EFFORT_OPTIONS = [
   { id: 'harika', emoji: '😁', label: 'Harika' },
@@ -152,7 +153,21 @@ export const ActiveWorkoutScreen = ({ route, navigation }: any) => {
   // Modals & Map diagnostics
   const [showConfirmFinishModal, setShowConfirmFinishModal] = useState(false);
   const [showEffortModal, setShowEffortModal] = useState(false);
+  const [showHealthPermissionModal, setShowHealthPermissionModal] = useState(false);
   const [mapDiagnosticText, setMapDiagnosticText] = useState('Harita başlatılıyor...');
+
+  useEffect(() => {
+    HealthConnectService.checkPermissions().then((hasPerms) => {
+      if (!hasPerms) {
+        setShowHealthPermissionModal(true);
+      }
+    });
+  }, []);
+
+  const handleGrantHealthPermission = async () => {
+    setShowHealthPermissionModal(false);
+    await HealthConnectService.openSystemPermissions();
+  };
 
   useEffect(() => {
     if (isOutdoor) {
@@ -173,7 +188,6 @@ export const ActiveWorkoutScreen = ({ route, navigation }: any) => {
   );
 
   useEffect(() => {
-    HealthConnectService.requestPermissions();
     const managerState = ActiveWorkoutManager.getState();
 
     if (!managerState.sessionId || !managerState.isActive) {
@@ -203,7 +217,10 @@ export const ActiveWorkoutScreen = ({ route, navigation }: any) => {
   const handleStartOutdoorRun = async () => {
     const granted = await LocationService.requestPermissions();
     setHasLocationPermission(granted);
-    await HealthConnectService.requestPermissions();
+    const hasPerms = await HealthConnectService.checkPermissions();
+    if (!hasPerms) {
+      setShowHealthPermissionModal(true);
+    }
     setHasStarted(true);
     setIsActive(true);
     ActiveWorkoutManager.setHasStarted(true);
@@ -595,6 +612,13 @@ export const ActiveWorkoutScreen = ({ route, navigation }: any) => {
           </TouchableOpacity>
         </View>
       </SmoothModal>
+
+      {/* Health & Wearable Permission Modal */}
+      <HealthPermissionModal
+        visible={showHealthPermissionModal}
+        onDismiss={() => setShowHealthPermissionModal(false)}
+        onGrantPermission={handleGrantHealthPermission}
+      />
     </View>
   );
 };
