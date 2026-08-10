@@ -164,9 +164,19 @@ export const ActiveWorkoutScreen = ({ route, navigation }: any) => {
     });
   }, []);
 
-  const handleGrantHealthPermission = async () => {
+  const handleSelectBleSmartWatch = async () => {
+    setShowHealthPermissionModal(false);
+    await HealthConnectService.startBleSmartWatchConnection();
+  };
+
+  const handleSelectHealthConnect = async () => {
     setShowHealthPermissionModal(false);
     await HealthConnectService.openSystemPermissions();
+  };
+
+  const handleSelectNoPermission = () => {
+    setShowHealthPermissionModal(false);
+    HealthConnectService.selectNoPermission();
   };
 
   useEffect(() => {
@@ -617,7 +627,9 @@ export const ActiveWorkoutScreen = ({ route, navigation }: any) => {
       <HealthPermissionModal
         visible={showHealthPermissionModal}
         onDismiss={() => setShowHealthPermissionModal(false)}
-        onGrantPermission={handleGrantHealthPermission}
+        onSelectBleSmartWatch={handleSelectBleSmartWatch}
+        onSelectHealthConnect={handleSelectHealthConnect}
+        onSelectNoPermission={handleSelectNoPermission}
       />
     </View>
   );

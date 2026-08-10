@@ -1,9 +1,19 @@
 import { NativeModules, Platform } from 'react-native';
 
-const { HealthConnectModule } = NativeModules;
+const { HealthConnectModule, BleHeartRateModule } = NativeModules;
+
+export type TrackingMode = 'ble' | 'health_connect' | 'none';
 
 export class HealthConnectService {
-  private static isConnected: boolean | null = null;
+  private static activeMode: TrackingMode = 'none';
+
+  static getActiveMode(): TrackingMode {
+    return this.activeMode;
+  }
+
+  static setActiveMode(mode: TrackingMode) {
+    this.activeMode = mode;
+  }
 
   static async isAvailable(): Promise<boolean> {
     if (Platform.OS !== 'android' || !HealthConnectModule) return false;
@@ -15,64 +25,104 @@ export class HealthConnectService {
   }
 
   static async checkPermissions(): Promise<boolean> {
-    if (Platform.OS !== 'android' || !HealthConnectModule) {
-      return this.isConnected === true;
+    if (this.activeMode === 'ble') {
+      if (BleHeartRateModule) {
+        return await BleHeartRateModule.hasPermissions();
+      }
+      return false;
     }
+    if (this.activeMode === 'health_connect') {
+      if (HealthConnectModule) {
+        return await HealthConnectModule.hasPermissions();
+      }
+      return false;
+    }
+    return false;
+  }
+
+  /**
+   * Option 1: Start Direct Bluetooth SmartWatch Scan & Connection (No Health Connect app required!)
+   */
+  static async startBleSmartWatchConnection(): Promise<boolean> {
+    this.activeMode = 'ble';
+    if (Platform.OS !== 'android' || !BleHeartRateModule) return false;
     try {
-      const hasAll = await HealthConnectModule.hasPermissions();
-      this.isConnected = hasAll;
-      return hasAll;
+      await BleHeartRateModule.requestBlePermissions();
+      const started = await BleHeartRateModule.startBleScan();
+      return started;
     } catch (_: any) {
       return false;
     }
   }
 
   /**
-   * Android Health Connect sistem izin aktivitesini açar.
+   * Option 2: Open System Health Connect Permissions
    */
   static async openSystemPermissions(): Promise<boolean> {
+    this.activeMode = 'health_connect';
     if (Platform.OS !== 'android' || !HealthConnectModule) {
-      this.isConnected = true;
       return true;
     }
     try {
       const result = await HealthConnectModule.openHealthConnectPermissions();
       const hasAll = await HealthConnectModule.hasPermissions();
-      this.isConnected = hasAll;
-      return result;
+      return result || hasAll;
     } catch (_: any) {
       return false;
     }
   }
 
   /**
-   * Sistemdeki Health Connect verisinden anlık nabzı okur. Veri yoksa 0 döner.
+   * Option 3: Select No Permission / No Tracking
    */
-  static async getLiveHeartRate(): Promise<number> {
-    if (Platform.OS !== 'android' || !HealthConnectModule) {
-      return 0;
-    }
-    try {
-      const hr = await HealthConnectModule.getLiveHeartRate();
-      return hr > 0 ? hr : 0;
-    } catch (_: any) {
-      return 0;
+  static selectNoPermission() {
+    this.activeMode = 'none';
+    if (BleHeartRateModule) {
+      try {
+        BleHeartRateModule.disconnect();
+      } catch (_: any) {}
     }
   }
 
   /**
-   * Sistemdeki Health Connect verisinden yakılan aktif ve toplam kaloriyi çeker.
+   * Reads live heart rate depending on active tracking mode (BLE or Health Connect).
+   * Returns 0 if no sensor data.
+   */
+  static async getLiveHeartRate(): Promise<number> {
+    if (this.activeMode === 'ble' && BleHeartRateModule) {
+      try {
+        const bpm = await BleHeartRateModule.getLiveHeartRate();
+        return bpm > 0 ? bpm : 0;
+      } catch (_: any) {
+        return 0;
+      }
+    }
+
+    if (this.activeMode === 'health_connect' && HealthConnectModule) {
+      try {
+        const hr = await HealthConnectModule.getLiveHeartRate();
+        return hr > 0 ? hr : 0;
+      } catch (_: any) {
+        return 0;
+      }
+    }
+
+    return 0;
+  }
+
+  /**
+   * Fetches active calories burned.
    */
   static async fetchCaloriesBurned(startTimeMs: number, endTimeMs: number): Promise<number> {
-    if (Platform.OS !== 'android' || !HealthConnectModule) {
-      return 0;
+    if (this.activeMode === 'health_connect' && HealthConnectModule) {
+      try {
+        const calories = await HealthConnectModule.fetchCaloriesBurned(startTimeMs, endTimeMs);
+        return calories > 0 ? calories : 0;
+      } catch (_: any) {
+        return 0;
+      }
     }
-    try {
-      const calories = await HealthConnectModule.fetchCaloriesBurned(startTimeMs, endTimeMs);
-      return calories > 0 ? calories : 0;
-    } catch (_: any) {
-      return 0;
-    }
+    return 0;
   }
 
   static calculateActiveCalories(
@@ -110,6 +160,11 @@ export class HealthConnectService {
   }
 
   static resetPermissions() {
-    this.isConnected = null;
+    this.activeMode = 'none';
+    if (BleHeartRateModule) {
+      try {
+        BleHeartRateModule.disconnect();
+      } catch (_: any) {}
+    }
   }
 }
