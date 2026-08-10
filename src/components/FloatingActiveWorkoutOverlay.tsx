@@ -148,7 +148,16 @@ export const FloatingActiveWorkoutOverlay: React.FC = () => {
           text: 'Bitir',
           style: 'destructive',
           onPress: () => {
-            ActiveWorkoutManager.finishWorkout();
+            ActiveWorkoutManager.setScreenFocus(true);
+            navigation.navigate('ActiveWorkout', {
+              sessionId: workoutState.sessionId,
+              programId: workoutState.programId,
+              title: workoutState.title,
+              workoutTitle: workoutState.workoutTitle || workoutState.title,
+              category: workoutState.category || '',
+              emoji: workoutState.emoji || '🏃',
+              autoFinish: true,
+            });
           },
         },
       ],

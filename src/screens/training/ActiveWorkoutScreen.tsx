@@ -187,6 +187,12 @@ export const ActiveWorkoutScreen = ({ route, navigation }: any) => {
     }
   }, [isOutdoor]);
 
+  useEffect(() => {
+    if (route.params?.autoFinish) {
+      setShowEffortModal(true);
+    }
+  }, [route.params?.autoFinish]);
+
   // Focus effect for immediate overlay visibility when navigating back/away
   useFocusEffect(
     useCallback(() => {
