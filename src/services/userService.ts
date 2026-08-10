@@ -4,12 +4,12 @@ export interface UserProfile {
   id: string;
   email: string;
   name: string;
-  surname?: string;
-  gender?: string;
-  phone?: string;
-  birth_date?: string;
-  height_cm?: number;
-  weight_kg?: number;
+  surname?: string | null;
+  gender?: string | null;
+  phone?: string | null;
+  birth_date?: string | null;
+  height_cm?: number | null;
+  weight_kg?: number | null;
   role?: string;
   gym_id?: string;
   gym_name?: string;
@@ -86,13 +86,36 @@ export const UserService = {
         if (updates.phone !== undefined) safeUpdates.phone = updates.phone;
         if (updates.gender !== undefined) safeUpdates.gender = updates.gender;
         if (updates.birth_date !== undefined) safeUpdates.birth_date = updates.birth_date;
+        if (updates.height_cm !== undefined) safeUpdates.height_cm = updates.height_cm;
+        if (updates.weight_kg !== undefined) safeUpdates.weight_kg = updates.weight_kg;
+        if (updates.avatar_url !== undefined) safeUpdates.avatar_url = updates.avatar_url;
 
-        const { data: retryData } = await supabase
+        const { data: retryData, error: retryError } = await supabase
           .from('users')
           .update(safeUpdates)
           .eq('id', userId)
           .select()
           .single();
+
+        if (retryError) {
+          // If height_cm / weight_kg columns are named height / weight in DB table, try fallback column names
+          const fallbackUpdates: any = { ...safeUpdates };
+          if (updates.height_cm !== undefined) {
+            delete fallbackUpdates.height_cm;
+            fallbackUpdates.height = updates.height_cm;
+          }
+          if (updates.weight_kg !== undefined) {
+            delete fallbackUpdates.weight_kg;
+            fallbackUpdates.weight = updates.weight_kg;
+          }
+          const { data: fbData } = await supabase
+            .from('users')
+            .update(fallbackUpdates)
+            .eq('id', userId)
+            .select()
+            .single();
+          return fbData || { id: userId, ...updates };
+        }
 
         return retryData || { id: userId, ...updates };
       }

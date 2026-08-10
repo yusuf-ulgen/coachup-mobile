@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -9,6 +9,7 @@ import {
   ActivityIndicator,
   Image,
 } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import { feedback } from '../../services/feedbackService';
 import { Colors } from '../../theme/colors';
 import { useAuth } from '../../context/AuthContext';
@@ -27,13 +28,19 @@ export const ProfileScreen: React.FC<{ navigation?: any }> = ({ navigation }) =>
   const [surname, setSurname] = useState(profile?.surname || '');
   const [phone, setPhone] = useState(profile?.phone || '');
   const [gender, setGender] = useState(profile?.gender || 'male');
-  const [height, setHeight] = useState(profile?.height_cm?.toString() || '');
-  const [weight, setWeight] = useState(profile?.weight_kg?.toString() || '');
+  const [height, setHeight] = useState('');
+  const [weight, setWeight] = useState('');
   const [birthDate, setBirthDate] = useState(profile?.birth_date || '');
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [avatarUrl, setAvatarUrl] = useState(profile?.avatar_url || profile?.profile_image_url || '');
   const [loading, setLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
+
+  useFocusEffect(
+    useCallback(() => {
+      refreshProfile();
+    }, [])
+  );
 
   useEffect(() => {
     if (profile) {
@@ -41,8 +48,10 @@ export const ProfileScreen: React.FC<{ navigation?: any }> = ({ navigation }) =>
       setSurname(profile.surname || '');
       setPhone(profile.phone || '');
       setGender(profile.gender || 'male');
-      setHeight(profile.height_cm?.toString() || '');
-      setWeight(profile.weight_kg?.toString() || '');
+      const hVal = profile.height_cm ?? (profile as any).height;
+      const wVal = profile.weight_kg ?? (profile as any).weight;
+      setHeight(hVal !== undefined && hVal !== null ? String(hVal) : '');
+      setWeight(wVal !== undefined && wVal !== null ? String(wVal) : '');
       setBirthDate(profile.birth_date || '');
       setAvatarUrl(profile.avatar_url || profile.profile_image_url || '');
     }
@@ -103,13 +112,18 @@ export const ProfileScreen: React.FC<{ navigation?: any }> = ({ navigation }) =>
     if (!user) return;
     try {
       setLoading(true);
+      const cleanHeight = (height || '').toString().trim().replace(',', '.');
+      const cleanWeight = (weight || '').toString().trim().replace(',', '.');
+      const numHeight = cleanHeight ? parseFloat(cleanHeight) : null;
+      const numWeight = cleanWeight ? parseFloat(cleanWeight) : null;
+
       await UserService.updateUserProfile(user.id, {
         name,
         surname,
         phone,
         gender,
-        height_cm: height ? parseFloat(height) : undefined,
-        weight_kg: weight ? parseFloat(weight) : undefined,
+        height_cm: numHeight !== null && !isNaN(numHeight) ? numHeight : undefined,
+        weight_kg: numWeight !== null && !isNaN(numWeight) ? numWeight : undefined,
         birth_date: birthDate || undefined,
       });
       await refreshProfile();

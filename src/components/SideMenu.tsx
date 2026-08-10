@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { useAuth } from '../context/AuthContext';
 import {
   View,
   Text,
@@ -48,12 +49,6 @@ interface MenuItemData {
   title: string;
   icon: any;
   route: string;
-}
-
-interface MenuItemData {
-  title: string;
-  icon: any;
-  route: string;
   salonOnly?: boolean; // Sadece salon üyelerine göster
 }
 
@@ -75,20 +70,44 @@ const menuItems: MenuItemData[] = [
 export const SideMenu: React.FC<SideMenuProps> = ({
   visible,
   onClose,
-  userProfile,
+  userProfile: propUserProfile,
   onNavigate,
   navigation,
 }) => {
   const insets = useSafeAreaInsets();
+  const { user, profile: authProfile } = useAuth();
+  const [internalProfile, setInternalProfile] = useState<any>(null);
   const [hasActiveMembership, setHasActiveMembership] = useState(false);
 
-  React.useEffect(() => {
-    if (visible && userProfile) {
-      UserService.hasActiveMembership(userProfile)
-        .then(setHasActiveMembership)
-        .catch(() => setHasActiveMembership(false));
+  const activeProfile = propUserProfile || authProfile || internalProfile;
+
+  useEffect(() => {
+    let isMounted = true;
+    if (visible) {
+      const loadProfileData = async () => {
+        try {
+          let curr = activeProfile;
+          if (!curr || !curr.name || !curr.gym_name) {
+            const fetched = await AuthService.getCurrentProfile();
+            if (fetched && isMounted) {
+              curr = fetched;
+              setInternalProfile(fetched);
+            }
+          }
+          if (curr && isMounted) {
+            const active = await UserService.hasActiveMembership(curr);
+            if (isMounted) setHasActiveMembership(active);
+          }
+        } catch (e) {
+          console.error('Error fetching SideMenu profile:', e);
+        }
+      };
+      loadProfileData();
     }
-  }, [visible, userProfile]);
+    return () => {
+      isMounted = false;
+    };
+  }, [visible, activeProfile]);
 
   const handleLogout = async () => {
     const confirmed = await feedback.destructive({
@@ -108,15 +127,15 @@ export const SideMenu: React.FC<SideMenuProps> = ({
     }
   };
 
-  const displayName = userProfile
-    ? `${userProfile.name || ''} ${userProfile.surname || ''}`.trim() || 'Kullanıcı'
+  const displayName = activeProfile
+    ? `${activeProfile.name || ''} ${activeProfile.surname || ''}`.trim() || 'Kullanıcı'
     : 'Kullanıcı';
 
-  const gymSubTitle = userProfile?.is_individual
+  const gymSubTitle = activeProfile?.is_individual
     ? 'Bireysel'
-    : userProfile?.gym_name || 'Bağlı Salon Yok';
+    : activeProfile?.gym_name || 'Bağlı Salon Yok';
 
-  const isAdmin = userProfile?.role === 'admin' || userProfile?.role === 'gym_manager';
+  const isAdmin = activeProfile?.role === 'admin' || activeProfile?.role === 'gym_manager';
 
   return (
     <SmoothModal
@@ -178,7 +197,7 @@ export const SideMenu: React.FC<SideMenuProps> = ({
             {menuItems
               .filter((item) => {
                 // Sadece aktif salon üyelerine salon-only menü göster
-                if (item.salonOnly && (!hasActiveMembership || userProfile?.is_individual)) return false;
+                if (item.salonOnly && (!hasActiveMembership || activeProfile?.is_individual)) return false;
                 return true;
               })
               .map((item) => {

@@ -462,18 +462,37 @@ export const ActiveWorkoutScreen = ({ route, navigation }: any) => {
                 <Text style={styles.outdoorStartPillBtnText}>Başlat</Text>
               </TouchableOpacity>
             </View>
+          ) : !isActive ? (
+            <View style={[styles.bottomDrawerSheet, { backgroundColor: colors.cardBg, bottom: Math.max(20, insets.bottom + 12), position: 'absolute', left: 16, right: 16 }]}>
+              <View style={styles.drawerHandleBar} />
+              <View style={{ gap: 12 }}>
+                <TouchableOpacity
+                  style={styles.drawerPillBtn}
+                  onPress={() => setIsActive(true)}
+                  activeOpacity={0.85}
+                >
+                  <Play size={20} color={Colors.allWhite} fill={Colors.allWhite} style={{ marginRight: 6 }} />
+                  <Text style={styles.drawerPillBtnText}>Devam Et</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[styles.drawerPillBtn, { backgroundColor: colors.bg, borderWidth: 1, borderColor: colors.border }]}
+                  onPress={handleRequestFinish}
+                  activeOpacity={0.85}
+                >
+                  <Flag size={20} color={Colors.primary} style={{ marginRight: 6 }} />
+                  <Text style={[styles.drawerPillBtnText, { color: Colors.primary }]}>Antrenmanı Bitir</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
           ) : (
             <View style={[styles.outdoorBottomControl, { bottom: Math.max(20, insets.bottom + 12) }]}>
               <TouchableOpacity
                 style={[styles.playPauseLargeBtn, { backgroundColor: colors.pausePlayBg }]}
-                onPress={() => setIsActive(!isActive)}
+                onPress={() => setIsActive(false)}
                 activeOpacity={0.85}
               >
-                {isActive ? (
-                  <Pause size={28} color={colors.pausePlayIcon} />
-                ) : (
-                  <Play size={28} color={colors.pausePlayIcon} style={{ marginLeft: 4 }} />
-                )}
+                <Pause size={28} color={colors.pausePlayIcon} />
               </TouchableOpacity>
             </View>
           )}

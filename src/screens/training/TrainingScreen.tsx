@@ -288,7 +288,7 @@ export const TrainingScreen: React.FC<TrainingScreenProps> = ({ navigation }) =>
 
   return (
     <View style={styles.container}>
-      <Header navigation={navigation} showMenuButton={false} />
+      <Header navigation={navigation} showMenuButton={true} onMenuPress={() => setMenuVisible(true)} />
       <SideMenu visible={menuVisible} onClose={() => setMenuVisible(false)} navigation={navigation} />
 
       {/* Screen Sub-header */}

@@ -139,9 +139,12 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
+    overflow: 'hidden',
   },
   iconBoxFocused: {
     backgroundColor: Colors.primary,
+    borderRadius: 16,
+    overflow: 'hidden',
   },
   tabLabel: {
     fontSize: 11,

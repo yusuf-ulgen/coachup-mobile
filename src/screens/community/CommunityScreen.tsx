@@ -716,7 +716,7 @@ export const CommunityScreen = ({ navigation }: any) => {
 
   return (
     <View style={styles.container}>
-      <Header navigation={navigation} showMenuButton={false} />
+      <Header navigation={navigation} showMenuButton={true} onMenuPress={() => setMenuVisible(true)} />
       <SideMenu visible={menuVisible} onClose={() => setMenuVisible(false)} navigation={navigation} />
 
       {/* Scope Tab (Genel | Salon) */}
