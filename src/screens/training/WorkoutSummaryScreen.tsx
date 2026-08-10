@@ -114,7 +114,7 @@ export const WorkoutSummaryScreen: React.FC = () => {
                 </View>
                 <Text style={styles.metricUnit}>kcal</Text>
               </View>
-              <Text style={styles.metricVal}>{calories}</Text>
+              <Text style={styles.metricVal}>{calories && calories > 0 ? calories : '—'}</Text>
               <Text style={styles.metricLbl}>Kalori</Text>
             </View>
 

@@ -386,12 +386,14 @@ export const ActiveWorkoutScreen = ({ route, navigation }: any) => {
               </View>
               <View style={[styles.metricColumnCell, { backgroundColor: colors.cardBg, borderColor: colors.border }]}>
                 <Text style={[styles.metricValText, { color: colors.textPrimary }]}>
-                  {heartRate > 0 ? heartRate : '--'}
+                  {heartRate > 0 ? heartRate : '-'}
                 </Text>
                 <Text style={[styles.metricLblText, { color: colors.textSecondary }]}>BPM</Text>
               </View>
               <View style={[styles.metricColumnCell, { backgroundColor: colors.cardBg, borderColor: colors.border }]}>
-                <Text style={[styles.metricValText, { color: colors.textPrimary }]}>{activeCalories}</Text>
+                <Text style={[styles.metricValText, { color: colors.textPrimary }]}>
+                  {activeCalories > 0 ? activeCalories : '-'}
+                </Text>
                 <Text style={[styles.metricLblText, { color: colors.textSecondary }]}>KCAL</Text>
               </View>
             </View>
@@ -517,7 +519,7 @@ export const ActiveWorkoutScreen = ({ route, navigation }: any) => {
 
           <View style={styles.centerHeartArea}>
             <Text style={[styles.heartRateText, { color: colors.textPrimary }]}>
-              {heartRate > 0 ? `${heartRate} bpm` : '--  --'}
+              {heartRate > 0 ? `${heartRate} bpm` : '-'}
             </Text>
             <Heart size={28} color="#FF3B30" fill="#FF3B30" style={{ marginTop: 12 }} />
           </View>

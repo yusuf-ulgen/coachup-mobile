@@ -229,7 +229,7 @@ export const TrainingScreen: React.FC<TrainingScreenProps> = ({ navigation }) =>
             {isStarting ? (
               <ActivityIndicator size="small" color={Colors.allWhite} />
             ) : (
-              <Text style={styles.startButtonText}>Programe Başlat</Text>
+              <Text style={styles.startButtonText}>Programı Başlat</Text>
             )}
           </TouchableOpacity>
         </View>
