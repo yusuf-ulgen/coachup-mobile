@@ -16,12 +16,14 @@ import {
   Scale,
   MapPin,
   Lock,
+  Bluetooth,
 } from 'lucide-react-native';
 import { Colors } from '../../theme/colors';
 import { Header } from '../../components/Header';
 import { SideMenu } from '../../components/SideMenu';
 import { AuthService } from '../../services/authService';
 import { UserService } from '../../services/userService';
+import { HealthConnectService, BluetoothPermissionPreference } from '../../services/healthConnectService';
 
 interface SettingsScreenProps {
   navigation: any;
@@ -39,6 +41,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ navigation }) =>
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const [biometricsEnabled, setBiometricsEnabled] = useState(false);
   const [weightUnit, setWeightUnit] = useState<'kg' | 'lbs'>('kg');
+  const [blePreference, setBlePreference] = useState<BluetoothPermissionPreference>('ASK_EVERY_TIME');
 
   useEffect(() => {
     const loadSettings = async () => {
@@ -50,6 +53,9 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ navigation }) =>
         if (storedBio !== null) {
           setBiometricsEnabled(JSON.parse(storedBio));
         }
+
+        const storedBlePref = await HealthConnectService.getStoredPreference();
+        setBlePreference(storedBlePref);
 
         const profile = await AuthService.getCurrentProfile();
         if (profile) {
@@ -152,6 +158,12 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ navigation }) =>
     saveSetting('weight_unit', unit);
   };
 
+  const handleBlePrefChange = async (pref: BluetoothPermissionPreference) => {
+    setBlePreference(pref);
+    await HealthConnectService.setStoredPreference(pref);
+    feedback.toast('Bluetooth Nabız İzni tercihi güncellendi.', 'success');
+  };
+
   return (
     <View style={styles.container}>
       <Header
@@ -252,6 +264,39 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ navigation }) =>
                   ]}
                 >
                   {unit.label}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </View>
+
+        {/* Bluetooth HR Permission Preference */}
+        <View style={styles.card}>
+          <View style={styles.rowHeader}>
+            <Bluetooth size={20} color={Colors.primary} />
+            <Text style={styles.rowTitle}>Bluetooth Nabız İzni</Text>
+          </View>
+          <View style={styles.optionsRow}>
+            {[
+              { id: 'ALWAYS_ALLOW', label: 'Her Zaman' },
+              { id: 'ASK_EVERY_TIME', label: 'Her Seferinde Sor' },
+              { id: 'DENIED', label: 'İzin Verme' },
+            ].map((item) => (
+              <TouchableOpacity
+                key={item.id}
+                style={[
+                  styles.chip,
+                  blePreference === item.id && styles.chipSelected,
+                ]}
+                onPress={() => handleBlePrefChange(item.id as BluetoothPermissionPreference)}
+              >
+                <Text
+                  style={[
+                    styles.chipText,
+                    blePreference === item.id && styles.chipTextSelected,
+                  ]}
+                >
+                  {item.label}
                 </Text>
               </TouchableOpacity>
             ))}

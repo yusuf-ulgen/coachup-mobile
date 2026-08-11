@@ -1,8 +1,12 @@
 import { NativeModules, Platform } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const { HealthConnectModule, BleHeartRateModule } = NativeModules;
 
 export type TrackingMode = 'ble' | 'health_connect' | 'none';
+export type BluetoothPermissionPreference = 'ALWAYS_ALLOW' | 'ALLOW_ONCE' | 'DENIED' | 'ASK_EVERY_TIME';
+
+export const BLE_HR_PREFERENCE_KEY = '@bluetooth_hr_permission_choice';
 
 export class HealthConnectService {
   private static activeMode: TrackingMode = 'none';
@@ -13,6 +17,28 @@ export class HealthConnectService {
 
   static setActiveMode(mode: TrackingMode) {
     this.activeMode = mode;
+  }
+
+  static async getStoredPreference(): Promise<BluetoothPermissionPreference> {
+    try {
+      const stored = await AsyncStorage.getItem(BLE_HR_PREFERENCE_KEY);
+      if (stored === 'ALWAYS_ALLOW' || stored === 'DENIED') {
+        return stored as BluetoothPermissionPreference;
+      }
+      return 'ASK_EVERY_TIME';
+    } catch (_) {
+      return 'ASK_EVERY_TIME';
+    }
+  }
+
+  static async setStoredPreference(pref: BluetoothPermissionPreference): Promise<void> {
+    try {
+      if (pref === 'ALLOW_ONCE' || pref === 'ASK_EVERY_TIME') {
+        await AsyncStorage.removeItem(BLE_HR_PREFERENCE_KEY);
+      } else {
+        await AsyncStorage.setItem(BLE_HR_PREFERENCE_KEY, pref);
+      }
+    } catch (_) {}
   }
 
   static async isAvailable(): Promise<boolean> {

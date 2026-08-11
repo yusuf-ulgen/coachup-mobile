@@ -157,8 +157,14 @@ export const ActiveWorkoutScreen = ({ route, navigation }: any) => {
   const [mapDiagnosticText, setMapDiagnosticText] = useState('Harita başlatılıyor...');
 
   useEffect(() => {
-    HealthConnectService.checkPermissions().then((hasPerms) => {
-      if (!hasPerms) {
+    HealthConnectService.getStoredPreference().then((pref) => {
+      if (pref === 'ALWAYS_ALLOW') {
+        setShowHealthPermissionModal(false);
+        HealthConnectService.startBleSmartWatchConnection();
+      } else if (pref === 'DENIED') {
+        setShowHealthPermissionModal(false);
+        HealthConnectService.selectNoPermission();
+      } else {
         setShowHealthPermissionModal(true);
       }
     });
@@ -166,16 +172,19 @@ export const ActiveWorkoutScreen = ({ route, navigation }: any) => {
 
   const handleSelectAlwaysAllow = async () => {
     setShowHealthPermissionModal(false);
+    await HealthConnectService.setStoredPreference('ALWAYS_ALLOW');
     await HealthConnectService.startBleSmartWatchConnection();
   };
 
   const handleSelectAllowOnce = async () => {
     setShowHealthPermissionModal(false);
+    await HealthConnectService.setStoredPreference('ALLOW_ONCE');
     await HealthConnectService.startBleSmartWatchConnection();
   };
 
-  const handleSelectNoPermission = () => {
+  const handleSelectNoPermission = async () => {
     setShowHealthPermissionModal(false);
+    await HealthConnectService.setStoredPreference('DENIED');
     HealthConnectService.selectNoPermission();
   };
 
