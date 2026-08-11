@@ -1,6 +1,7 @@
 import React from 'react';
 import { Modal, View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { Bluetooth } from 'lucide-react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 interface HealthPermissionModalProps {
   visible: boolean;
@@ -17,6 +18,9 @@ export const HealthPermissionModal: React.FC<HealthPermissionModalProps> = ({
   onSelectAllowOnce,
   onSelectNoPermission,
 }) => {
+  const insets = useSafeAreaInsets();
+  const bottomPadding = Math.max(56, insets.bottom + 36);
+
   return (
     <Modal
       visible={visible}
@@ -25,7 +29,7 @@ export const HealthPermissionModal: React.FC<HealthPermissionModalProps> = ({
       onRequestClose={onDismiss}
     >
       <View style={styles.overlay}>
-        <View style={styles.sheetContainer}>
+        <View style={[styles.sheetContainer, { paddingBottom: bottomPadding }]}>
           {/* Handle bar */}
           <View style={styles.handleBar} />
 
