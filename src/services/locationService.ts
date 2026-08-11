@@ -33,16 +33,19 @@ export class LocationService {
   }
 
   static async startTracking(
-    onLocationUpdate: (stats: LocationStats) => void
+    onLocationUpdate: (stats: LocationStats) => void,
+    isResume: boolean = false
   ): Promise<void> {
     const hasPermission = await this.requestPermissions();
     if (!hasPermission) {
       throw new Error('Konum izni verilmedi');
     }
 
-    this.route = [];
-    this.startTime = Date.now();
-    this.initialAltitude = null;
+    if (!isResume) {
+      this.route = [];
+      this.startTime = Date.now();
+      this.initialAltitude = null;
+    }
 
     // Clear previous subscription if any
     this.stopTracking();
@@ -70,6 +73,12 @@ export class LocationService {
         accuracy: Location.Accuracy.High,
         timeInterval: 2000,
         distanceInterval: 3,
+        showsBackgroundLocationIndicator: true,
+        foregroundService: {
+          notificationTitle: 'CoachUP Antrenman Takibi',
+          notificationBody: 'Konumunuz ve rotanız arka planda takip ediliyor...',
+          notificationColor: '#FF5E00',
+        },
       },
       (position) => {
         const { latitude, longitude, speed, altitude } = position.coords;
@@ -82,6 +91,12 @@ export class LocationService {
         onLocationUpdate(stats);
       }
     );
+  }
+
+  static async resumeTracking(
+    onLocationUpdate: (stats: LocationStats) => void
+  ): Promise<void> {
+    return this.startTracking(onLocationUpdate, true);
   }
 
   static addRealCoordinate(

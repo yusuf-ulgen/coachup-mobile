@@ -241,9 +241,10 @@ export const ActiveWorkoutScreen = ({ route, navigation }: any) => {
       }, 1000);
 
       if (isOutdoor) {
+        const isResume = seconds > 0 || locationStats !== null;
         LocationService.startTracking((stats) => {
           setLocationStats(stats);
-        }).catch((e) => console.error('Location tracking error:', e));
+        }, isResume).catch((e) => console.error('Location tracking error:', e));
       }
 
       hrInterval = setInterval(async () => {
