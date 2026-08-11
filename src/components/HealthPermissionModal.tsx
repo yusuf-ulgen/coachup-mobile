@@ -1,20 +1,20 @@
 import React from 'react';
 import { Modal, View, Text, StyleSheet, TouchableOpacity } from 'react-native';
-import { Watch } from 'lucide-react-native';
+import { Bluetooth } from 'lucide-react-native';
 
 interface HealthPermissionModalProps {
   visible: boolean;
   onDismiss: () => void;
-  onSelectBleSmartWatch: () => void;
-  onSelectHealthConnect: () => void;
+  onSelectAlwaysAllow: () => void;
+  onSelectAllowOnce: () => void;
   onSelectNoPermission: () => void;
 }
 
 export const HealthPermissionModal: React.FC<HealthPermissionModalProps> = ({
   visible,
   onDismiss,
-  onSelectBleSmartWatch,
-  onSelectHealthConnect,
+  onSelectAlwaysAllow,
+  onSelectAllowOnce,
   onSelectNoPermission,
 }) => {
   return (
@@ -29,45 +29,45 @@ export const HealthPermissionModal: React.FC<HealthPermissionModalProps> = ({
           {/* Handle bar */}
           <View style={styles.handleBar} />
 
-          {/* Header Watch Icon with Orange Glow */}
+          {/* Header Bluetooth Icon with Orange Glow */}
           <View style={styles.iconGlowRing}>
             <View style={styles.iconCircle}>
-              <Watch size={28} color="#FF5E00" />
+              <Bluetooth size={28} color="#FF5E00" />
             </View>
           </View>
 
-          {/* Single Question Text (No dual headers or parenthetical notes) */}
+          {/* Question Text */}
           <Text style={styles.questionText}>
-            Nabız verinizi takip edebilmemiz için hangi yöntemi tercih edersiniz?
+            Nabız verisini almak için Bluetooth izni vermek istiyor musunuz?
           </Text>
 
-          {/* 3 Option Buttons (Warm Tones, Clean Labels) */}
+          {/* 3 Option Buttons */}
           <View style={styles.buttonStack}>
-            {/* Option 1: Akıllı Saat */}
+            {/* Option 1: Her zaman izin ver */}
             <TouchableOpacity
-              style={[styles.optionBtn, styles.btnSmartWatch]}
-              onPress={onSelectBleSmartWatch}
+              style={[styles.optionBtn, styles.btnAlwaysAllow]}
+              onPress={onSelectAlwaysAllow}
               activeOpacity={0.85}
             >
-              <Text style={styles.btnTextLight}>Akıllı Saat</Text>
+              <Text style={styles.btnTextLight}>Her zaman izin ver</Text>
             </TouchableOpacity>
 
-            {/* Option 2: Health Connect */}
+            {/* Option 2: Bu seferlik izin ver */}
             <TouchableOpacity
-              style={[styles.optionBtn, styles.btnHealthConnect]}
-              onPress={onSelectHealthConnect}
+              style={[styles.optionBtn, styles.btnAllowOnce]}
+              onPress={onSelectAllowOnce}
               activeOpacity={0.85}
             >
-              <Text style={styles.btnTextLight}>Health Connect</Text>
+              <Text style={styles.btnTextLight}>Bu seferlik izin ver</Text>
             </TouchableOpacity>
 
-            {/* Option 3: İzin Verme */}
+            {/* Option 3: İzin verme */}
             <TouchableOpacity
               style={[styles.optionBtn, styles.btnNoPermission]}
               onPress={onSelectNoPermission}
               activeOpacity={0.85}
             >
-              <Text style={styles.btnTextMuted}>İzin Verme</Text>
+              <Text style={styles.btnTextMuted}>İzin verme</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -139,11 +139,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  btnSmartWatch: {
+  btnAlwaysAllow: {
     backgroundColor: '#FF5E00', // Vibrant Orange
   },
-  btnHealthConnect: {
-    backgroundColor: '#FF9500', // Warm Amber / Coral Orange
+  btnAllowOnce: {
+    backgroundColor: '#3B3E52', // Dark Slate Accent
   },
   btnNoPermission: {
     backgroundColor: '#2A2C3A', // Dark Warm Ash
@@ -159,3 +159,4 @@ const styles = StyleSheet.create({
     color: '#A0A4B8',
   },
 });
+

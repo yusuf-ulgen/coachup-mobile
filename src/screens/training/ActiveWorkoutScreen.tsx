@@ -164,14 +164,14 @@ export const ActiveWorkoutScreen = ({ route, navigation }: any) => {
     });
   }, []);
 
-  const handleSelectBleSmartWatch = async () => {
+  const handleSelectAlwaysAllow = async () => {
     setShowHealthPermissionModal(false);
     await HealthConnectService.startBleSmartWatchConnection();
   };
 
-  const handleSelectHealthConnect = async () => {
+  const handleSelectAllowOnce = async () => {
     setShowHealthPermissionModal(false);
-    await HealthConnectService.openSystemPermissions();
+    await HealthConnectService.startBleSmartWatchConnection();
   };
 
   const handleSelectNoPermission = () => {
@@ -633,8 +633,8 @@ export const ActiveWorkoutScreen = ({ route, navigation }: any) => {
       <HealthPermissionModal
         visible={showHealthPermissionModal}
         onDismiss={() => setShowHealthPermissionModal(false)}
-        onSelectBleSmartWatch={handleSelectBleSmartWatch}
-        onSelectHealthConnect={handleSelectHealthConnect}
+        onSelectAlwaysAllow={handleSelectAlwaysAllow}
+        onSelectAllowOnce={handleSelectAllowOnce}
         onSelectNoPermission={handleSelectNoPermission}
       />
     </View>

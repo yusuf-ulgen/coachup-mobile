@@ -304,7 +304,7 @@ export const WorkoutShareSheet: React.FC<{
       case ShareTemplate.MAP_FOCUSED:
         return (
           <View style={styles.cardPaddingContainer}>
-            {/* Top Logo */}
+            {/* Top Logo - Right Aligned */}
             <View style={styles.topLogoRow}>
               <Image
                 source={require('../../../assets/coach_logo.png')}
@@ -341,13 +341,18 @@ export const WorkoutShareSheet: React.FC<{
 
       case ShareTemplate.DETAILED:
         return (
-          <View style={[styles.cardPaddingContainer, { justifyContent: 'flex-end' }]}>
-            <View style={{ gap: 12 }}>
+          <View style={styles.cardPaddingContainer}>
+            {/* Top Logo - Right Aligned */}
+            <View style={styles.topLogoRow}>
               <Image
                 source={require('../../../assets/coach_logo.png')}
                 style={styles.logoImageSmall}
                 resizeMode="contain"
               />
+            </View>
+
+            {/* Bottom Content */}
+            <View style={{ gap: 12, marginTop: 'auto' }}>
               <View>
                 <Text style={styles.categoryTitleTextDetailed}>{title}</Text>
                 <Text style={styles.subtitleText}>Antrenman tamamlandı</Text>
@@ -385,22 +390,27 @@ export const WorkoutShareSheet: React.FC<{
 
       case ShareTemplate.SIMPLE:
         return (
-          <View style={[styles.cardPaddingContainer, { alignItems: 'center', justifyContent: 'space-between' }]}>
-            <View style={{ alignItems: 'center' }}>
+          <View style={[styles.cardPaddingContainer, { justifyContent: 'space-between' }]}>
+            {/* Top Logo & Title - Right Aligned */}
+            <View style={{ width: '100%', alignItems: 'flex-end' }}>
               <Image
                 source={require('../../../assets/coach_logo.png')}
                 style={styles.logoImage}
                 resizeMode="contain"
               />
-              <Text style={[styles.categoryTitleText, { marginTop: 4, textAlign: 'center' }]}>{title}</Text>
+              <Text style={[styles.categoryTitleText, { marginTop: 4, textAlign: 'right' }]}>{title}</Text>
             </View>
 
+            {/* Middle Stat */}
             <View style={{ alignItems: 'center' }}>
               <Text style={styles.simpleLabel}>{showDistance ? 'MESAFE' : 'Süre'}</Text>
               <Text style={styles.simpleHeroVal}>{showDistance ? distanceStr : durationStr}</Text>
             </View>
 
-            <Text style={styles.simpleFooterText}>Antrenman Tamamlandı</Text>
+            {/* Bottom Footer */}
+            <View style={{ width: '100%', alignItems: 'center' }}>
+              <Text style={styles.simpleFooterText}>Antrenman Tamamlandı</Text>
+            </View>
           </View>
         );
 
@@ -409,12 +419,15 @@ export const WorkoutShareSheet: React.FC<{
         return (
           <View style={styles.storyCardOuterContainer}>
             <View style={styles.storyCardBox}>
-              <Image
-                source={require('../../../assets/coach_logo.png')}
-                style={styles.logoImageSmall}
-                resizeMode="contain"
-              />
-              <Text style={styles.storyCardCategory}>{title}</Text>
+              {/* Top Logo & Category - Right Aligned */}
+              <View style={{ width: '100%', alignItems: 'flex-end' }}>
+                <Image
+                  source={require('../../../assets/coach_logo.png')}
+                  style={styles.logoImageSmall}
+                  resizeMode="contain"
+                />
+                <Text style={[styles.storyCardCategory, { marginTop: 2 }]}>{title}</Text>
+              </View>
 
               <View style={styles.storyCardDivider} />
 
@@ -662,6 +675,7 @@ const styles = StyleSheet.create({
   topLogoRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'flex-end',
   },
   logoImage: {
     width: 80,

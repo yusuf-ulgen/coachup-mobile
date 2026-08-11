@@ -421,8 +421,8 @@ private fun ShareCardContent(
                         .padding(horizontal = 20.dp, vertical = 22.dp),
                     verticalArrangement = Arrangement.SpaceBetween
                 ) {
-                    // Top Logo
-                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Start) {
+                    // Top Logo (Right Aligned)
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                         Image(
                             painter = painterResource(R.drawable.coach_logo),
                             contentDescription = "CoachUP",
@@ -477,19 +477,21 @@ private fun ShareCardContent(
                     modifier = Modifier
                         .fillMaxSize()
                         .padding(horizontal = 18.dp, vertical = 20.dp),
-                    verticalArrangement = Arrangement.Bottom
+                    verticalArrangement = Arrangement.SpaceBetween
                 ) {
-                    Column(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                         Image(
                             painter = painterResource(R.drawable.coach_logo),
                             contentDescription = "CoachUP",
                             modifier = Modifier.height(20.dp).width(72.dp),
                             contentScale = ContentScale.Fit
                         )
+                    }
 
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
                         Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                             Text(
                                 text = training.title.uppercase(),
@@ -543,7 +545,7 @@ private fun ShareCardContent(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.SpaceBetween
                 ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Column(modifier = Modifier.fillMaxWidth(), horizontalAlignment = Alignment.End) {
                         Image(
                             painter = painterResource(R.drawable.coach_logo),
                             contentDescription = "CoachUP",
@@ -603,19 +605,22 @@ private fun ShareCardContent(
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        Image(
-                            painter = painterResource(R.drawable.coach_logo),
-                            contentDescription = "CoachUP",
-                            modifier = Modifier.height(20.dp).width(72.dp),
-                            contentScale = ContentScale.Fit
-                        )
-                        Text(
-                            text = training.title.uppercase(),
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color.White.copy(alpha = 0.7f),
-                            letterSpacing = 1.5.sp
-                        )
+                        Column(modifier = Modifier.fillMaxWidth(), horizontalAlignment = Alignment.End) {
+                            Image(
+                                painter = painterResource(R.drawable.coach_logo),
+                                contentDescription = "CoachUP",
+                                modifier = Modifier.height(20.dp).width(72.dp),
+                                contentScale = ContentScale.Fit
+                            )
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text(
+                                text = training.title.uppercase(),
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White.copy(alpha = 0.7f),
+                                letterSpacing = 1.5.sp
+                            )
+                        }
 
                         Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(Color.White.copy(alpha = 0.1f)))
 
@@ -912,16 +917,16 @@ private object ShareCardBitmapRenderer {
         val centerX = WIDTH / 2f
         val showDistance = distanceKm > 0.01
 
-        drawCenterLogo(context, canvas, 140f)
+        drawTopLogo(context, canvas, 80f, 120f)
 
         val titlePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = 0x99FFFFFF.toInt()
             textSize = 32f
             typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
             letterSpacing = 0.12f
-            textAlign = Paint.Align.CENTER
+            textAlign = Paint.Align.RIGHT
         }
-        canvas.drawText(training.title.uppercase(), centerX, 240f, titlePaint)
+        canvas.drawText(training.title.uppercase(), WIDTH - 80f, 210f, titlePaint)
 
         val centerY = HEIGHT * 0.46f
         val labelPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -938,15 +943,15 @@ private object ShareCardBitmapRenderer {
             textAlign = Paint.Align.CENTER
         }
 
-        canvas.drawText(if (showDistance) "MESAFE" else "SÜRE", centerX, centerY, labelPaint)
-        canvas.drawText(if (showDistance) formatShareDistance(distanceKm) else formatShareTime(durationSeconds), centerX, centerY + 140f, heroPaint)
+        canvas.drawText(if (showDistance) "MESAFE" else "SÜRE", WIDTH / 2f, centerY, labelPaint)
+        canvas.drawText(if (showDistance) formatShareDistance(distanceKm) else formatShareTime(durationSeconds), WIDTH / 2f, centerY + 140f, heroPaint)
 
         val footerPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = 0x73FFFFFF.toInt()
             textSize = 32f
             textAlign = Paint.Align.CENTER
         }
-        canvas.drawText("Antrenman Tamamlandı", centerX, HEIGHT - 100f, footerPaint)
+        canvas.drawText("Antrenman Tamamlandı", WIDTH / 2f, HEIGHT - 100f, footerPaint)
     }
 
     private fun drawCardStoryTemplate(
@@ -973,16 +978,15 @@ private object ShareCardBitmapRenderer {
         canvas.drawRoundRect(cardRect, 48f, 48f, bgPaint)
         canvas.drawRoundRect(cardRect, 48f, 48f, strokePaint)
 
-        val centerX = WIDTH / 2f
-        drawCenterLogo(context, canvas, cardTop + 60f)
+        drawTopLogo(context, canvas, cardMargin + 40f, cardTop + 50f)
 
         val titlePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = 0x99FFFFFF.toInt()
             textSize = 32f
             typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-            textAlign = Paint.Align.CENTER
+            textAlign = Paint.Align.RIGHT
         }
-        canvas.drawText(training.title.uppercase(), centerX, cardTop + 160f, titlePaint)
+        canvas.drawText(training.title.uppercase(), WIDTH - cardMargin - 40f, cardTop + 140f, titlePaint)
 
         val showDistance = distanceKm > 0.01
         if (showDistance) {
@@ -1150,19 +1154,11 @@ private object ShareCardBitmapRenderer {
         canvas.drawRect(0f, 0f, WIDTH.toFloat(), HEIGHT.toFloat(), paint)
     }
 
-    private fun drawTopLogo(context: Context, canvas: Canvas, left: Float, top: Float) {
+    private fun drawTopLogo(context: Context, canvas: Canvas, paddingRight: Float, top: Float) {
         val drawable = ContextCompat.getDrawable(context, R.drawable.coach_logo) ?: return
         val logoH = 48
         val logoW = (logoH * (320f / 96f)).roundToInt()
-        drawable.setBounds(left.toInt(), top.toInt(), left.toInt() + logoW, top.toInt() + logoH)
-        drawable.draw(canvas)
-    }
-
-    private fun drawCenterLogo(context: Context, canvas: Canvas, top: Float) {
-        val drawable = ContextCompat.getDrawable(context, R.drawable.coach_logo) ?: return
-        val logoH = 56
-        val logoW = (logoH * (320f / 96f)).roundToInt()
-        val left = (WIDTH - logoW) / 2
+        val left = (WIDTH - paddingRight - logoW).toInt()
         drawable.setBounds(left, top.toInt(), left + logoW, top.toInt() + logoH)
         drawable.draw(canvas)
     }
