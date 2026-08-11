@@ -21,6 +21,7 @@ export class LocationService {
   private static subscription: Location.LocationSubscription | null = null;
   private static startTime: number = 0;
   private static initialAltitude: number | null = null;
+  private static sessionActive: boolean = false;
 
   static async requestPermissions(): Promise<boolean> {
     try {
@@ -41,10 +42,12 @@ export class LocationService {
       throw new Error('Konum izni verilmedi');
     }
 
-    if (!isResume) {
+    // Only clear route and start time if a brand new workout session is starting!
+    if (!isResume && !this.sessionActive) {
       this.route = [];
       this.startTime = Date.now();
       this.initialAltitude = null;
+      this.sessionActive = true;
     }
 
     // Clear previous subscription if any

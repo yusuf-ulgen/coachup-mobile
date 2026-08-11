@@ -218,12 +218,9 @@ export const ActiveWorkoutScreen = ({ route, navigation }: any) => {
   };
 
   const handleStartOutdoorRun = async () => {
+    LocationService.resetSession();
     const granted = await LocationService.requestPermissions();
     setHasLocationPermission(granted);
-    const hasPerms = await HealthConnectService.checkPermissions();
-    if (!hasPerms) {
-      setShowHealthPermissionModal(true);
-    }
     setHasStarted(true);
     setIsActive(true);
     ActiveWorkoutManager.setHasStarted(true);
@@ -299,7 +296,7 @@ export const ActiveWorkoutScreen = ({ route, navigation }: any) => {
   const handleEffortSelect = (effortObj: typeof EFFORT_OPTIONS[0]) => {
     setShowEffortModal(false);
     ActiveWorkoutManager.finishWorkout();
-    LocationService.stopTracking();
+    LocationService.resetSession();
 
     const finalDistance = locationStats?.distanceKm || 0;
     const finalPace = locationStats?.paceMinPerKm || 0;
