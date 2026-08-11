@@ -158,35 +158,13 @@ export const ActiveWorkoutScreen = ({ route, navigation }: any) => {
 
   useEffect(() => {
     HealthConnectService.getStoredPreference().then((pref) => {
-      if (pref === 'ALWAYS_ALLOW') {
-        setShowHealthPermissionModal(false);
+      if (pref !== 'DENIED') {
         HealthConnectService.startBleSmartWatchConnection();
-      } else if (pref === 'DENIED') {
-        setShowHealthPermissionModal(false);
-        HealthConnectService.selectNoPermission();
       } else {
-        setShowHealthPermissionModal(true);
+        HealthConnectService.selectNoPermission();
       }
     });
   }, []);
-
-  const handleSelectAlwaysAllow = async () => {
-    setShowHealthPermissionModal(false);
-    await HealthConnectService.setStoredPreference('ALWAYS_ALLOW');
-    await HealthConnectService.startBleSmartWatchConnection();
-  };
-
-  const handleSelectAllowOnce = async () => {
-    setShowHealthPermissionModal(false);
-    await HealthConnectService.setStoredPreference('ALLOW_ONCE');
-    await HealthConnectService.startBleSmartWatchConnection();
-  };
-
-  const handleSelectNoPermission = async () => {
-    setShowHealthPermissionModal(false);
-    await HealthConnectService.setStoredPreference('DENIED');
-    HealthConnectService.selectNoPermission();
-  };
 
   useEffect(() => {
     if (isOutdoor) {
@@ -638,14 +616,6 @@ export const ActiveWorkoutScreen = ({ route, navigation }: any) => {
         </View>
       </SmoothModal>
 
-      {/* Health & Wearable Permission Modal */}
-      <HealthPermissionModal
-        visible={showHealthPermissionModal}
-        onDismiss={() => setShowHealthPermissionModal(false)}
-        onSelectAlwaysAllow={handleSelectAlwaysAllow}
-        onSelectAllowOnce={handleSelectAllowOnce}
-        onSelectNoPermission={handleSelectNoPermission}
-      />
     </View>
   );
 };
