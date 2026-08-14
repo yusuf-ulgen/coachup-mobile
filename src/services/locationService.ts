@@ -1,4 +1,12 @@
-import * as Location from 'expo-location';
+import {
+  requestForegroundPermissionsAsync,
+  requestBackgroundPermissionsAsync,
+  getLastKnownPositionAsync,
+  getCurrentPositionAsync,
+  watchPositionAsync,
+  Accuracy,
+  LocationSubscription,
+} from 'expo-location';
 
 export interface RouteCoordinate {
   latitude: number;
@@ -18,15 +26,23 @@ export interface LocationStats {
 
 export class LocationService {
   private static route: any[] = [];
-  private static subscription: Location.LocationSubscription | null = null;
+  private static subscription: LocationSubscription | null = null;
   private static startTime: number = 0;
   private static initialAltitude: number | null = null;
   private static sessionActive: boolean = false;
 
   static async requestPermissions(): Promise<boolean> {
     try {
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      return status === 'granted';
+      const { status: fgStatus } = await requestForegroundPermissionsAsync();
+      if (fgStatus !== 'granted') {
+        return false;
+      }
+      try {
+        await requestBackgroundPermissionsAsync();
+      } catch (bgErr) {
+        console.warn('Background location permission warning:', bgErr);
+      }
+      return true;
     } catch (e) {
       console.warn('Location permission error:', e);
       return false;
@@ -53,11 +69,14 @@ export class LocationService {
     // Clear previous subscription if any
     this.stopTracking();
 
-    // Fetch initial location immediately
+    // Fetch initial location immediately (try last known position first, then current position)
     try {
-      const initialLoc = await Location.getCurrentPositionAsync({
-        accuracy: Location.Accuracy.Balanced,
-      });
+      let initialLoc = await getLastKnownPositionAsync();
+      if (!initialLoc) {
+        initialLoc = await getCurrentPositionAsync({
+          accuracy: Accuracy.Balanced,
+        });
+      }
       if (initialLoc && initialLoc.coords) {
         const stats = this.addRealCoordinate(
           initialLoc.coords.latitude,
@@ -71,11 +90,11 @@ export class LocationService {
       console.warn('Initial location error:', e);
     }
 
-    this.subscription = await Location.watchPositionAsync(
+    this.subscription = await watchPositionAsync(
       {
-        accuracy: Location.Accuracy.High,
-        timeInterval: 2000,
-        distanceInterval: 3,
+        accuracy: Accuracy.High,
+        timeInterval: 1000,
+        distanceInterval: 1,
         showsBackgroundLocationIndicator: true,
         foregroundService: {
           notificationTitle: 'CoachUP Antrenman Takibi',
@@ -131,6 +150,14 @@ export class LocationService {
       this.subscription.remove();
       this.subscription = null;
     }
+  }
+
+  static resetSession(): void {
+    this.stopTracking();
+    this.route = [];
+    this.startTime = 0;
+    this.initialAltitude = null;
+    this.sessionActive = false;
   }
 
   private static calculateStats(): LocationStats {

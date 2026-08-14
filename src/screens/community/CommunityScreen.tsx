@@ -150,6 +150,7 @@ const PostCard: React.FC<PostCardProps> = ({
   const [newCommentText, setNewCommentText] = useState('');
   const [isSendingComment, setIsSendingComment] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [imageError, setImageError] = useState(false);
 
   const loadComments = useCallback(async () => {
     setIsCommentsLoading(true);
@@ -319,8 +320,13 @@ const PostCard: React.FC<PostCardProps> = ({
       )}
 
       {/* Image */}
-      {item.image_url ? (
-        <Image source={{ uri: item.image_url }} style={styles.postImage} resizeMode="cover" />
+      {item.image_url && !imageError ? (
+        <Image
+          source={{ uri: item.image_url }}
+          style={styles.postImage}
+          resizeMode="cover"
+          onError={() => setImageError(true)}
+        />
       ) : null}
 
       {/* Footer actions */}

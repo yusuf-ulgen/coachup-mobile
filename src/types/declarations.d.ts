@@ -31,6 +31,8 @@ declare module 'expo-location' {
   }
 
   export function requestForegroundPermissionsAsync(): Promise<{ status: string }>;
+  export function requestBackgroundPermissionsAsync(): Promise<{ status: string }>;
+  export function getLastKnownPositionAsync(options?: any): Promise<LocationObject | null>;
   export function watchPositionAsync(
     options: any,
     callback: (location: LocationObject) => void

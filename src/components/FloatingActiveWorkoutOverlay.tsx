@@ -130,6 +130,7 @@ export const FloatingActiveWorkoutOverlay: React.FC = () => {
     navigation.navigate('ActiveWorkout', {
       sessionId: workoutState.sessionId,
       programId: workoutState.programId,
+      selectedDay: workoutState.selectedDay,
       title: workoutState.title,
       workoutTitle: workoutState.workoutTitle || workoutState.title,
       category: workoutState.category || '',
@@ -152,6 +153,7 @@ export const FloatingActiveWorkoutOverlay: React.FC = () => {
             navigation.navigate('ActiveWorkout', {
               sessionId: workoutState.sessionId,
               programId: workoutState.programId,
+              selectedDay: workoutState.selectedDay,
               title: workoutState.title,
               workoutTitle: workoutState.workoutTitle || workoutState.title,
               category: workoutState.category || '',

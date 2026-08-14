@@ -14,8 +14,8 @@ android {
         applicationId = "com.app.coachup.app"
         minSdk = 26
         targetSdk = 36
-        versionCode = 32
-        versionName = "1.4.8"
+        versionCode = 33
+        versionName = "1.4.9"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }

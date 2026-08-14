@@ -154,7 +154,10 @@ export const TrainingScreen: React.FC<TrainingScreenProps> = ({ navigation }) =>
       // Create new session via TrainingService
       const session = await TrainingService.startSession(uid, prog.id, prog.gym_id);
       setShowPreviewModal(false);
-      ActiveWorkoutManager.startWorkout(session.id, prog.name, prog.id);
+      ActiveWorkoutManager.startWorkout(session.id, prog.name, prog.id, 0, {
+        category: prog.category || 'Salon',
+        selectedDay: selectedDay,
+      });
       navigation?.navigate('ActiveWorkout', {
         sessionId: session.id,
         programId: prog.id,

@@ -5,6 +5,7 @@ import {
   TouchableOpacity,
   StyleSheet,
   ScrollView,
+  ActivityIndicator,
 } from 'react-native';
 import { SmoothModal } from '../../components/motion/SmoothModal';
 import MapView, { Marker, Polyline, UrlTile, PROVIDER_GOOGLE } from 'react-native-maps';
@@ -13,6 +14,7 @@ import { Colors } from '../../theme/colors';
 import { useTheme } from '../../theme/ThemeContext';
 import {
   ChevronDown,
+  ChevronUp,
   Pause,
   Play,
   Flame,
@@ -21,10 +23,13 @@ import {
   Sun,
   Moon,
   Crosshair,
+  Dumbbell,
+  Check,
 } from 'lucide-react-native';
 import { HealthConnectService } from '../../services/healthConnectService';
 import { LocationService, LocationStats } from '../../services/locationService';
 import { ActiveWorkoutManager } from '../../services/activeWorkoutManager';
+import { TrainingService } from '../../services/trainingService';
 import { feedback } from '../../services/feedbackService';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { HealthPermissionModal } from '../../components/HealthPermissionModal';
@@ -120,6 +125,8 @@ export const ActiveWorkoutScreen = ({ route, navigation }: any) => {
 
   // Retrieve route params or fallback to ongoing ActiveWorkoutManager session metadata
   const sessionId = route.params?.sessionId || existingManager.sessionId;
+  const programId = route.params?.programId || existingManager.programId;
+  const selectedDay = route.params?.selectedDay || existingManager.selectedDay || 1;
   const title = route.params?.title || existingManager.title;
   const workoutTitle = route.params?.workoutTitle || existingManager.workoutTitle || title;
   const category = route.params?.category || existingManager.category || '';
@@ -149,6 +156,36 @@ export const ActiveWorkoutScreen = ({ route, navigation }: any) => {
   const [activeCalories, setActiveCalories] = useState(0);
   const [locationStats, setLocationStats] = useState<LocationStats | null>(null);
   const [hasLocationPermission, setHasLocationPermission] = useState(false);
+
+  // Program Exercises State
+  const [programExercises, setProgramExercises] = useState<any[]>([]);
+  const [loadingExercises, setLoadingExercises] = useState(false);
+  const [isExercisesExpanded, setIsExercisesExpanded] = useState(true);
+  const [completedExercises, setCompletedExercises] = useState<Record<string, boolean>>({});
+
+  useEffect(() => {
+    if (programId) {
+      setLoadingExercises(true);
+      TrainingService.fetchProgramExercises(programId)
+        .then((data) => {
+          if (data && data.length > 0) {
+            const filtered = data.filter(
+              (ex: any) => Math.floor((ex.order_index || 0) / 100) === selectedDay
+            );
+            setProgramExercises(filtered.length > 0 ? filtered : data);
+          }
+        })
+        .catch((e) => console.error('Error fetching workout exercises:', e))
+        .finally(() => setLoadingExercises(false));
+    }
+  }, [programId, selectedDay]);
+
+  const toggleExerciseCompleted = (exId: string) => {
+    setCompletedExercises((prev) => ({
+      ...prev,
+      [exId]: !prev[exId],
+    }));
+  };
 
   // Modals & Map diagnostics
   const [showConfirmFinishModal, setShowConfirmFinishModal] = useState(false);
@@ -319,6 +356,108 @@ export const ActiveWorkoutScreen = ({ route, navigation }: any) => {
   const currentLat = locationStats?.lastLatitude || 41.0082;
   const currentLon = locationStats?.lastLongitude || 28.9784;
 
+  const renderProgramCard = () => {
+    if (!programId) return null;
+
+    return (
+      <View style={[styles.programCardBox, { backgroundColor: colors.cardBg, borderColor: colors.border }]}>
+        <TouchableOpacity
+          style={styles.programCardHeader}
+          onPress={() => setIsExercisesExpanded(!isExercisesExpanded)}
+          activeOpacity={0.8}
+        >
+          <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, gap: 10 }}>
+            <View style={styles.programIconBadge}>
+              <Dumbbell size={18} color={Colors.primary} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.programCardTitle, { color: colors.textPrimary }]}>
+                {activityName}
+              </Text>
+              <Text style={[styles.programCardSub, { color: colors.textSecondary }]}>
+                {selectedDay}. Gün · {programExercises.length} Hareket
+              </Text>
+            </View>
+          </View>
+          <View style={styles.expandChevronCircle}>
+            {isExercisesExpanded ? (
+              <ChevronUp size={20} color={colors.textPrimary} />
+            ) : (
+              <ChevronDown size={20} color={colors.textPrimary} />
+            )}
+          </View>
+        </TouchableOpacity>
+
+        {isExercisesExpanded && (
+          <View style={styles.programCardContent}>
+            {loadingExercises ? (
+              <ActivityIndicator size="small" color={Colors.primary} style={{ marginVertical: 12 }} />
+            ) : programExercises.length > 0 ? (
+              <View style={{ gap: 10, marginTop: 10 }}>
+                {programExercises.map((ex: any, index: number) => {
+                  const exId = ex.id || `ex_${index}`;
+                  const isDone = Boolean(completedExercises[exId]);
+                  const exName =
+                    ex.exercises?.name ||
+                    ex.exercise?.name ||
+                    ex.name ||
+                    `Egzersiz ${index + 1}`;
+                  const setRepDetail = `${ex.sets || 3} set × ${ex.reps || 10} tekrar${
+                    ex.weight_suggestion ? ` · ${ex.weight_suggestion} kg` : ''
+                  }`;
+
+                  return (
+                    <TouchableOpacity
+                      key={exId}
+                      style={[
+                        styles.exerciseItemRow,
+                        { backgroundColor: isDone ? 'rgba(76,175,80,0.12)' : colors.iconBg },
+                      ]}
+                      onPress={() => toggleExerciseCompleted(exId)}
+                      activeOpacity={0.8}
+                    >
+                      <Text style={[styles.exerciseNumberText, isDone && { color: '#4CAF50' }]}>
+                        {index + 1}.
+                      </Text>
+                      <View style={{ flex: 1 }}>
+                        <Text
+                          style={[
+                            styles.exerciseItemName,
+                            { color: colors.textPrimary },
+                            isDone && { textDecorationLine: 'line-through', opacity: 0.7 },
+                          ]}
+                        >
+                          {exName}
+                        </Text>
+                        <Text style={[styles.exerciseItemDetail, { color: colors.textSecondary }]}>
+                          {setRepDetail}
+                        </Text>
+                      </View>
+                      <View
+                        style={[
+                          styles.checkCircle,
+                          isDone
+                            ? { backgroundColor: '#4CAF50', borderColor: '#4CAF50' }
+                            : { borderColor: colors.border },
+                        ]}
+                      >
+                        {isDone && <Check size={14} color={Colors.allWhite} />}
+                      </View>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            ) : (
+              <Text style={[styles.emptyExercisesText, { color: colors.textSecondary }]}>
+                Bu gün için kaydedilmiş detaylı egzersiz bulunmuyor.
+              </Text>
+            )}
+          </View>
+        )}
+      </View>
+    );
+  };
+
   return (
     <View style={[styles.container, { backgroundColor: colors.bg }]}>
       {/* ── OUTDOOR WORKOUT FLOW (Koşu, Yürüyüş, Bisiklet) ── */}
@@ -415,6 +554,8 @@ export const ActiveWorkoutScreen = ({ route, navigation }: any) => {
                 <Text style={[styles.metricLblText, { color: colors.textSecondary }]}>KCAL</Text>
               </View>
             </View>
+
+            {renderProgramCard()}
 
             {/* Live Map Display Container with OpenStreetMap UrlTile fallback */}
             {!hasStarted ? (
@@ -523,24 +664,51 @@ export const ActiveWorkoutScreen = ({ route, navigation }: any) => {
           <View style={[styles.indoorHeader, { paddingTop: Math.max(16, insets.top + 8) }]}>
             <TouchableOpacity
               onPress={handleBackPress}
-              style={[styles.iconCircleBtn, { backgroundColor: colors.iconBg }]}
+              style={[styles.iconCircleBtn, { backgroundColor: colors.iconBg, borderColor: colors.iconBorder }]}
             >
               <ChevronDown size={24} color={colors.textPrimary} />
             </TouchableOpacity>
+
+            <View style={{ alignItems: 'center' }}>
+              <Text style={[styles.indoorHeaderTitle, { color: colors.textPrimary }]}>
+                {activityName}
+              </Text>
+              {programId && (
+                <Text style={[styles.indoorHeaderSub, { color: colors.textSecondary }]}>
+                  {selectedDay}. Gün Programı
+                </Text>
+              )}
+            </View>
+
+            <TouchableOpacity
+              onPress={toggleTheme}
+              style={[styles.iconCircleBtn, { backgroundColor: colors.iconBg, borderColor: colors.iconBorder }]}
+              activeOpacity={0.7}
+            >
+              {isDark ? (
+                <Sun size={20} color={colors.textPrimary} />
+              ) : (
+                <Moon size={20} color={colors.textPrimary} />
+              )}
+            </TouchableOpacity>
           </View>
 
-          <View style={styles.centerTimerArea}>
-            <Text style={[styles.hugeTimerHHMMSS, { color: colors.textPrimary }]}>
-              {formatTimeStr(seconds, true)}
-            </Text>
-          </View>
+          <ScrollView contentContainerStyle={styles.indoorScrollContent} showsVerticalScrollIndicator={false}>
+            <View style={styles.centerTimerArea}>
+              <Text style={[styles.hugeTimerHHMMSS, { color: colors.textPrimary }]}>
+                {formatTimeStr(seconds, true)}
+              </Text>
+            </View>
 
-          <View style={styles.centerHeartArea}>
-            <Text style={[styles.heartRateText, { color: colors.textPrimary }]}>
-              {heartRate > 0 ? `${heartRate} bpm` : '-'}
-            </Text>
-            <Heart size={28} color="#FF3B30" fill="#FF3B30" style={{ marginTop: 12 }} />
-          </View>
+            <View style={styles.centerHeartArea}>
+              <Text style={[styles.heartRateText, { color: colors.textPrimary }]}>
+                {heartRate > 0 ? `${heartRate} bpm` : '-'}
+              </Text>
+              <Heart size={28} color="#FF3B30" fill="#FF3B30" style={{ marginTop: 12 }} />
+            </View>
+
+            {renderProgramCard()}
+          </ScrollView>
 
           <View style={[styles.bottomDrawerSheet, { backgroundColor: colors.cardBg, paddingBottom: Math.max(24, insets.bottom + 12) }]}>
             <View style={styles.drawerHandleBar} />
@@ -956,5 +1124,90 @@ const styles = StyleSheet.create({
   effortCancelBtnText: {
     fontSize: 15,
     fontWeight: '600',
+  },
+  indoorHeaderTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  indoorHeaderSub: {
+    fontSize: 12,
+    marginTop: 2,
+  },
+  indoorScrollContent: {
+    paddingHorizontal: 20,
+    paddingBottom: 24,
+    gap: 16,
+  },
+  programCardBox: {
+    borderRadius: 20,
+    padding: 16,
+    borderWidth: 1,
+    marginTop: 8,
+  },
+  programCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  programIconBadge: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(255, 96, 71, 0.15)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  programCardTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  programCardSub: {
+    fontSize: 12,
+    marginTop: 2,
+  },
+  expandChevronCircle: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  programCardContent: {
+    marginTop: 4,
+  },
+  exerciseItemRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    gap: 12,
+  },
+  exerciseNumberText: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: Colors.primary,
+    width: 22,
+  },
+  exerciseItemName: {
+    fontSize: 15,
+    fontWeight: '600',
+  },
+  exerciseItemDetail: {
+    fontSize: 12,
+    marginTop: 2,
+  },
+  checkCircle: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    borderWidth: 2,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  emptyExercisesText: {
+    fontSize: 13,
+    textAlign: 'center',
+    marginVertical: 12,
   },
 });

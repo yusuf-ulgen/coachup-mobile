@@ -3,6 +3,7 @@ type Listener = () => void;
 export interface ActiveWorkoutData {
   sessionId: string | null;
   programId?: string;
+  selectedDay?: number;
   title: string;
   workoutTitle?: string;
   category?: string;
@@ -61,6 +62,7 @@ export const ActiveWorkoutManager = {
       emoji?: string;
       isOutdoor?: boolean;
       hasStarted?: boolean;
+      selectedDay?: number;
     }
   ) {
     // If this session is already active, preserve its start time and metadata!
@@ -71,6 +73,9 @@ export const ActiveWorkoutManager = {
         if (!state.startTimeTimestamp) {
           state.startTimeTimestamp = Date.now() - state.seconds * 1000;
         }
+      }
+      if (options?.selectedDay !== undefined) {
+        state.selectedDay = options.selectedDay;
       }
       this.notify();
       return;
@@ -87,6 +92,7 @@ export const ActiveWorkoutManager = {
       isOutdoor: options?.isOutdoor ?? false,
       hasStarted,
       programId,
+      selectedDay: options?.selectedDay || 1,
       seconds: initialSeconds,
       startTimeTimestamp: hasStarted ? now - initialSeconds * 1000 : null,
       isActive: true,
