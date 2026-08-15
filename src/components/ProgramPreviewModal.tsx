@@ -9,6 +9,7 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { LinearGradient } from 'expo-linear-gradient';
 import { Colors } from '../theme/colors';
 import { TrainingService, TrainingProgram } from '../services/trainingService';
 
@@ -83,10 +84,12 @@ export const ProgramPreviewModal: React.FC<ProgramPreviewModalProps> = ({
           <TouchableOpacity onPress={onClose} style={styles.cancelButton} activeOpacity={0.7}>
             <Text style={styles.cancelText}>İptal</Text>
           </TouchableOpacity>
-          <Text style={styles.headerTitle} numberOfLines={1}>
-            {program.name}
-          </Text>
-          <View style={{ width: 60 }} />
+          <View style={styles.headerTitleContainer}>
+            <Text style={styles.headerTitle} numberOfLines={2}>
+              {program.name}
+            </Text>
+          </View>
+          <View style={styles.headerRightSpacer} />
         </View>
 
         {/* Section Header */}
@@ -158,16 +161,23 @@ export const ProgramPreviewModal: React.FC<ProgramPreviewModalProps> = ({
         {/* Bottom Action Button */}
         <View style={styles.footer}>
           <TouchableOpacity
-            style={styles.startButton}
+            style={styles.startButtonTouch}
             onPress={() => onStartWorkout(selectedDay)}
             disabled={isStarting}
             activeOpacity={0.85}
           >
-            {isStarting ? (
-              <ActivityIndicator color={Colors.allWhite} />
-            ) : (
-              <Text style={styles.startButtonText}>Antrenmana Başla</Text>
-            )}
+            <LinearGradient
+              colors={['#FF6B4A', '#FF3D00']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.startButtonGradient}
+            >
+              {isStarting ? (
+                <ActivityIndicator color={Colors.allWhite} />
+              ) : (
+                <Text style={styles.startButtonText}>Antrenmana Başla</Text>
+              )}
+            </LinearGradient>
           </TouchableOpacity>
         </View>
       </SafeAreaView>
@@ -184,25 +194,37 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingVertical: 14,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255,255,255,0.05)',
+    borderBottomColor: 'rgba(255,255,255,0.06)',
+    minHeight: 52,
   },
   cancelButton: {
-    paddingVertical: 4,
-    paddingRight: 16,
+    paddingVertical: 6,
+    paddingHorizontal: 6,
+    minWidth: 54,
   },
   cancelText: {
-    fontSize: 16,
+    fontSize: 15,
     color: Colors.textSecondaryDark,
+    fontWeight: '500',
+  },
+  headerTitleContainer: {
+    flex: 1,
+    paddingHorizontal: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   headerTitle: {
-    flex: 1,
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '600',
     color: Colors.textDark,
     textAlign: 'center',
+    lineHeight: 20,
+  },
+  headerRightSpacer: {
+    minWidth: 54,
   },
   titleSection: {
     paddingHorizontal: 20,
@@ -213,6 +235,7 @@ const styles = StyleSheet.create({
     fontSize: 24,
     fontWeight: '700',
     color: Colors.textDark,
+    letterSpacing: -0.3,
   },
   subtitle: {
     fontSize: 14,
@@ -232,9 +255,12 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.cardDark,
     justifyContent: 'center',
     alignItems: 'center',
+    borderWidth: 1,
+    borderColor: Colors.borderDark,
   },
   dayTabSelected: {
     backgroundColor: Colors.primary,
+    borderColor: Colors.primary,
   },
   dayTabText: {
     fontSize: 14,
@@ -253,10 +279,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: Colors.cardDark,
-    borderRadius: 14,
+    borderRadius: 16,
     paddingHorizontal: 16,
     paddingVertical: 14,
     gap: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.05)',
   },
   exerciseNumber: {
     fontSize: 16,
@@ -284,18 +312,27 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingVertical: 16,
     borderTopWidth: 1,
-    borderTopColor: 'rgba(255,255,255,0.05)',
+    borderTopColor: 'rgba(255,255,255,0.06)',
+    backgroundColor: Colors.backgroundDark,
   },
-  startButton: {
+  startButtonTouch: {
+    borderRadius: 14,
+    overflow: 'hidden',
+    elevation: 8,
+    shadowColor: Colors.primary,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.45,
+    shadowRadius: 10,
+  },
+  startButtonGradient: {
     height: 52,
-    borderRadius: 16,
-    backgroundColor: Colors.primary,
     justifyContent: 'center',
     alignItems: 'center',
   },
   startButtonText: {
-    fontSize: 17,
+    fontSize: 16,
     fontWeight: '700',
     color: Colors.allWhite,
+    letterSpacing: 0.2,
   },
 });

@@ -682,11 +682,11 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({ navigation }) =>
 
       {/* Floating Action Button */}
       <TouchableOpacity
-        style={[styles.fab, { bottom: 90 + insets.bottom }]}
+        style={styles.fab}
         activeOpacity={0.85}
         onPress={() => setShowAddEventModal(true)}
       >
-        <Plus size={24} color={Colors.allWhite} />
+        <Plus size={26} color={Colors.allWhite} />
       </TouchableOpacity>
 
       {/* Add / Edit User Event Modal */}
@@ -1044,8 +1044,8 @@ const styles = StyleSheet.create({
   },
   fab: {
     position: 'absolute',
-    right: 20,
-    bottom: 20,
+    right: 18,
+    bottom: 18,
     width: 56,
     height: 56,
     borderRadius: 28,
@@ -1053,10 +1053,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     elevation: 8,
-    shadowColor: '#000',
+    shadowColor: Colors.primary,
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 5,
+    shadowOpacity: 0.45,
+    shadowRadius: 8,
     zIndex: 99,
   },
   modalOverlay: {

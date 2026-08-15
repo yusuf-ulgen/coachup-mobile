@@ -824,16 +824,16 @@ export const CommunityScreen = ({ navigation }: any) => {
       {/* FAB */}
       {canAccess && !loading && (
         <TouchableOpacity
-          style={[styles.fab, { bottom: 90 + insets.bottom }]}
+          style={styles.fab}
           onPress={handleOpenComposer}
           activeOpacity={0.85}
         >
-          <Plus size={24} color={Colors.allWhite} />
+          <Plus size={26} color={Colors.allWhite} />
         </TouchableOpacity>
       )}
 
       {/* Snackbar */}
-      <Snackbar message={snackbar} onHide={() => setSnackbar(null)} style={{ bottom: 140 + insets.bottom }} />
+      <Snackbar message={snackbar} onHide={() => setSnackbar(null)} style={{ bottom: 84 }} />
 
       {/* Composer Overlay */}
       {showComposer && (
@@ -1208,19 +1208,19 @@ const styles = StyleSheet.create({
   // FAB
   fab: {
     position: 'absolute',
-    right: 20,
-    bottom: 20,
+    right: 18,
+    bottom: 18,
     width: 56,
     height: 56,
     borderRadius: 28,
     backgroundColor: Colors.primary,
     justifyContent: 'center',
     alignItems: 'center',
-    elevation: 6,
-    shadowColor: '#000',
+    elevation: 8,
+    shadowColor: Colors.primary,
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 5,
+    shadowOpacity: 0.45,
+    shadowRadius: 8,
     zIndex: 99,
   },
   // Snackbar

@@ -2976,11 +2976,11 @@ private fun ProgramPreviewOverlay(
                     text = training.title,
                     modifier = Modifier.weight(1f),
                     textAlign = TextAlign.Center,
-                    fontSize = 17.sp,
+                    fontSize = 15.sp,
                     fontWeight = FontWeight.SemiBold,
                     color = MaterialTheme.colorScheme.onSurface,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
+                    maxLines = 2,
+                    lineHeight = 20.sp
                 )
                 Spacer(Modifier.width(56.dp))
             }
