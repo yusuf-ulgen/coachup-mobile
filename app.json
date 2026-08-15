@@ -2,13 +2,8 @@
   "expo": {
     "name": "CoachUP",
     "slug": "coachup",
-    "version": "1.5.0",
+    "version": "1.5.1",
     "orientation": "portrait",
-    "splash": {
-      "image": "./assets/icon.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#000000"
-    },
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "ios": {
@@ -17,7 +12,7 @@
     },
     "android": {
       "package": "com.app.coachup.app",
-      "versionCode": 34,
+      "versionCode": 35,
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/android-icon-foreground.png",
@@ -34,9 +29,12 @@
         "ACCESS_COARSE_LOCATION",
         "ACCESS_FINE_LOCATION",
         "ACCESS_BACKGROUND_LOCATION",
+        "FOREGROUND_SERVICE",
+        "FOREGROUND_SERVICE_LOCATION",
         "CAMERA",
         "RECORD_AUDIO",
-        "POST_NOTIFICATIONS"
+        "POST_NOTIFICATIONS",
+        "WAKE_LOCK"
       ]
     },
     "web": {
@@ -56,7 +54,11 @@
       [
         "expo-location",
         {
-          "locationAlwaysAndWhenInUsePermission": "CoachUP antrenman rotanızı ve mesafenizi takip etmek için konum izni gerektirir."
+          "locationAlwaysAndWhenInUsePermission": "CoachUP antrenman rotanızı ve mesafenizi takip etmek için konum izni gerektirir.",
+          "locationAlwaysPermission": "CoachUP ekran kilitliyken veya arka plandayken antrenman rotanızı takip etmek için arka plan konum izni gerektirir.",
+          "locationWhenInUsePermission": "CoachUP antrenman rotanızı ve mesafenizi takip etmek için konum izni gerektirir.",
+          "isAndroidBackgroundLocationEnabled": true,
+          "isAndroidForegroundServiceEnabled": true
         }
       ],
       [
@@ -64,7 +66,8 @@
         {
           "cameraPermission": "CoachUP QR kod tarama ve profil fotoğrafı için kamera izni gerektirir."
         }
-      ]
+      ],
+      "expo-sharing"
     ]
   }
 }

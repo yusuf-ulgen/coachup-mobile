@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -27,7 +27,7 @@ import {
   Check,
 } from 'lucide-react-native';
 import { HealthConnectService } from '../../services/healthConnectService';
-import { LocationService, LocationStats } from '../../services/locationService';
+import { LocationService, LocationStats, isOutdoorWorkout } from '../../services/locationService';
 import { ActiveWorkoutManager } from '../../services/activeWorkoutManager';
 import { TrainingService } from '../../services/trainingService';
 import { feedback } from '../../services/feedbackService';
@@ -134,27 +134,31 @@ export const ActiveWorkoutScreen = ({ route, navigation }: any) => {
 
   const activityName = workoutTitle || title || 'Koşu';
   const activityEmoji = emoji || '🏃';
-  const lowerCat = (category || '').toLowerCase();
-  const lowerTitle = activityName.toLowerCase();
+  const isOutdoor = isOutdoorWorkout(category, activityName);
 
-  const isOutdoor =
-    ['running', 'walking', 'cycling', 'hyrox', 'swimming', 'koşu', 'yürüyüş', 'bisiklet', 'hyrox', 'yüzme'].includes(lowerCat) ||
-    ['koşu', 'yürüyüş', 'bisiklet', 'hyrox', 'yüzme'].some((kw) => lowerTitle.includes(kw));
+  const mapRef = useRef<MapView>(null);
+  const hasInitialCameraCentered = useRef<boolean>(false);
 
   // Check ongoing session state from ActiveWorkoutManager
   const isAlreadyRunning = Boolean(
     existingManager.sessionId &&
-    existingManager.isActive &&
+    (existingManager.isActive || existingManager.hasStarted) &&
     (existingManager.sessionId === sessionId || !sessionId)
   );
 
   // Outdoor flow state
-  const [hasStarted, setHasStarted] = useState(() => (isAlreadyRunning ? existingManager.hasStarted ?? true : !isOutdoor));
+  const [hasStarted, setHasStarted] = useState(() =>
+    isAlreadyRunning ? existingManager.hasStarted ?? true : !isOutdoor
+  );
   const [seconds, setSeconds] = useState(() => ActiveWorkoutManager.getState().seconds);
-  const [isActive, setIsActive] = useState(() => (isAlreadyRunning ? true : !isOutdoor));
+  const [isActive, setIsActive] = useState(() =>
+    isAlreadyRunning ? existingManager.isActive : !isOutdoor
+  );
   const [heartRate, setHeartRate] = useState(0);
   const [activeCalories, setActiveCalories] = useState(0);
-  const [locationStats, setLocationStats] = useState<LocationStats | null>(null);
+  const [locationStats, setLocationStats] = useState<LocationStats | null>(() =>
+    isOutdoor ? LocationService.getStats() : null
+  );
   const [hasLocationPermission, setHasLocationPermission] = useState(false);
 
   // Program Exercises State
@@ -203,11 +207,25 @@ export const ActiveWorkoutScreen = ({ route, navigation }: any) => {
     });
   }, []);
 
+  // Check and subscribe to LocationService (Decoupled from component lifecycle)
   useEffect(() => {
     if (isOutdoor) {
       LocationService.requestPermissions().then((granted) => {
         setHasLocationPermission(granted);
       });
+
+      // Initial stats snapshot
+      const currentStats = LocationService.getStats();
+      setLocationStats(currentStats);
+
+      // Subscribe to live updates
+      const unsubscribe = LocationService.subscribe((stats) => {
+        setLocationStats(stats);
+      });
+
+      return () => {
+        unsubscribe(); // Unsubscribe only; DO NOT stop background tracking!
+      };
     }
   }, [isOutdoor]);
 
@@ -255,50 +273,77 @@ export const ActiveWorkoutScreen = ({ route, navigation }: any) => {
   };
 
   const handleStartOutdoorRun = async () => {
-    LocationService.resetSession();
     const granted = await LocationService.requestPermissions();
     setHasLocationPermission(granted);
+    if (!granted) {
+      feedback.error({
+        title: 'Konum İzni Gerekli',
+        message: 'GPS takibi başlatmak için lütfen konum iznini verin ve cihazınızın GPS servisini açın.',
+      });
+      return;
+    }
+
     setHasStarted(true);
     setIsActive(true);
     ActiveWorkoutManager.setHasStarted(true);
+
+    try {
+      await LocationService.startTracking({
+        enableAutoPause: false,
+      });
+    } catch (e: any) {
+      console.error('[ActiveWorkoutScreen] Location tracking start error:', e);
+      feedback.error({
+        title: 'GPS Hatası',
+        message: e.message || 'GPS konum takibi başlatılamadı.',
+      });
+    }
   };
 
-  // Main Timer & GPS & Heart Rate Interval (Synchronized with Manager)
+  const handlePause = () => {
+    setIsActive(false);
+    ActiveWorkoutManager.pauseWorkout();
+    if (isOutdoor) {
+      LocationService.pauseTracking(true);
+    }
+  };
+
+  const handleResume = () => {
+    setIsActive(true);
+    ActiveWorkoutManager.resumeWorkout();
+    if (isOutdoor) {
+      LocationService.resumeTracking();
+    }
+  };
+
+  // Main Timer Interval (Synchronized with Manager)
   useEffect(() => {
-    let timerInterval: any = null;
+    const updateTimer = () => {
+      const mgrState = ActiveWorkoutManager.getState();
+      setSeconds(mgrState.seconds);
+      setIsActive(mgrState.isActive);
+    };
+
+    updateTimer();
+    const timerInterval = setInterval(updateTimer, 1000);
+    return () => {
+      clearInterval(timerInterval);
+    };
+  }, []);
+
+  // Heart Rate Interval
+  useEffect(() => {
     let hrInterval: any = null;
-
     if (isActive && hasStarted) {
-      timerInterval = setInterval(() => {
-        const mgrSeconds = ActiveWorkoutManager.getState().seconds;
-        setSeconds(mgrSeconds);
-      }, 1000);
-
-      if (isOutdoor) {
-        const isResume = seconds > 0 || locationStats !== null;
-        LocationService.startTracking((stats) => {
-          setLocationStats(stats);
-        }, isResume).catch((e) => console.error('Location tracking error:', e));
-      }
-
       hrInterval = setInterval(async () => {
         const hr = await HealthConnectService.getLiveHeartRate();
         setHeartRate(hr);
       }, 2000);
-    } else {
-      clearInterval(timerInterval);
-      clearInterval(hrInterval);
-      if (isOutdoor) {
-        LocationService.stopTracking();
-      }
     }
-
     return () => {
-      clearInterval(timerInterval);
-      clearInterval(hrInterval);
-      LocationService.stopTracking();
+      if (hrInterval) clearInterval(hrInterval);
     };
-  }, [isActive, hasStarted, isOutdoor]);
+  }, [isActive, hasStarted]);
 
   useEffect(() => {
     if (seconds > 0) {
@@ -330,14 +375,19 @@ export const ActiveWorkoutScreen = ({ route, navigation }: any) => {
     }
   };
 
-  const handleEffortSelect = (effortObj: typeof EFFORT_OPTIONS[0]) => {
+  const handleEffortSelect = async (effortObj: typeof EFFORT_OPTIONS[0]) => {
     setShowEffortModal(false);
-    ActiveWorkoutManager.finishWorkout();
-    LocationService.resetSession();
 
-    const finalDistance = locationStats?.distanceKm || 0;
-    const finalPace = locationStats?.paceMinPerKm || 0;
-    const finalSpeed = locationStats?.currentSpeed || (finalPace > 0 ? 60 / finalPace : 0);
+    const finalStats = LocationService.getStats();
+    const finalDistance = isOutdoor ? (finalStats.distanceKm || locationStats?.distanceKm || 0) : 0;
+    const finalPace = isOutdoor ? (finalStats.paceMinPerKm || locationStats?.paceMinPerKm || 0) : 0;
+    const finalSpeed = isOutdoor ? (finalStats.avgSpeed || locationStats?.avgSpeed || (finalPace > 0 ? 60 / finalPace : 0)) : 0;
+    const finalRoute = isOutdoor ? (finalStats.route.length > 0 ? finalStats.route : (locationStats?.route || [])) : [];
+
+    ActiveWorkoutManager.finishWorkout();
+    if (isOutdoor) {
+      await LocationService.resetSession();
+    }
 
     navigation.navigate('WorkoutSummary', {
       training: { title: activityName, category: { emoji: activityEmoji } },
@@ -348,13 +398,30 @@ export const ActiveWorkoutScreen = ({ route, navigation }: any) => {
       distanceKm: finalDistance,
       avgPaceMinPerKm: finalPace,
       avgSpeedKmh: finalSpeed,
+      routePoints: finalRoute,
       perceivedEffort: effortObj.label,
       perceivedEmoji: effortObj.emoji,
     });
   };
 
-  const currentLat = locationStats?.lastLatitude || 41.0082;
-  const currentLon = locationStats?.lastLongitude || 28.9784;
+  const currentLat = locationStats?.lastLatitude;
+  const currentLon = locationStats?.lastLongitude;
+
+  // Auto-center map on first valid GPS fix
+  useEffect(() => {
+    if (currentLat != null && currentLon != null && !hasInitialCameraCentered.current && mapRef.current) {
+      hasInitialCameraCentered.current = true;
+      mapRef.current.animateToRegion(
+        {
+          latitude: currentLat,
+          longitude: currentLon,
+          latitudeDelta: 0.006,
+          longitudeDelta: 0.006,
+        },
+        800
+      );
+    }
+  }, [currentLat, currentLon]);
 
   const renderProgramCard = () => {
     if (!programId) return null;
@@ -557,36 +624,35 @@ export const ActiveWorkoutScreen = ({ route, navigation }: any) => {
 
             {renderProgramCard()}
 
-            {/* Live Map Display Container with OpenStreetMap UrlTile fallback */}
-            {!hasStarted ? (
+            {/* Live Map Display Container */}
+            {!hasStarted || currentLat == null || currentLon == null ? (
               <View style={[styles.gpsWaitingBox, { backgroundColor: colors.cardBg, borderColor: colors.border }]}>
                 <Crosshair size={32} color={Colors.primary} style={{ marginBottom: 12 }} />
-                <Text style={[styles.gpsWaitingTitle, { color: colors.textPrimary }]}>GPS konumu bekleniyor...</Text>
-                <Text style={[styles.gpsWaitingSub, { color: colors.textSecondary }]}>Açık bir alanda durun</Text>
+                <Text style={[styles.gpsWaitingTitle, { color: colors.textPrimary }]}>
+                  {!hasStarted ? 'GPS takibi başlatılmayı bekliyor' : 'GPS konumu alınıyor...'}
+                </Text>
+                <Text style={[styles.gpsWaitingSub, { color: colors.textSecondary }]}>
+                  Açık bir alanda durun
+                </Text>
               </View>
             ) : (
               <View style={[styles.liveMapCardContainer, { borderColor: colors.border }]}>
                 <MapView
+                  ref={mapRef}
                   provider={PROVIDER_GOOGLE}
                   mapType="standard"
                   style={styles.mapViewStyle}
                   showsUserLocation={hasLocationPermission}
-                  followsUserLocation={hasLocationPermission}
-                  showsMyLocationButton={hasLocationPermission}
+                  followsUserLocation={false}
+                  showsMyLocationButton={false}
                   showsCompass={true}
                   customMapStyle={isDark ? DARK_MAP_STYLE : undefined}
                   onMapReady={() => setMapDiagnosticText('Harita Hazır')}
                   initialRegion={{
                     latitude: currentLat,
                     longitude: currentLon,
-                    latitudeDelta: 0.008,
-                    longitudeDelta: 0.008,
-                  }}
-                  region={{
-                    latitude: currentLat,
-                    longitude: currentLon,
-                    latitudeDelta: 0.008,
-                    longitudeDelta: 0.008,
+                    latitudeDelta: 0.006,
+                    longitudeDelta: 0.006,
                   }}
                 >
                   <Marker
@@ -604,6 +670,27 @@ export const ActiveWorkoutScreen = ({ route, navigation }: any) => {
                     />
                   )}
                 </MapView>
+
+                {/* Recenter Camera Button */}
+                <TouchableOpacity
+                  style={[styles.mapRecenterBtn, { backgroundColor: colors.cardBg, borderColor: colors.border }]}
+                  onPress={() => {
+                    if (currentLat != null && currentLon != null && mapRef.current) {
+                      mapRef.current.animateToRegion(
+                        {
+                          latitude: currentLat,
+                          longitude: currentLon,
+                          latitudeDelta: 0.006,
+                          longitudeDelta: 0.006,
+                        },
+                        400
+                      );
+                    }
+                  }}
+                  activeOpacity={0.8}
+                >
+                  <Crosshair size={18} color={Colors.primary} />
+                </TouchableOpacity>
               </View>
             )}
           </ScrollView>
@@ -629,7 +716,7 @@ export const ActiveWorkoutScreen = ({ route, navigation }: any) => {
               <View style={{ gap: 12 }}>
                 <TouchableOpacity
                   style={styles.drawerPillBtn}
-                  onPress={() => setIsActive(true)}
+                  onPress={handleResume}
                   activeOpacity={0.85}
                 >
                   <Play size={20} color={Colors.allWhite} fill={Colors.allWhite} style={{ marginRight: 6 }} />
@@ -650,7 +737,7 @@ export const ActiveWorkoutScreen = ({ route, navigation }: any) => {
             <View style={[styles.outdoorBottomControl, { bottom: Math.max(20, insets.bottom + 12) }]}>
               <TouchableOpacity
                 style={[styles.playPauseLargeBtn, { backgroundColor: colors.pausePlayBg }]}
-                onPress={() => setIsActive(false)}
+                onPress={handlePause}
                 activeOpacity={0.85}
               >
                 <Pause size={28} color={colors.pausePlayIcon} />
@@ -717,7 +804,7 @@ export const ActiveWorkoutScreen = ({ route, navigation }: any) => {
               <View style={{ gap: 12 }}>
                 <TouchableOpacity
                   style={styles.drawerPillBtn}
-                  onPress={() => setIsActive(true)}
+                  onPress={handleResume}
                   activeOpacity={0.85}
                 >
                   <Play size={20} color={Colors.allWhite} fill={Colors.allWhite} style={{ marginRight: 6 }} />
@@ -736,7 +823,7 @@ export const ActiveWorkoutScreen = ({ route, navigation }: any) => {
             ) : (
               <TouchableOpacity
                 style={styles.drawerPillBtn}
-                onPress={() => setIsActive(false)}
+                onPress={handlePause}
                 activeOpacity={0.85}
               >
                 <Pause size={20} color={Colors.allWhite} fill={Colors.allWhite} style={{ marginRight: 6 }} />
@@ -975,6 +1062,22 @@ const styles = StyleSheet.create({
     width: '100%',
     height: '100%',
     borderRadius: 24,
+  },
+  mapRecenterBtn: {
+    position: 'absolute',
+    top: 10,
+    right: 10,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    elevation: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3,
   },
   mapDiagBadge: {
     position: 'absolute',

@@ -12,6 +12,8 @@ export interface ActiveWorkoutData {
   hasStarted?: boolean;
   seconds: number;
   startTimeTimestamp: number | null;
+  totalPausedMs: number;
+  pauseStartMs: number | null;
   isActive: boolean;
   isOnActiveWorkoutScreen: boolean;
 }
@@ -26,6 +28,8 @@ let state: ActiveWorkoutData = {
   hasStarted: false,
   seconds: 0,
   startTimeTimestamp: null,
+  totalPausedMs: 0,
+  pauseStartMs: null,
   isActive: false,
   isOnActiveWorkoutScreen: false,
 };
@@ -34,8 +38,11 @@ const listeners = new Set<Listener>();
 
 export const ActiveWorkoutManager = {
   getState(): ActiveWorkoutData {
-    if (state.startTimeTimestamp && state.isActive && state.hasStarted) {
-      state.seconds = Math.max(0, Math.floor((Date.now() - state.startTimeTimestamp) / 1000));
+    if (state.startTimeTimestamp && state.hasStarted) {
+      if (state.isActive) {
+        const elapsedMs = Date.now() - state.startTimeTimestamp - state.totalPausedMs;
+        state.seconds = Math.max(0, Math.floor(elapsedMs / 1000));
+      }
     }
     return { ...state };
   },
@@ -95,6 +102,8 @@ export const ActiveWorkoutManager = {
       selectedDay: options?.selectedDay || 1,
       seconds: initialSeconds,
       startTimeTimestamp: hasStarted ? now - initialSeconds * 1000 : null,
+      totalPausedMs: 0,
+      pauseStartMs: null,
       isActive: true,
       isOnActiveWorkoutScreen: true,
     };
@@ -103,10 +112,42 @@ export const ActiveWorkoutManager = {
 
   setHasStarted(hasStarted: boolean) {
     state.hasStarted = hasStarted;
-    if (hasStarted && !state.startTimeTimestamp) {
-      state.startTimeTimestamp = Date.now() - state.seconds * 1000;
+    if (hasStarted) {
+      state.isActive = true;
+      if (!state.startTimeTimestamp) {
+        state.startTimeTimestamp = Date.now() - state.seconds * 1000;
+        state.totalPausedMs = 0;
+        state.pauseStartMs = null;
+      }
     }
     this.notify();
+  },
+
+  setIsActive(isActive: boolean) {
+    if (isActive) {
+      this.resumeWorkout();
+    } else {
+      this.pauseWorkout();
+    }
+  },
+
+  pauseWorkout() {
+    if (state.isActive && state.hasStarted) {
+      state.isActive = false;
+      state.pauseStartMs = Date.now();
+      this.notify();
+    }
+  },
+
+  resumeWorkout() {
+    if (!state.isActive && state.hasStarted) {
+      state.isActive = true;
+      if (state.pauseStartMs) {
+        state.totalPausedMs += Math.max(0, Date.now() - state.pauseStartMs);
+        state.pauseStartMs = null;
+      }
+      this.notify();
+    }
   },
 
   updateSeconds(seconds: number) {
@@ -135,6 +176,8 @@ export const ActiveWorkoutManager = {
       hasStarted: false,
       seconds: 0,
       startTimeTimestamp: null,
+      totalPausedMs: 0,
+      pauseStartMs: null,
       isActive: false,
       isOnActiveWorkoutScreen: false,
     };
@@ -144,9 +187,8 @@ export const ActiveWorkoutManager = {
   shouldShowOverlay(): boolean {
     return Boolean(
       state.sessionId &&
-        state.isActive &&
+        (state.isActive || state.hasStarted) &&
         !state.isOnActiveWorkoutScreen
     );
   },
 };
-

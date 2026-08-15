@@ -30,6 +30,7 @@ import { PreWorkoutStartModal } from '../../components/PreWorkoutStartModal';
 import { CustomAlert } from '../../components/CustomAlertModal';
 import { supabase } from '../../services/supabaseClient';
 import { ActiveWorkoutManager } from '../../services/activeWorkoutManager';
+import { isOutdoorWorkout } from '../../services/locationService';
 import { Collapsible } from '../../components/motion/Collapsible';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -394,9 +395,7 @@ export const TrainingScreen: React.FC<TrainingScreenProps> = ({ navigation }) =>
               activeOpacity={0.78}
               onPress={() => {
                 setSelectedActivity(act);
-                const isActOutdoor = ['running', 'walking', 'cycling', 'hyrox', 'swimming', 'koşu', 'yürüyüş', 'bisiklet', 'hyrox', 'yüzme'].includes(
-                  (act.id || '').toLowerCase()
-                ) || ['koşu', 'yürüyüş', 'bisiklet', 'hyrox', 'yüzme'].some((kw) => (act.title || '').toLowerCase().includes(kw));
+                const isActOutdoor = isOutdoorWorkout(act.id, act.title);
 
                 if (isActOutdoor) {
                   setShowGoalSheet(true);
@@ -511,23 +510,27 @@ export const TrainingScreen: React.FC<TrainingScreenProps> = ({ navigation }) =>
         visible={showGoalSheet}
         isOutdoor={
           selectedActivity
-            ? ['running', 'walking', 'cycling', 'hyrox', 'swimming', 'koşu', 'yürüyüş', 'bisiklet', 'hyrox', 'yüzme'].includes(
-                (selectedActivity.id || '').toLowerCase()
-              ) ||
-              ['koşu', 'yürüyüş', 'bisiklet', 'hyrox', 'yüzme'].some((kw) =>
-                (selectedActivity.title || '').toLowerCase().includes(kw)
-              )
+            ? isOutdoorWorkout(selectedActivity.id, selectedActivity.title)
             : false
         }
         onClose={() => setShowGoalSheet(false)}
         onSelectGoal={(goal: WorkoutGoal) => {
           if (selectedActivity) {
+            const isActOutdoor = isOutdoorWorkout(selectedActivity.id, selectedActivity.title);
             const sessionId = `free_${Date.now()}`;
-            ActiveWorkoutManager.startWorkout(sessionId, selectedActivity.title);
+            ActiveWorkoutManager.startWorkout(sessionId, selectedActivity.title, undefined, 0, {
+              workoutTitle: selectedActivity.title,
+              category: selectedActivity.id,
+              emoji: selectedActivity.emoji,
+              isOutdoor: isActOutdoor,
+              hasStarted: !isActOutdoor,
+            });
             navigation?.navigate('ActiveWorkout', {
               sessionId,
               title: selectedActivity.title,
+              workoutTitle: selectedActivity.title,
               category: selectedActivity.id,
+              emoji: selectedActivity.emoji,
               goalLabel: goal.label,
               goalType: goal.type,
               distanceKm: goal.distanceKm,
@@ -546,11 +549,19 @@ export const TrainingScreen: React.FC<TrainingScreenProps> = ({ navigation }) =>
         onStart={() => {
           setShowPreWorkoutModal(false);
           if (selectedActivity) {
+            const isActOutdoor = isOutdoorWorkout(selectedActivity.id, selectedActivity.title);
             const sessionId = `free_${Date.now()}`;
-            ActiveWorkoutManager.startWorkout(sessionId, selectedActivity.title);
+            ActiveWorkoutManager.startWorkout(sessionId, selectedActivity.title, undefined, 0, {
+              workoutTitle: selectedActivity.title,
+              category: selectedActivity.id,
+              emoji: selectedActivity.emoji,
+              isOutdoor: isActOutdoor,
+              hasStarted: !isActOutdoor,
+            });
             navigation?.navigate('ActiveWorkout', {
               sessionId,
               title: selectedActivity.title,
+              workoutTitle: selectedActivity.title,
               category: selectedActivity.id,
               emoji: selectedActivity.emoji,
             });
