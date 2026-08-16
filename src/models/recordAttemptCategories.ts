@@ -144,11 +144,11 @@ export function measureLabel(type: RecordMeasureType, catalogId?: string): strin
   if (catalogId === 'cindy') return 'AMRAP 20 dk (tur)';
   switch (type) {
     case RecordMeasureType.WEIGHT:
-      return 'Ağırlık rekoru (kg)';
+      return 'Ağırlık rekoru';
     case RecordMeasureType.REPS:
       return 'Maksimum tekrar';
     case RecordMeasureType.TIME:
-      return 'En iyi süre (For Time)';
+      return 'En iyi süre';
     case RecordMeasureType.DISTANCE:
       return 'Mesafe rekoru';
     case RecordMeasureType.CALORIES:

@@ -32,7 +32,6 @@ import { ActiveWorkoutManager } from '../../services/activeWorkoutManager';
 import { TrainingService } from '../../services/trainingService';
 import { feedback } from '../../services/feedbackService';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { HealthPermissionModal } from '../../components/HealthPermissionModal';
 
 const EFFORT_OPTIONS = [
   { id: 'harika', emoji: '😁', label: 'Harika' },
@@ -194,7 +193,6 @@ export const ActiveWorkoutScreen = ({ route, navigation }: any) => {
   // Modals & Map diagnostics
   const [showConfirmFinishModal, setShowConfirmFinishModal] = useState(false);
   const [showEffortModal, setShowEffortModal] = useState(false);
-  const [showHealthPermissionModal, setShowHealthPermissionModal] = useState(false);
   const [mapDiagnosticText, setMapDiagnosticText] = useState('Harita başlatılıyor...');
 
   useEffect(() => {
@@ -273,30 +271,20 @@ export const ActiveWorkoutScreen = ({ route, navigation }: any) => {
   };
 
   const handleStartOutdoorRun = async () => {
-    const granted = await LocationService.requestPermissions();
-    setHasLocationPermission(granted);
-    if (!granted) {
-      feedback.error({
-        title: 'Konum İzni Gerekli',
-        message: 'GPS takibi başlatmak için lütfen konum iznini verin ve cihazınızın GPS servisini açın.',
-      });
-      return;
-    }
-
     setHasStarted(true);
     setIsActive(true);
     ActiveWorkoutManager.setHasStarted(true);
 
     try {
-      await LocationService.startTracking({
-        enableAutoPause: false,
-      });
+      const granted = await LocationService.requestPermissions();
+      setHasLocationPermission(granted);
+      if (granted) {
+        await LocationService.startTracking({
+          enableAutoPause: false,
+        });
+      }
     } catch (e: any) {
-      console.error('[ActiveWorkoutScreen] Location tracking start error:', e);
-      feedback.error({
-        title: 'GPS Hatası',
-        message: e.message || 'GPS konum takibi başlatılamadı.',
-      });
+      console.warn('[ActiveWorkoutScreen] Location tracking start non-blocking:', e);
     }
   };
 

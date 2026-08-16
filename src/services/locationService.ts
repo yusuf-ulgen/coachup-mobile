@@ -241,7 +241,7 @@ export class LocationService {
         pausesUpdatesAutomatically: false,
         activityType: Location.ActivityType.Fitness,
         foregroundService: {
-          notificationTitle: 'CoachUP — Antrenman Aktif',
+          notificationTitle: 'CoachUp — Antrenman Aktif',
           notificationBody: 'GPS konum takibi devam ediyor...',
           notificationColor: '#FF5E00',
           killServiceOnDestroy: false,

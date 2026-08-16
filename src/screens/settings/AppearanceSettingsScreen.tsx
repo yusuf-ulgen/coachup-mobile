@@ -59,7 +59,7 @@ export const AppearanceSettingsScreen: React.FC<AppearanceSettingsScreenProps> =
     {
       id: 'dark',
       title: 'Karanlık Tema (Koyu)',
-      desc: 'CoachUP varsayılan sporcu teması',
+      desc: 'CoachUp varsayılan sporcu teması',
       icon: Moon,
     },
     {

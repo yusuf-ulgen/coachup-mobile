@@ -26,6 +26,7 @@ import { UserService } from '../../services/userService';
 import { supabase } from '../../services/supabaseClient';
 import { Collapsible } from '../../components/motion/Collapsible';
 import { FadeView } from '../../components/motion/FadeView';
+import { formatPRDisplayValue, formatPRDetailText } from '../../utils/recordFormatters';
 
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -500,14 +501,14 @@ export const PersonalRecordsScreen: React.FC<PersonalRecordsScreenProps> = ({ na
                           </Text>
                         </View>
                         <Text style={styles.prCardValue}>
-                          {item.weight_kg ? `${item.weight_kg} kg` : `${item.reps || 1} tekrar`}
+                          {formatPRDisplayValue(item)}
                         </Text>
                       </View>
 
                       <Collapsible expanded={isExpanded}>
                         <View style={styles.prCardDetail}>
                           <Text style={styles.prDetailText}>
-                            Tekrar: {item.reps || 1} · Ağırlık: {item.weight_kg || 0} kg
+                            {formatPRDetailText(item)}
                           </Text>
                           {item.notes && <Text style={styles.prNotesText}>Not: {item.notes}</Text>}
                         </View>

@@ -34,6 +34,8 @@ import { NotificationService } from '../../services/notificationService';
 import { supabase } from '../../services/supabaseClient';
 
 import { HomeTabState } from '../../navigation/HomeTabState';
+import { InlinePermissionsModal } from '../../components/InlinePermissionsModal';
+import { PermissionPreferenceService } from '../../services/permissionPreferenceService';
 
 interface HomeScreenProps {
   navigation: any;
@@ -94,6 +96,25 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
 
   const [availableMemberships, setAvailableMemberships] = useState<any[]>([]);
   const [showMembershipPicker, setShowMembershipPicker] = useState(false);
+
+  // Permission prompt state (Post-login)
+  const [showPermissionModal, setShowPermissionModal] = useState(false);
+  const [permPromptConfig, setPermPromptConfig] = useState({ location: false, notification: false });
+
+  useEffect(() => {
+    const checkPermissions = async () => {
+      try {
+        const config = await PermissionPreferenceService.shouldPromptPermissions();
+        if (config.location || config.notification) {
+          setPermPromptConfig(config);
+          setShowPermissionModal(true);
+        }
+      } catch (e) {
+        console.warn('Error checking permissions:', e);
+      }
+    };
+    checkPermissions();
+  }, []);
 
   useEffect(() => {
     // Auto-scroll to today in day selector strip
@@ -585,6 +606,14 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
           </View>
         </View>
       )}
+
+      {/* Post-Login Inline Permissions Modal (Location & Notifications) */}
+      <InlinePermissionsModal
+        visible={showPermissionModal}
+        promptLocation={permPromptConfig.location}
+        promptNotification={permPromptConfig.notification}
+        onDismiss={() => setShowPermissionModal(false)}
+      />
     </View>
   );
 };

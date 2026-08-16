@@ -28,6 +28,7 @@ import {
   RecordMeasureType,
   measureLabel,
 } from '../../models/recordAttemptCategories';
+import { formatPRDisplayValue } from '../../utils/recordFormatters';
 
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -351,8 +352,7 @@ export const RecordAttemptSetupScreen: React.FC<RecordAttemptSetupScreenProps> =
                       <View style={{ flex: 1 }}>
                         <Text style={styles.prBoxLabel}>Kişisel Rekor</Text>
                         <Text style={styles.prBoxVal}>
-                          {pastPR.weight_kg ? `${pastPR.weight_kg} kg` : ''}{' '}
-                          {pastPR.reps ? `× ${pastPR.reps} tekrar` : ''}
+                          {formatPRDisplayValue({ ...pastPR, exercise: selectedExercise })}
                         </Text>
                       </View>
                       <Text style={styles.prBoxDate}>{pastPR.record_date?.slice(0, 10)}</Text>

@@ -24,6 +24,7 @@ import { SideMenu } from '../../components/SideMenu';
 import { AuthService } from '../../services/authService';
 import { UserService } from '../../services/userService';
 import { HealthConnectService, BluetoothPermissionPreference } from '../../services/healthConnectService';
+import { PermissionPreferenceService, PermissionChoice } from '../../services/permissionPreferenceService';
 
 interface SettingsScreenProps {
   navigation: any;
@@ -42,6 +43,8 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ navigation }) =>
   const [biometricsEnabled, setBiometricsEnabled] = useState(false);
   const [weightUnit, setWeightUnit] = useState<'kg' | 'lbs'>('kg');
   const [blePreference, setBlePreference] = useState<BluetoothPermissionPreference>('ASK_EVERY_TIME');
+  const [locPreference, setLocPreference] = useState<PermissionChoice>('ALWAYS_ALLOW');
+  const [notifPreference, setNotifPreference] = useState<PermissionChoice>('ALWAYS_ALLOW');
 
   useEffect(() => {
     const loadSettings = async () => {
@@ -56,6 +59,12 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ navigation }) =>
 
         const storedBlePref = await HealthConnectService.getStoredPreference();
         setBlePreference(storedBlePref);
+
+        const storedLoc = await PermissionPreferenceService.getLocationPreference();
+        setLocPreference(storedLoc);
+
+        const storedNotif = await PermissionPreferenceService.getNotificationPreference();
+        setNotifPreference(storedNotif);
 
         const profile = await AuthService.getCurrentProfile();
         if (profile) {
@@ -162,6 +171,24 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ navigation }) =>
     setBlePreference(pref);
     await HealthConnectService.setStoredPreference(pref);
     feedback.toast('Bluetooth Nabız İzni tercihi güncellendi.', 'success');
+  };
+
+  const handleLocPrefChange = async (pref: PermissionChoice) => {
+    setLocPreference(pref);
+    await PermissionPreferenceService.setLocationPreference(pref);
+    if (pref === 'ALWAYS_ALLOW' || pref === 'ALLOW_ONCE') {
+      await PermissionPreferenceService.requestLocationSystemPermission();
+    }
+    feedback.toast('Konum İzni tercihi güncellendi.', 'success');
+  };
+
+  const handleNotifPrefChange = async (pref: PermissionChoice) => {
+    setNotifPreference(pref);
+    await PermissionPreferenceService.setNotificationPreference(pref);
+    if (pref === 'ALWAYS_ALLOW' || pref === 'ALLOW_ONCE') {
+      await PermissionPreferenceService.requestNotificationSystemPermission();
+    }
+    feedback.toast('Bildirim İzni tercihi güncellendi.', 'success');
   };
 
   return (
@@ -294,6 +321,72 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ navigation }) =>
                   style={[
                     styles.chipText,
                     blePreference === item.id && styles.chipTextSelected,
+                  ]}
+                >
+                  {item.label}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </View>
+
+        {/* Location Permission Preference */}
+        <View style={styles.card}>
+          <View style={styles.rowHeader}>
+            <MapPin size={20} color={Colors.primary} />
+            <Text style={styles.rowTitle}>Konum İzni</Text>
+          </View>
+          <View style={styles.optionsRow}>
+            {[
+              { id: 'ALWAYS_ALLOW', label: 'Her Zaman' },
+              { id: 'ALLOW_ONCE', label: 'Bu Seferlik' },
+              { id: 'DENIED', label: 'İzin Verme' },
+            ].map((item) => (
+              <TouchableOpacity
+                key={item.id}
+                style={[
+                  styles.chip,
+                  locPreference === item.id && styles.chipSelected,
+                ]}
+                onPress={() => handleLocPrefChange(item.id as PermissionChoice)}
+              >
+                <Text
+                  style={[
+                    styles.chipText,
+                    locPreference === item.id && styles.chipTextSelected,
+                  ]}
+                >
+                  {item.label}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </View>
+
+        {/* Notification Permission Preference */}
+        <View style={styles.card}>
+          <View style={styles.rowHeader}>
+            <Bell size={20} color={Colors.primary} />
+            <Text style={styles.rowTitle}>Bildirim İzni</Text>
+          </View>
+          <View style={styles.optionsRow}>
+            {[
+              { id: 'ALWAYS_ALLOW', label: 'Her Zaman' },
+              { id: 'ALLOW_ONCE', label: 'Bu Seferlik' },
+              { id: 'DENIED', label: 'İzin Verme' },
+            ].map((item) => (
+              <TouchableOpacity
+                key={item.id}
+                style={[
+                  styles.chip,
+                  notifPreference === item.id && styles.chipSelected,
+                ]}
+                onPress={() => handleNotifPrefChange(item.id as PermissionChoice)}
+              >
+                <Text
+                  style={[
+                    styles.chipText,
+                    notifPreference === item.id && styles.chipTextSelected,
                   ]}
                 >
                   {item.label}

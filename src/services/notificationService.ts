@@ -26,7 +26,7 @@ export const NotificationService = {
             id: '1',
             user_id: userId,
             title: 'Hoş Geldiniz! 🏋️',
-            body: 'CoachUP ailesine katıldığınız için teşekkür ederiz. Antrenman programlarınızı hemen inceleyin.',
+            body: 'CoachUp ailesine katıldığınız için teşekkür ederiz. Antrenman programlarınızı hemen inceleyin.',
             is_read: false,
             created_at: new Date().toISOString(),
           },

@@ -278,7 +278,7 @@ export const WorkoutShareSheet: React.FC<{
           });
         } else {
           await Share.share({
-            message: `CoachUP ile ${training?.title || 'Fitness'} antrenmanımı tamamladım! Süre: ${durationStr}`,
+            message: `CoachUp ile ${training?.title || 'Fitness'} antrenmanımı tamamladım! Süre: ${durationStr}`,
           });
         }
       }

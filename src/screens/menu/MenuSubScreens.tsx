@@ -33,6 +33,7 @@ import { UserService } from '../../services/userService';
 import { supabase } from '../../services/supabaseClient';
 import { DateTimePickerModal } from '../../components/DateTimePickerModal';
 import { SmoothModal } from '../../components/motion/SmoothModal';
+import { formatPRDisplayValue } from '../../utils/recordFormatters';
 
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -835,7 +836,7 @@ export const PersonalRecordsScreen: React.FC<ScreenProps> = ({ navigation }) => 
                 <View style={{ flex: 1, marginLeft: 12 }}>
                   <Text style={styles.rowTitle}>{item.exercise?.name || item.exercise_name || 'Egzersiz PR'}</Text>
                   <Text style={styles.rowSub}>
-                    {item.weight_kg ? `${item.weight_kg} kg` : ''} {item.reps ? `x ${item.reps} tekrar` : ''}
+                    {formatPRDisplayValue(item)}
                   </Text>
                 </View>
                 {item.created_at && (

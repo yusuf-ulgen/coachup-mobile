@@ -94,7 +94,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({
   const handleBiometricLogin = async () => {
     try {
       const result = await LocalAuthentication.authenticateAsync({
-        promptMessage: 'CoachUP Girişi için doğrulanın',
+        promptMessage: 'CoachUp Girişi için doğrulanın',
         fallbackLabel: 'Şifre Kullan',
       });
 
