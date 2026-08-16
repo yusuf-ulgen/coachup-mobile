@@ -40,20 +40,35 @@ export interface NutritionPlan {
 export const NutritionService = {
   async fetchActivePlanForUser(userId: string): Promise<NutritionPlan | null> {
     try {
-      // 1. Kullanıcının aktif beslenme plan atamasını çek
-      const { data: assignment, error: assignErr } = await supabase
+      const todayStr = new Date().toISOString().split('T')[0];
+
+      // 1. Kullanıcının aktif beslenme plan atamasını çek (status = 'active' ve tarih aralığı)
+      let query = supabase
         .from('user_nutrition_plans')
         .select('*, plan:nutrition_plans(*)')
         .eq('user_id', userId)
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
+        .order('created_at', { ascending: false });
 
-      if (assignErr || !assignment || !assignment.plan) {
+      const { data: assignments, error: assignErr } = await query;
+
+      if (assignErr || !assignments || assignments.length === 0) {
         return null;
       }
 
-      const planData = assignment.plan;
+      // Filter active assignment (status = 'active' or null, and valid date range if dates exist)
+      const validAssignment = assignments.find((a: any) => {
+        if (a.status && a.status !== 'active') return false;
+        if (a.start_date && a.start_date > todayStr) return false;
+        if (a.end_date && a.end_date < todayStr) return false;
+        return !!a.plan;
+      }) || assignments.find((a: any) => a.plan);
+
+      if (!validAssignment || !validAssignment.plan) {
+        return null;
+      }
+
+      const planData = validAssignment.plan;
+      const targetCalories = planData.target_calories || planData.total_calories || 2000;
 
       // 2. Planın öğünlerini çek
       const { data: mealsData, error: mealsErr } = await supabase
@@ -93,6 +108,7 @@ export const NutritionService = {
 
       return {
         ...planData,
+        target_calories: targetCalories,
         meals: fullMeals,
       };
     } catch (e) {

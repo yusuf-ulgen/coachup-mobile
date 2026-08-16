@@ -36,20 +36,27 @@ serve(async (req) => {
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey)
 
-    // ── 1. AUTHORIZATION BEARER TOKEN VERIFICATION ────────────────────────────
+    // ── 1. AUTHORIZATION BEARER TOKEN STRICT ENFORCEMENT ─────────────────────
     const authHeader = req.headers.get('Authorization')
     let authenticatedUserId: string | null = null
 
-    if (authHeader && authHeader.startsWith('Bearer ')) {
-      const token = authHeader.replace('Bearer ', '').trim()
-      const clientWithToken = createClient(supabaseUrl, supabaseAnonKey, {
-        global: { headers: { Authorization: `Bearer ${token}` } }
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return new Response(JSON.stringify({ error: 'Unauthorized: Bearer token is required' }), {
+        status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       })
-      const { data: authData, error: authErr } = await clientWithToken.auth.getUser()
-      if (!authErr && authData?.user?.id) {
-        authenticatedUserId = authData.user.id
-      }
     }
+
+    const token = authHeader.replace('Bearer ', '').trim()
+    const clientWithToken = createClient(supabaseUrl, supabaseAnonKey, {
+      global: { headers: { Authorization: `Bearer ${token}` } }
+    })
+    const { data: authData, error: authErr } = await clientWithToken.auth.getUser()
+    if (authErr || !authData?.user?.id) {
+      return new Response(JSON.stringify({ error: 'Unauthorized: Invalid or expired token' }), {
+        status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
+    }
+    authenticatedUserId = authData.user.id
 
     const payload = await req.json()
     const { qr, user_id } = payload || {}
@@ -60,15 +67,10 @@ serve(async (req) => {
       })
     }
 
-    // Effective user ID: server-side authenticated user takes precedence or must match
-    const effectiveUserId = authenticatedUserId || user_id
-    if (!effectiveUserId) {
-      return new Response(JSON.stringify({ error: 'Unauthorized: user identity could not be resolved' }), {
-        status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      })
-    }
+    // Effective user ID is strictly the authenticated caller
+    const effectiveUserId = authenticatedUserId
 
-    if (authenticatedUserId && user_id && authenticatedUserId !== user_id) {
+    if (user_id && authenticatedUserId !== user_id) {
       return new Response(JSON.stringify({ error: 'Forbidden: user_id mismatch with bearer token' }), {
         status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       })

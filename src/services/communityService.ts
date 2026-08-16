@@ -258,37 +258,35 @@ export const CommunityService = {
   },
 
   async uploadImage(uri: string, userId: string): Promise<string> {
-    try {
-      const filename = `${userId}/${Date.now()}.jpg`;
+    const filename = `${userId}/${Date.now()}.jpg`;
 
-      const formData = new FormData();
-      formData.append('file', {
-        uri,
-        type: 'image/jpeg',
-        name: filename,
-      } as any);
+    const formData = new FormData();
+    formData.append('file', {
+      uri,
+      type: 'image/jpeg',
+      name: filename,
+    } as any);
 
-      const { data, error } = await supabase.storage
-        .from('community-images')
-        .upload(filename, formData as any, {
-          contentType: 'image/jpeg',
-          upsert: true,
-        });
+    const { data, error } = await supabase.storage
+      .from('community-images')
+      .upload(filename, formData as any, {
+        contentType: 'image/jpeg',
+        upsert: true,
+      });
 
-      if (error) {
-        // Storage bucket may be restricted — fall back to local URI so image still shows
-        return uri;
-      }
-
-      const { data: publicUrlData } = supabase.storage
-        .from('community-images')
-        .getPublicUrl(filename);
-
-      return publicUrlData.publicUrl;
-    } catch {
-      // Silently fall back to local URI — image will still render in the composer preview
-      return uri;
+    if (error) {
+      throw new Error(`Resim yükleme başarısız: ${error.message}`);
     }
+
+    const { data: publicUrlData } = supabase.storage
+      .from('community-images')
+      .getPublicUrl(filename);
+
+    if (!publicUrlData?.publicUrl) {
+      throw new Error('Resim URL adresi alınamadı.');
+    }
+
+    return publicUrlData.publicUrl;
   },
 
   async createPost(

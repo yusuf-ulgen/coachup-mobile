@@ -143,27 +143,35 @@ export const ProgressTrackingScreen = ({ navigation }: any) => {
         const userId = session?.user?.id;
         if (!userId || !img.base64) return;
 
-        const fileName = `${userId}/${Date.now()}_${photoType}.jpg`;
+        let actualBucket = 'body-photos';
+        let actualPath = `${userId}/${Date.now()}_${photoType}.jpg`;
+
         const { error: uploadErr } = await supabase.storage
-          .from('body-photos')
-          .upload(fileName, decode(img.base64), {
+          .from(actualBucket)
+          .upload(actualPath, decode(img.base64), {
             contentType: 'image/jpeg',
             upsert: true,
           });
 
         if (uploadErr) {
-          // If body-photos fails, try avatars or general storage bucket
+          // If body-photos fails, try avatars bucket
+          actualBucket = 'avatars';
+          actualPath = `progress_${userId}_${Date.now()}_${photoType}.jpg`;
           const { error: retryErr } = await supabase.storage
-            .from('avatars')
-            .upload(`progress_${fileName}`, decode(img.base64), { contentType: 'image/jpeg' });
-          if (retryErr) throw retryErr;
+            .from(actualBucket)
+            .upload(actualPath, decode(img.base64), { contentType: 'image/jpeg', upsert: true });
+          if (retryErr) throw new Error(`Fotoğraf yüklenemedi: ${retryErr.message}`);
         }
 
         const { data: { publicUrl } } = supabase.storage
-          .from('body-photos')
-          .getPublicUrl(fileName);
+          .from(actualBucket)
+          .getPublicUrl(actualPath);
 
-        // Save DB metadata
+        if (!publicUrl) {
+          throw new Error('Fotoğraf URL adresi oluşturulamadı.');
+        }
+
+        // Save DB metadata pointing strictly to the real uploaded location
         const { data: photoDb, error: dbErr } = await supabase
           .from('progress_photos')
           .insert({

@@ -90,41 +90,27 @@ export const GroupClassService = {
     });
 
     if (error) {
-      // Direct insert fallback if RPC is not deployed yet
-      const { data: directData, error: directErr } = await supabase.from('class_bookings').insert({
-        user_id: userId,
-        class_id: classId,
-        status: 'booked',
-      }).select().single();
-      if (directErr) throw directErr;
-      return directData;
+      throw new Error(error.message || 'Ders rezervasyonu gerçekleştirilemedi.');
     }
 
-    if (data && !data.success) {
-      throw new Error(data.error || 'Ders rezervasyonu oluşturulamadı.');
+    if (data && data.success === false) {
+      throw new Error(data.error || 'Ders rezervasyonu gerçekleştirilemedi.');
     }
 
     return data;
   },
 
-  async cancelBooking(userId: string, bookingId: string) {
+  async cancelBooking(bookingId: string, userId?: string) {
     const { data, error } = await supabase.rpc('atomic_cancel_group_class', {
-      p_user_id: userId,
+      p_user_id: userId || (await supabase.auth.getUser()).data.user?.id,
       p_booking_id: bookingId,
     });
 
     if (error) {
-      const { data: directData, error: directErr } = await supabase
-        .from('class_bookings')
-        .update({ status: 'cancelled' })
-        .eq('id', bookingId)
-        .select()
-        .single();
-      if (directErr) throw directErr;
-      return directData;
+      throw new Error(error.message || 'Rezervasyon iptal edilemedi.');
     }
 
-    if (data && !data.success) {
+    if (data && data.success === false) {
       throw new Error(data.error || 'Rezervasyon iptal edilemedi.');
     }
 

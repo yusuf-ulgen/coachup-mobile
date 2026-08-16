@@ -57,6 +57,7 @@ export const TrainingScreen: React.FC<TrainingScreenProps> = ({ navigation }) =>
   const insets = useSafeAreaInsets();
   const [searchText, setSearchText] = useState('');
   const [userProfile, setUserProfile] = useState<any>(null);
+  const [assignedPrograms, setAssignedPrograms] = useState<TrainingProgram[]>([]);
   const [gymPrograms, setGymPrograms] = useState<TrainingProgram[]>([]);
   const [aiPrograms, setAiPrograms] = useState<TrainingProgram[]>([]);
   const [loading, setLoading] = useState(false);
@@ -77,12 +78,17 @@ export const TrainingScreen: React.FC<TrainingScreenProps> = ({ navigation }) =>
       try {
         const profile = await AuthService.getCurrentProfile();
         setUserProfile(profile);
-        const [programs, aiProgs] = await Promise.all([
+        const uid = profile?.id || profile?.user_id;
+
+        const [assigned, programs, aiProgs] = await Promise.all([
+          uid ? TrainingService.fetchAssignedPrograms(uid) : Promise.resolve([]),
           TrainingService.fetchGymPrograms(profile?.gym_id),
           TrainingService.fetchAiPrograms(),
         ]);
-        setGymPrograms(programs);
-        setAiPrograms(aiProgs);
+
+        setAssignedPrograms(assigned || []);
+        setGymPrograms(programs || []);
+        setAiPrograms(aiProgs || []);
       } catch (e) {
         console.error('Error loading training programs:', e);
       } finally {
@@ -94,15 +100,24 @@ export const TrainingScreen: React.FC<TrainingScreenProps> = ({ navigation }) =>
 
   const userId = userProfile?.id || userProfile?.user_id;
 
-  const filteredGym = gymPrograms.filter((p) =>
+  const filteredAssigned = assignedPrograms.filter((p) =>
     p.name.toLowerCase().includes(searchText.toLowerCase())
   );
 
-  const personalizedPrograms = filteredGym.filter(
+  const assignedProgramIds = new Set(assignedPrograms.map((p) => p.id));
+
+  const filteredGym = gymPrograms
+    .filter((p) => !assignedProgramIds.has(p.id))
+    .filter((p) => p.name.toLowerCase().includes(searchText.toLowerCase()));
+
+  // Personalized programs: Explicitly assigned programs take highest priority, followed by legacy private/members
+  const legacyPersonalized = filteredGym.filter(
     (p) =>
       (p.privacy === 'private' || p.privacy === 'members') &&
       (userId ? p.visible_member_ids?.includes(userId) : true)
   );
+
+  const personalizedPrograms = [...filteredAssigned, ...legacyPersonalized];
 
   const regularGymPrograms = filteredGym.filter(
     (p) => p.privacy !== 'private' && p.privacy !== 'members'

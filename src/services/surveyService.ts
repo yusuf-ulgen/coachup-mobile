@@ -47,10 +47,27 @@ export const SurveyService = {
 
       const respondedSet = new Set((responses || []).map((r: any) => r.survey_id));
 
-      return surveys.map((s: any) => ({
-        ...s,
-        has_responded: respondedSet.has(s.id),
-      }));
+      return surveys.map((s: any) => {
+        let questions = s.questions;
+        if (!questions || (Array.isArray(questions) && questions.length === 0)) {
+          if (s.question || s.title) {
+            questions = [
+              {
+                id: 'q_1',
+                question: s.question || s.title,
+                type: 'rating',
+              },
+            ];
+          } else {
+            questions = [];
+          }
+        }
+        return {
+          ...s,
+          questions,
+          has_responded: respondedSet.has(s.id),
+        };
+      });
     } catch (e) {
       console.error('Error in SurveyService.fetchSurveys:', e);
       return [];

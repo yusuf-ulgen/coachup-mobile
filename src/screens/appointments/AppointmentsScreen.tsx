@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
 import {
   View,
   Text,
@@ -59,8 +60,36 @@ export const AppointmentsScreen: React.FC<{ navigation?: any }> = ({ navigation 
   const [notes, setNotes] = useState<string>('');
   const [showDatePicker, setShowDatePicker] = useState(false);
 
+  useFocusEffect(
+    useCallback(() => {
+      loadData();
+    }, [])
+  );
+
   useEffect(() => {
-    loadData();
+    let channel: any = null;
+    AuthService.getCurrentUser().then((user) => {
+      if (!user) return;
+      channel = supabase
+        .channel(`appointments:user:${user.id}`)
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'appointments',
+            filter: `user_id=eq.${user.id}`,
+          },
+          () => {
+            loadData();
+          }
+        )
+        .subscribe();
+    });
+
+    return () => {
+      if (channel) supabase.removeChannel(channel);
+    };
   }, []);
 
   const loadData = async () => {

@@ -10,19 +10,25 @@ export const AuthService = {
     isIndividual: boolean = true,
     gymId: string = GYM_CONFIG.GYM_ID
   ) {
-    if (!email || !email.includes('@')) {
-      throw new Error('Geçersiz email adresi');
+    const cleanEmail = email?.trim().toLowerCase();
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!cleanEmail || !emailRegex.test(cleanEmail)) {
+      throw new Error('Lütfen geçerli bir e-posta adresi giriniz.');
+    }
+    // Reject fake/disposable dummy domains that cause bounce incidents
+    if (cleanEmail.endsWith('@test.com') || cleanEmail.endsWith('@example.com') || cleanEmail.endsWith('@fake.com')) {
+      throw new Error('Lütfen geçerli bir kişisel e-posta adresi kullanınız.');
     }
     if (password.length < 6) {
       throw new Error('Şifre en az 6 karakter olmalıdır');
     }
 
     const { data, error } = await supabase.auth.signUp({
-      email,
+      email: cleanEmail,
       password,
       options: {
         data: {
-          name,
+          name: name?.trim(),
           gender,
           account_type: isIndividual ? 'individual' : 'gym',
           role: isIndividual ? 'individual' : 'member',
@@ -106,16 +112,26 @@ export const AuthService = {
   },
 
   async resetPasswordForEmail(email: string) {
-    const { error } = await supabase.auth.resetPasswordForEmail(email);
+    const cleanEmail = email?.trim().toLowerCase();
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!cleanEmail || !emailRegex.test(cleanEmail)) {
+      throw new Error('Lütfen geçerli bir e-posta adresi giriniz.');
+    }
+    const { error } = await supabase.auth.resetPasswordForEmail(cleanEmail);
     if (error) {
       throw new Error(`Şifre sıfırlama başarısız: ${error.message}`);
     }
   },
 
   async resendConfirmationEmail(email: string) {
+    const cleanEmail = email?.trim().toLowerCase();
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!cleanEmail || !emailRegex.test(cleanEmail)) {
+      throw new Error('Lütfen geçerli bir e-posta adresi giriniz.');
+    }
     const { error } = await supabase.auth.resend({
       type: 'signup',
-      email,
+      email: cleanEmail,
     });
     if (error) {
       throw new Error(`Doğrulama e-postası gönderilemedi: ${error.message}`);
