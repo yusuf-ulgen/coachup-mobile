@@ -2,10 +2,10 @@
   "expo": {
     "name": "CoachUP",
     "slug": "coachup",
-    "version": "1.5.2",
+    "version": "1.5.3",
     "orientation": "portrait",
     "splash": {
-      "image": "./assets/icon.png",
+      "image": "./assets/fav.png",
       "resizeMode": "contain",
       "backgroundColor": "#000000"
     },
@@ -17,7 +17,7 @@
     },
     "android": {
       "package": "com.app.coachup.app",
-      "versionCode": 36,
+      "versionCode": 37,
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/android-icon-foreground.png",
@@ -52,7 +52,7 @@
         "expo-splash-screen",
         {
           "backgroundColor": "#000000",
-          "image": "./assets/icon.png",
+          "image": "./assets/fav.png",
           "imageWidth": 160
         }
       ],
