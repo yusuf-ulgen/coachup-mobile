@@ -131,14 +131,15 @@ export const GroupClassService = {
   },
 
   // Fetch only the classes the user has booked for a specific date,
-  // enriched with isPast and isWaitlist status — mirrors CalendarScreen logic.
+  // enriched with isPast and isWaitlist status — mirrors CalendarScreen logic and deduplicates per class.
   async fetchBookedClassesForDate(userId: string, dateStr: string): Promise<BookedClassItem[]> {
     try {
       const { data, error } = await supabase
         .from('class_bookings')
         .select('*, group_class:group_classes(*)')
         .eq('user_id', userId)
-        .neq('status', 'cancelled');
+        .neq('status', 'cancelled')
+        .order('created_at', { ascending: false });
 
       if (error) throw error;
       if (!data) return [];
@@ -146,10 +147,11 @@ export const GroupClassService = {
       const now = new Date();
       const targetDayOfWeek = new Date(dateStr).getDay();
 
-      // Filter by date: prefer date_str match, fallback to day_of_week
+      // Filter by date: prefer b.booking_date, then gc.date_str, fallback to day_of_week
       const filtered = data.filter((b: any) => {
         const gc = b.group_class;
         if (!gc) return false;
+        if (b.booking_date) return b.booking_date === dateStr;
         if (gc.date_str) return gc.date_str === dateStr;
         return (
           gc.day_of_week === undefined ||
@@ -158,8 +160,19 @@ export const GroupClassService = {
         );
       });
 
-      return filtered.map((b: any) => {
+      const seenKeys = new Set<string>();
+      const result: BookedClassItem[] = [];
+
+      for (const b of filtered) {
         const gc = b.group_class;
+        const classId = b.class_id || gc?.id;
+        const dedupKey = classId || `${gc?.name}_${gc?.start_time}_${gc?.end_time}`;
+        
+        if (seenKeys.has(dedupKey)) {
+          continue;
+        }
+        seenKeys.add(dedupKey);
+
         const statusStr = (b.status || '').toLowerCase();
         const isWaitlist = statusStr === 'waitlist' || statusStr === 'waiting';
 
@@ -171,9 +184,9 @@ export const GroupClassService = {
         );
         const isPast = classEndTime < now;
 
-        return {
+        result.push({
           bookingId: b.id,
-          classId: b.class_id,
+          classId: classId,
           name: gc?.name || 'Grup Dersi',
           instructorName: gc?.instructor_name,
           startTime: gc?.start_time ? gc.start_time.substring(0, 5) : undefined,
@@ -181,8 +194,10 @@ export const GroupClassService = {
           status: b.status || 'confirmed',
           isPast,
           isWaitlist,
-        };
-      });
+        });
+      }
+
+      return result;
     } catch (e) {
       console.error('Error fetching booked classes for date:', e);
       return [];
