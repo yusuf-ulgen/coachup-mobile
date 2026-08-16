@@ -13,6 +13,7 @@ import {
   Platform,
   TouchableWithoutFeedback,
   Keyboard,
+  useWindowDimensions,
 } from 'react-native';
 import { feedback } from '../../services/feedbackService';
 import {
@@ -69,6 +70,8 @@ const QUICK_TIME_SLOTS = [
 
 export const CalendarScreen: React.FC<CalendarScreenProps> = ({ navigation }) => {
   const insets = useSafeAreaInsets();
+  const { height: windowHeight } = useWindowDimensions();
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
   const [currentDate, setCurrentDate] = useState<Date>(new Date());
   const [selectedDay, setSelectedDay] = useState<number>(new Date().getDate());
   const [userProfile, setUserProfile] = useState<any>(null);
@@ -86,6 +89,26 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({ navigation }) =>
   // Time Picker Modal State
   const [timePickerTarget, setTimePickerTarget] = useState<'start' | 'end' | null>(null);
   const [showTimePickerModal, setShowTimePickerModal] = useState(false);
+
+  // Keyboard listener for dynamic modal height adaptation on Android & iOS
+  useEffect(() => {
+    const showSub = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
+      (e) => {
+        setKeyboardHeight(e.endCoordinates.height);
+      }
+    );
+    const hideSub = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide',
+      () => {
+        setKeyboardHeight(0);
+      }
+    );
+    return () => {
+      showSub.remove();
+      hideSub.remove();
+    };
+  }, []);
 
   const [eventDays, setEventDays] = useState<Set<number>>(new Set());
 
@@ -728,6 +751,7 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({ navigation }) =>
         visible={showAddEventModal}
         transparent
         animationType="fade"
+        statusBarTranslucent
         onRequestClose={() => {
           setEditingEventId(null);
           setNewEventTitle('');
@@ -735,18 +759,39 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({ navigation }) =>
           setShowAddEventModal(false);
         }}
       >
-        <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-          style={styles.modalOverlay}
+        <View
+          style={[
+            styles.modalOverlay,
+            keyboardHeight > 0
+              ? {
+                  justifyContent: 'flex-start',
+                  paddingTop: Math.max(16, insets.top + 8),
+                }
+              : {
+                  justifyContent: 'center',
+                },
+          ]}
         >
           <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
-            <View style={styles.modalBackdrop}>
-              <View style={styles.modalCard}>
-                <ScrollView
-                  showsVerticalScrollIndicator={false}
-                  keyboardShouldPersistTaps="handled"
-                  contentContainerStyle={{ paddingBottom: 8 }}
-                >
+            <View style={StyleSheet.absoluteFill} />
+          </TouchableWithoutFeedback>
+
+          <View
+            style={[
+              styles.modalCard,
+              {
+                maxHeight:
+                  keyboardHeight > 0
+                    ? Math.max(windowHeight - keyboardHeight - Math.max(16, insets.top + 8) - 16, 220)
+                    : windowHeight * 0.85,
+              },
+            ]}
+          >
+            <ScrollView
+              showsVerticalScrollIndicator={true}
+              keyboardShouldPersistTaps="handled"
+              contentContainerStyle={{ paddingBottom: 16 }}
+            >
                   <View style={styles.modalHeaderRow}>
                     <Text style={styles.modalTitle}>
                       {editingEventId ? 'Etkinliği Düzenle' : `Etkinlik Ekle (${selectedDateStr})`}
@@ -955,8 +1000,6 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({ navigation }) =>
                 </ScrollView>
               </View>
             </View>
-          </TouchableWithoutFeedback>
-        </KeyboardAvoidingView>
       </Modal>
 
       {/* Visual Time Picker Modal */}
