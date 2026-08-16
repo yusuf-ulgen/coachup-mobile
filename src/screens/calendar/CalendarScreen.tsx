@@ -8,6 +8,11 @@ import {
   FlatList,
   ActivityIndicator,
   TextInput,
+  Modal,
+  KeyboardAvoidingView,
+  Platform,
+  TouchableWithoutFeedback,
+  Keyboard,
 } from 'react-native';
 import { feedback } from '../../services/feedbackService';
 import {
@@ -27,6 +32,8 @@ import {
   Droplets,
   Bike,
   Apple,
+  X,
+  Check,
 } from 'lucide-react-native';
 import { Colors } from '../../theme/colors';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -51,6 +58,15 @@ const MONTHS = [
   'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık'
 ];
 
+const QUICK_TIME_SLOTS = [
+  '06:00', '06:30', '07:00', '07:30', '08:00', '08:30',
+  '09:00', '09:30', '10:00', '10:30', '11:00', '11:30',
+  '12:00', '12:30', '13:00', '13:30', '14:00', '14:30',
+  '15:00', '15:30', '16:00', '16:30', '17:00', '17:30',
+  '18:00', '18:30', '19:00', '19:30', '20:00', '20:30',
+  '21:00', '21:30', '22:00', '22:30', '23:00'
+];
+
 export const CalendarScreen: React.FC<CalendarScreenProps> = ({ navigation }) => {
   const insets = useSafeAreaInsets();
   const [currentDate, setCurrentDate] = useState<Date>(new Date());
@@ -66,6 +82,10 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({ navigation }) =>
   const [newEventColor, setNewEventColor] = useState('#2196F3');
   const [newEventIcon, setNewEventIcon] = useState('Calendar');
   const [newEventNotes, setNewEventNotes] = useState('');
+
+  // Time Picker Modal State
+  const [timePickerTarget, setTimePickerTarget] = useState<'start' | 'end' | null>(null);
+  const [showTimePickerModal, setShowTimePickerModal] = useState(false);
 
   const [eventDays, setEventDays] = useState<Set<number>>(new Set());
 
@@ -541,35 +561,49 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({ navigation }) =>
                     </Text>
                   </View>
                   {userEvents.map((evt) => {
-                    const EventIcon = evt.icon === 'Activity' ? Activity : evt.icon === 'Dumbbell' ? Dumbbell : evt.icon === 'Droplets' ? Droplets : evt.icon === 'Bike' ? Bike : evt.icon === 'Apple' ? Apple : CalendarIcon;
+                    const lowerIcon = (evt.icon || '').toLowerCase();
+                    const EventIcon =
+                      lowerIcon === 'activity'
+                        ? Activity
+                        : lowerIcon === 'dumbbell'
+                        ? Dumbbell
+                        : lowerIcon === 'droplets'
+                        ? Droplets
+                        : lowerIcon === 'bike'
+                        ? Bike
+                        : lowerIcon === 'apple'
+                        ? Apple
+                        : CalendarIcon;
                     const eventColor = evt.color || Colors.primary;
+                    const noteText = evt.note || evt.notes || '';
                     return (
-                    <View key={evt.id} style={styles.cardItem}>
-                      <View style={[styles.iconBox, { backgroundColor: `${eventColor}1A` }]}>
-                        <EventIcon size={20} color={eventColor} />
-                      </View>
-                      <View style={{ flex: 1 }}>
-                        <Text style={styles.cardTitle}>{evt.title}</Text>
-                        <Text style={styles.cardSubtitle}>
-                          {evt.start_time} / {evt.end_time}
-                        </Text>
-                      </View>
-                      <TouchableOpacity
-                        onPress={() => {
-                          setEditingEventId(evt.id);
-                          setNewEventTitle(evt.title);
-                          setNewEventStartTime(evt.start_time || '09:00');
-                          setNewEventEndTime(evt.end_time || '10:00');
-                          setNewEventColor(evt.color || '#2196F3');
-                          setNewEventIcon(evt.icon || 'Calendar');
-                          setNewEventNotes(evt.notes || '');
-                          setShowAddEventModal(true);
-                        }}
-                        style={{ padding: 6 }}
-                        activeOpacity={0.7}
-                      >
-                        <Edit3 size={18} color={Colors.textSecondaryDark} />
-                      </TouchableOpacity>
+                      <View key={evt.id} style={styles.cardItem}>
+                        <View style={[styles.iconBox, { backgroundColor: `${eventColor}1A` }]}>
+                          <EventIcon size={20} color={eventColor} />
+                        </View>
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.cardTitle}>{evt.title}</Text>
+                          <Text style={styles.cardSubtitle}>
+                            {evt.start_time || '09:00'} - {evt.end_time || '10:00'}
+                            {noteText ? ` • ${noteText}` : ''}
+                          </Text>
+                        </View>
+                        <TouchableOpacity
+                          onPress={() => {
+                            setEditingEventId(evt.id);
+                            setNewEventTitle(evt.title || '');
+                            setNewEventStartTime(evt.start_time || '09:00');
+                            setNewEventEndTime(evt.end_time || '10:00');
+                            setNewEventColor(evt.color || '#2196F3');
+                            setNewEventIcon(evt.icon || 'Calendar');
+                            setNewEventNotes(noteText);
+                            setShowAddEventModal(true);
+                          }}
+                          style={{ padding: 6 }}
+                          activeOpacity={0.7}
+                        >
+                          <Edit3 size={18} color={Colors.textSecondaryDark} />
+                        </TouchableOpacity>
                       <TouchableOpacity
                         onPress={async () => {
                           const confirmed = await feedback.destructive({
@@ -690,139 +724,290 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({ navigation }) =>
       </TouchableOpacity>
 
       {/* Add / Edit User Event Modal */}
-      {showAddEventModal && (
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>
-              {editingEventId ? 'Etkinliği Düzenle' : `Etkinlik Ekle (${selectedDateStr})`}
-            </Text>
+      <Modal
+        visible={showAddEventModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => {
+          setEditingEventId(null);
+          setNewEventTitle('');
+          setNewEventNotes('');
+          setShowAddEventModal(false);
+        }}
+      >
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          style={styles.modalOverlay}
+        >
+          <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+            <View style={styles.modalBackdrop}>
+              <View style={styles.modalCard}>
+                <ScrollView
+                  showsVerticalScrollIndicator={false}
+                  keyboardShouldPersistTaps="handled"
+                  contentContainerStyle={{ paddingBottom: 8 }}
+                >
+                  <View style={styles.modalHeaderRow}>
+                    <Text style={styles.modalTitle}>
+                      {editingEventId ? 'Etkinliği Düzenle' : `Etkinlik Ekle (${selectedDateStr})`}
+                    </Text>
+                    <TouchableOpacity
+                      onPress={() => {
+                        setEditingEventId(null);
+                        setNewEventTitle('');
+                        setNewEventNotes('');
+                        setShowAddEventModal(false);
+                      }}
+                      style={styles.modalCloseBtn}
+                    >
+                      <X size={20} color={Colors.textDark} />
+                    </TouchableOpacity>
+                  </View>
 
-            <TextInput
-              style={styles.modalInput}
-              placeholder="Etkinlik başlığı..."
-              placeholderTextColor={Colors.textSecondaryDark}
-              value={newEventTitle}
-              onChangeText={setNewEventTitle}
-            />
+                  <Text style={styles.inputSectionLabel}>Başlık</Text>
+                  <TextInput
+                    style={styles.modalInput}
+                    placeholder="Etkinlik başlığı..."
+                    placeholderTextColor={Colors.textSecondaryDark}
+                    value={newEventTitle}
+                    onChangeText={setNewEventTitle}
+                  />
 
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 12, marginTop: 12 }}>
-              {['#2196F3', '#4CAF50', '#FF9800', '#9C27B0', '#F44336', '#FFEB3B'].map(color => (
-                <TouchableOpacity
-                  key={color}
-                  style={[{ width: 32, height: 32, borderRadius: 16, backgroundColor: color }, newEventColor === color && { borderWidth: 2, borderColor: Colors.allWhite }]}
-                  onPress={() => setNewEventColor(color)}
-                />
-              ))}
+                  <Text style={styles.inputSectionLabel}>Renk Seçimi</Text>
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 14 }}>
+                    {['#2196F3', '#4CAF50', '#FF9800', '#9C27B0', '#F44336', '#FFEB3B'].map((color) => (
+                      <TouchableOpacity
+                        key={color}
+                        style={[
+                          { width: 34, height: 34, borderRadius: 17, backgroundColor: color },
+                          newEventColor === color && { borderWidth: 3, borderColor: Colors.allWhite },
+                        ]}
+                        onPress={() => setNewEventColor(color)}
+                      />
+                    ))}
+                  </View>
+
+                  <Text style={styles.inputSectionLabel}>İkon Seçimi</Text>
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 14 }}>
+                    {['Calendar', 'Activity', 'Dumbbell', 'Droplets', 'Bike', 'Apple'].map((icon) => {
+                      const IconComp =
+                        icon === 'Activity'
+                          ? Activity
+                          : icon === 'Dumbbell'
+                          ? Dumbbell
+                          : icon === 'Droplets'
+                          ? Droplets
+                          : icon === 'Bike'
+                          ? Bike
+                          : icon === 'Apple'
+                          ? Apple
+                          : CalendarIcon;
+                      return (
+                        <TouchableOpacity
+                          key={icon}
+                          style={[
+                            { padding: 8, borderRadius: 10, backgroundColor: Colors.backgroundDark, borderWidth: 1, borderColor: Colors.borderDark },
+                            newEventIcon === icon && { backgroundColor: Colors.primary, borderColor: Colors.primary },
+                          ]}
+                          onPress={() => setNewEventIcon(icon)}
+                        >
+                          <IconComp
+                            size={20}
+                            color={newEventIcon === icon ? Colors.allWhite : Colors.textSecondaryDark}
+                          />
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+
+                  <Text style={styles.inputSectionLabel}>Notlar</Text>
+                  <TextInput
+                    style={[styles.modalInput, { height: 74, textAlignVertical: 'top' }]}
+                    placeholder="Notlar veya detaylar..."
+                    placeholderTextColor={Colors.textSecondaryDark}
+                    value={newEventNotes}
+                    onChangeText={setNewEventNotes}
+                    multiline
+                  />
+
+                  <View style={styles.timeInputsRow}>
+                    {/* Start Time Box */}
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.timeInputLabel}>Başlangıç</Text>
+                      <TouchableOpacity
+                        style={styles.timeInputContainer}
+                        activeOpacity={0.8}
+                        onPress={() => {
+                          setTimePickerTarget('start');
+                          setShowTimePickerModal(true);
+                        }}
+                      >
+                        <Clock size={18} color={Colors.primary} />
+                        <TextInput
+                          style={styles.timeInputText}
+                          placeholder="09:00"
+                          placeholderTextColor={Colors.textSecondaryDark}
+                          value={newEventStartTime}
+                          onChangeText={setNewEventStartTime}
+                        />
+                      </TouchableOpacity>
+                    </View>
+
+                    {/* End Time Box */}
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.timeInputLabel}>Bitiş</Text>
+                      <TouchableOpacity
+                        style={styles.timeInputContainer}
+                        activeOpacity={0.8}
+                        onPress={() => {
+                          setTimePickerTarget('end');
+                          setShowTimePickerModal(true);
+                        }}
+                      >
+                        <Clock size={18} color={Colors.primary} />
+                        <TextInput
+                          style={styles.timeInputText}
+                          placeholder="10:00"
+                          placeholderTextColor={Colors.textSecondaryDark}
+                          value={newEventEndTime}
+                          onChangeText={setNewEventEndTime}
+                        />
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+
+                  <View style={styles.modalActions}>
+                    <TouchableOpacity
+                      style={styles.modalCancelBtn}
+                      onPress={() => {
+                        setEditingEventId(null);
+                        setNewEventTitle('');
+                        setNewEventNotes('');
+                        setShowAddEventModal(false);
+                      }}
+                    >
+                      <Text style={styles.modalCancelText}>İptal</Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={styles.modalSaveBtn}
+                      onPress={async () => {
+                        if (!newEventTitle.trim()) {
+                          feedback.toast('Lütfen etkinlik başlığı girin.', 'warning');
+                          return;
+                        }
+                        const userId = userProfile?.id || userProfile?.user_id;
+                        if (!userId) {
+                          feedback.error({ title: 'Hata', message: 'Kullanıcı kimliği bulunamadı.' });
+                          return;
+                        }
+
+                        try {
+                          if (editingEventId) {
+                            const { error } = await supabase
+                              .from('user_events')
+                              .update({
+                                title: newEventTitle.trim(),
+                                start_time: newEventStartTime || '09:00',
+                                end_time: newEventEndTime || '10:00',
+                                color: newEventColor,
+                                icon: newEventIcon.toLowerCase(),
+                                note: newEventNotes.trim() || null,
+                              })
+                              .eq('id', editingEventId);
+
+                            if (error) throw error;
+                            feedback.toast('Etkinlik güncellendi.', 'success');
+                          } else {
+                            const { error } = await supabase.from('user_events').insert({
+                              user_id: userId,
+                              title: newEventTitle.trim(),
+                              event_date: selectedDateStr,
+                              start_time: newEventStartTime || '09:00',
+                              end_time: newEventEndTime || '10:00',
+                              color: newEventColor,
+                              icon: newEventIcon.toLowerCase(),
+                              note: newEventNotes.trim() || null,
+                            });
+
+                            if (error) throw error;
+                            feedback.toast('Etkinlik başarıyla eklendi.', 'success');
+                          }
+
+                          setEditingEventId(null);
+                          setNewEventTitle('');
+                          setNewEventNotes('');
+                          setShowAddEventModal(false);
+                          await Promise.all([loadCalendarContent(), loadMonthEventDays()]);
+                        } catch (e: any) {
+                          console.error('Error saving user event:', e);
+                          feedback.error({
+                            title: 'Hata',
+                            message: e?.message || e,
+                            fallbackMessage: 'Etkinlik kaydedilemedi.',
+                          });
+                        }
+                      }}
+                    >
+                      <Text style={styles.modalSaveText}>Kaydet</Text>
+                    </TouchableOpacity>
+                  </View>
+                </ScrollView>
+              </View>
+            </View>
+          </TouchableWithoutFeedback>
+        </KeyboardAvoidingView>
+      </Modal>
+
+      {/* Visual Time Picker Modal */}
+      <Modal
+        visible={showTimePickerModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowTimePickerModal(false)}
+      >
+        <View style={styles.pickerOverlay}>
+          <View style={styles.pickerCard}>
+            <View style={styles.pickerHeaderRow}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                <Clock size={20} color={Colors.primary} />
+                <Text style={styles.pickerTitle}>
+                  {timePickerTarget === 'start' ? 'Başlangıç Saati Seç' : 'Bitiş Saati Seç'}
+                </Text>
+              </View>
+              <TouchableOpacity onPress={() => setShowTimePickerModal(false)} style={styles.modalCloseBtn}>
+                <X size={20} color={Colors.textDark} />
+              </TouchableOpacity>
             </View>
 
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 12 }}>
-              {['Calendar', 'Activity', 'Dumbbell', 'Droplets', 'Bike', 'Apple'].map(icon => {
-                const IconComp = icon === 'Activity' ? Activity : icon === 'Dumbbell' ? Dumbbell : icon === 'Droplets' ? Droplets : icon === 'Bike' ? Bike : icon === 'Apple' ? Apple : CalendarIcon;
+            <ScrollView contentContainerStyle={styles.timeSlotsGrid} showsVerticalScrollIndicator={false}>
+              {QUICK_TIME_SLOTS.map((slot) => {
+                const currentSelected = timePickerTarget === 'start' ? newEventStartTime : newEventEndTime;
+                const isSelected = slot === currentSelected;
                 return (
                   <TouchableOpacity
-                    key={icon}
-                    style={[{ padding: 8, borderRadius: 8, backgroundColor: Colors.cardDark }, newEventIcon === icon && { backgroundColor: Colors.primary }]}
-                    onPress={() => setNewEventIcon(icon)}
+                    key={slot}
+                    style={[styles.timeSlotChip, isSelected && styles.timeSlotChipActive]}
+                    onPress={() => {
+                      if (timePickerTarget === 'start') {
+                        setNewEventStartTime(slot);
+                      } else {
+                        setNewEventEndTime(slot);
+                      }
+                      setShowTimePickerModal(false);
+                    }}
                   >
-                    <IconComp size={20} color={newEventIcon === icon ? Colors.allWhite : Colors.textSecondaryDark} />
+                    <Clock size={14} color={isSelected ? '#fff' : Colors.textSecondaryDark} />
+                    <Text style={[styles.timeSlotChipText, isSelected && styles.timeSlotChipTextActive]}>
+                      {slot}
+                    </Text>
                   </TouchableOpacity>
                 );
               })}
-            </View>
-
-            <TextInput
-              style={[styles.modalInput, { height: 80, textAlignVertical: 'top' }]}
-              placeholder="Notlar..."
-              placeholderTextColor={Colors.textSecondaryDark}
-              value={newEventNotes}
-              onChangeText={setNewEventNotes}
-              multiline
-            />
-
-            <View style={styles.timeInputsRow}>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.timeInputLabel}>Başlangıç</Text>
-                <TextInput
-                  style={styles.timeInput}
-                  placeholder="09:00"
-                  placeholderTextColor={Colors.textSecondaryDark}
-                  value={newEventStartTime}
-                  onChangeText={setNewEventStartTime}
-                />
-              </View>
-
-              <View style={{ flex: 1 }}>
-                <Text style={styles.timeInputLabel}>Bitiş</Text>
-                <TextInput
-                  style={styles.timeInput}
-                  placeholder="10:00"
-                  placeholderTextColor={Colors.textSecondaryDark}
-                  value={newEventEndTime}
-                  onChangeText={setNewEventEndTime}
-                />
-              </View>
-            </View>
-
-            <View style={styles.modalActions}>
-              <TouchableOpacity
-                style={styles.modalCancelBtn}
-                onPress={() => {
-                  setEditingEventId(null);
-                  setNewEventTitle('');
-                  setShowAddEventModal(false);
-                }}
-              >
-                <Text style={styles.modalCancelText}>İptal</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.modalSaveBtn}
-                onPress={async () => {
-                  if (!newEventTitle.trim()) return;
-                  const userId = userProfile?.id || userProfile?.user_id;
-                  if (!userId) return;
-
-                  try {
-                    if (editingEventId) {
-                      await supabase
-                        .from('user_events')
-                        .update({
-                          title: newEventTitle.trim(),
-                          start_time: newEventStartTime,
-                          end_time: newEventEndTime,
-                          color: newEventColor,
-                          icon: newEventIcon,
-                          notes: newEventNotes,
-                        })
-                        .eq('id', editingEventId);
-                    } else {
-                      await supabase.from('user_events').insert({
-                        user_id: userId,
-                        title: newEventTitle.trim(),
-                        event_date: selectedDateStr,
-                        start_time: newEventStartTime,
-                        end_time: newEventEndTime,
-                        color: newEventColor,
-                        icon: newEventIcon,
-                        notes: newEventNotes,
-                      });
-                    }
-                    setEditingEventId(null);
-                    setNewEventTitle('');
-                    setShowAddEventModal(false);
-                    loadCalendarContent();
-                    loadMonthEventDays();
-                  } catch (e) {
-                    console.error('Error saving user event:', e);
-                  }
-                }}
-              >
-                <Text style={styles.modalSaveText}>Kaydet</Text>
-              </TouchableOpacity>
-            </View>
+            </ScrollView>
           </View>
         </View>
-      )}
+      </Modal>
     </View>
   );
 };
@@ -1060,74 +1245,182 @@ const styles = StyleSheet.create({
     zIndex: 99,
   },
   modalOverlay: {
-    ...StyleSheet.absoluteFill,
-    backgroundColor: 'rgba(0,0,0,0.65)',
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.7)',
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 20,
+    padding: 16,
+  },
+  modalBackdrop: {
+    width: '100%',
+    maxWidth: 400,
+    maxHeight: '90%',
   },
   modalCard: {
     width: '100%',
     backgroundColor: Colors.cardDark,
     borderRadius: 24,
-    padding: 24,
+    padding: 20,
     borderWidth: 1,
     borderColor: Colors.borderDark,
+    elevation: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.4,
+    shadowRadius: 10,
+  },
+  modalHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 16,
   },
   modalTitle: {
-    fontSize: 18,
+    fontSize: 17,
     fontWeight: '700',
     color: Colors.textDark,
-    marginBottom: 16,
+    flex: 1,
+  },
+  modalCloseBtn: {
+    padding: 4,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+  },
+  inputSectionLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: Colors.textSecondaryDark,
+    marginBottom: 6,
   },
   modalInput: {
     backgroundColor: Colors.backgroundDark,
-    borderRadius: 14,
+    borderRadius: 12,
     paddingHorizontal: 14,
-    paddingVertical: 12,
+    paddingVertical: 10,
     color: Colors.textDark,
-    fontSize: 15,
-    marginBottom: 16,
+    fontSize: 14,
+    borderWidth: 1,
+    borderColor: Colors.borderDark,
+    marginBottom: 14,
   },
   timeInputsRow: {
     flexDirection: 'row',
     gap: 12,
-    marginBottom: 20,
+    marginBottom: 18,
+    marginTop: 4,
   },
   timeInputLabel: {
     fontSize: 12,
+    fontWeight: '600',
     color: Colors.textSecondaryDark,
-    marginBottom: 4,
+    marginBottom: 6,
   },
-  timeInput: {
+  timeInputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
     backgroundColor: Colors.backgroundDark,
     borderRadius: 12,
     paddingHorizontal: 12,
-    paddingVertical: 10,
+    paddingVertical: 8,
+    borderWidth: 1,
+    borderColor: Colors.borderDark,
+    gap: 8,
+  },
+  timeInputText: {
+    flex: 1,
     color: Colors.textDark,
     fontSize: 14,
-    textAlign: 'center',
+    fontWeight: '600',
+    padding: 0,
   },
   modalActions: {
     flexDirection: 'row',
     justifyContent: 'flex-end',
+    alignItems: 'center',
     gap: 12,
+    marginTop: 6,
   },
   modalCancelBtn: {
     paddingHorizontal: 16,
     paddingVertical: 10,
+    borderRadius: 10,
   },
   modalCancelText: {
     color: Colors.textSecondaryDark,
     fontWeight: '600',
+    fontSize: 14,
   },
   modalSaveBtn: {
     backgroundColor: Colors.primary,
     borderRadius: 12,
     paddingHorizontal: 22,
-    paddingVertical: 10,
+    paddingVertical: 11,
   },
   modalSaveText: {
+    color: Colors.allWhite,
+    fontWeight: '700',
+    fontSize: 14,
+  },
+  pickerOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.75)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  pickerCard: {
+    width: '100%',
+    maxWidth: 360,
+    maxHeight: 440,
+    backgroundColor: Colors.cardDark,
+    borderRadius: 24,
+    padding: 20,
+    borderWidth: 1,
+    borderColor: Colors.borderDark,
+  },
+  pickerHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.borderDark,
+  },
+  pickerTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: Colors.textDark,
+  },
+  timeSlotsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    justifyContent: 'space-between',
+    paddingBottom: 10,
+  },
+  timeSlotChip: {
+    width: '48%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 11,
+    borderRadius: 12,
+    backgroundColor: Colors.backgroundDark,
+    borderWidth: 1,
+    borderColor: Colors.borderDark,
+  },
+  timeSlotChipActive: {
+    backgroundColor: Colors.primary,
+    borderColor: Colors.primary,
+  },
+  timeSlotChipText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: Colors.textDark,
+  },
+  timeSlotChipTextActive: {
     color: Colors.allWhite,
     fontWeight: '700',
   },
