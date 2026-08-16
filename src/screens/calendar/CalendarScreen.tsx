@@ -477,10 +477,11 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({ navigation }) =>
                               type: 'info',
                             });
                           } else {
-                            await GroupClassService.bookClass(uid, cls.id, selectedDateStr);
+                            const result = await GroupClassService.bookClass(uid, cls.id, selectedDateStr);
+                            const isWait = result?.is_waiting || result?.status === 'waitlist' || result?.status === 'waiting' || isFull;
                             CustomAlert.show({
                               title: 'Başarılı 🎉',
-                              message: isFull
+                              message: isWait
                                 ? 'Ders dolu olduğu için yedek listesine eklendiniz.'
                                 : 'Derse kaydınız başarıyla oluşturuldu!',
                               type: 'success',

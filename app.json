@@ -2,7 +2,7 @@
   "expo": {
     "name": "CoachUp",
     "slug": "coachup",
-    "version": "1.5.9",
+    "version": "1.6.0",
     "orientation": "portrait",
     "splash": {
       "image": "./assets/fav.png",
@@ -17,7 +17,7 @@
     },
     "android": {
       "package": "com.app.coachup.app",
-      "versionCode": 43,
+      "versionCode": 44,
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/android-icon-foreground.png",

@@ -95,22 +95,95 @@ export const GroupClassService = {
   async bookClass(userId: string, classId: string, bookingDate?: string) {
     const targetDate = bookingDate || new Date().toISOString().split('T')[0];
     
-    // Call atomic RPC
-    const { data, error } = await supabase.rpc('atomic_book_group_class', {
-      p_user_id: userId,
-      p_class_id: classId,
-      p_booking_date: targetDate,
-    });
+    // 1. Try atomic RPC first
+    try {
+      const { data, error } = await supabase.rpc('atomic_book_group_class', {
+        p_user_id: userId,
+        p_class_id: classId,
+        p_booking_date: targetDate,
+      });
 
-    if (error) {
-      throw new Error(error.message || 'Ders rezervasyonu gerçekleştirilemedi.');
+      if (!error && data) {
+        if (data.success === false) {
+          throw new Error(data.error || 'Ders rezervasyonu gerçekleştirilemedi.');
+        }
+        return data;
+      }
+
+      if (error && !error.message?.includes('Could not find the function') && !error.message?.includes('schema cache')) {
+        console.warn('RPC atomic_book_group_class error, attempting direct fallback:', error);
+      }
+    } catch (rpcErr: any) {
+      if (
+        rpcErr.message &&
+        !rpcErr.message.includes('Could not find the function') &&
+        !rpcErr.message.includes('schema cache')
+      ) {
+        throw rpcErr;
+      }
+      console.warn('RPC atomic_book_group_class exception, attempting direct fallback:', rpcErr);
     }
 
-    if (data && data.success === false) {
-      throw new Error(data.error || 'Ders rezervasyonu gerçekleştirilemedi.');
+    // 2. Direct fallback booking logic
+    // Check if user already booked
+    const { data: existing } = await supabase
+      .from('class_bookings')
+      .select('id, status')
+      .eq('class_id', classId)
+      .eq('user_id', userId)
+      .neq('status', 'cancelled')
+      .maybeSingle();
+
+    if (existing) {
+      return {
+        success: true,
+        booking_id: existing.id,
+        status: existing.status,
+        is_waiting: existing.status === 'waiting' || existing.status === 'waitlist',
+      };
     }
 
-    return data;
+    // Check capacity
+    const { data: cls } = await supabase
+      .from('group_classes')
+      .select('capacity')
+      .eq('id', classId)
+      .single();
+
+    const capacity = cls?.capacity || 20;
+
+    // Count active participants
+    const { count } = await supabase
+      .from('class_bookings')
+      .select('*', { count: 'exact', head: true })
+      .eq('class_id', classId)
+      .in('status', ['booked', 'confirmed']);
+
+    const activeCount = count || 0;
+    const isWaiting = activeCount >= capacity;
+    const status = isWaiting ? 'waitlist' : 'confirmed';
+
+    const { data: inserted, error: insertError } = await supabase
+      .from('class_bookings')
+      .insert({
+        class_id: classId,
+        user_id: userId,
+        status: status,
+        booking_date: targetDate,
+      })
+      .select()
+      .single();
+
+    if (insertError) {
+      throw new Error(insertError.message || 'Ders rezervasyonu gerçekleştirilemedi.');
+    }
+
+    return {
+      success: true,
+      booking_id: inserted.id,
+      status: status,
+      is_waiting: isWaiting,
+    };
   },
 
   async cancelBooking(bookingId: string, userId?: string) {

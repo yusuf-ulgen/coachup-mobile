@@ -51,34 +51,91 @@ export const GymEventService = {
   },
 
   async joinEvent(userId: string, eventId: string): Promise<string> {
-    const { data, error } = await supabase.rpc('atomic_join_event', {
-      p_user_id: userId,
-      p_event_id: eventId,
-    });
+    try {
+      const { data, error } = await supabase.rpc('atomic_join_event', {
+        p_user_id: userId,
+        p_event_id: eventId,
+      });
 
-    if (error) {
-      throw new Error(error.message || 'Etkinlik kaydı yapılamadı.');
+      if (!error && data) {
+        if (data.success === false) {
+          throw new Error(data.error || 'Etkinlik kaydı yapılamadı.');
+        }
+        return data?.status || 'registered';
+      }
+    } catch (rpcErr: any) {
+      if (
+        rpcErr.message &&
+        !rpcErr.message.includes('Could not find the function') &&
+        !rpcErr.message.includes('schema cache')
+      ) {
+        throw rpcErr;
+      }
+      console.warn('RPC atomic_join_event exception, attempting direct fallback:', rpcErr);
     }
 
-    if (data && data.success === false) {
-      throw new Error(data.error || 'Etkinlik kaydı yapılamadı.');
+    // Direct fallback
+    const { data: existing } = await supabase
+      .from('event_participants')
+      .select('id, status')
+      .eq('event_id', eventId)
+      .eq('user_id', userId)
+      .neq('status', 'cancelled')
+      .maybeSingle();
+
+    if (existing) {
+      return existing.status || 'registered';
     }
 
-    return data?.status || 'registered';
+    const { data: inserted, error: insertError } = await supabase
+      .from('event_participants')
+      .insert({
+        event_id: eventId,
+        user_id: userId,
+        status: 'registered',
+      })
+      .select()
+      .single();
+
+    if (insertError) {
+      throw new Error(insertError.message || 'Etkinlik kaydı yapılamadı.');
+    }
+
+    return 'registered';
   },
 
   async leaveEvent(userId: string, participantId: string): Promise<void> {
-    const { data, error } = await supabase.rpc('atomic_leave_event', {
-      p_user_id: userId,
-      p_participant_id: participantId,
-    });
+    try {
+      const { data, error } = await supabase.rpc('atomic_leave_event', {
+        p_user_id: userId,
+        p_participant_id: participantId,
+      });
 
-    if (error) {
-      throw new Error(error.message || 'Etkinlik kaydı iptal edilemedi.');
+      if (!error && data) {
+        if (data.success === false) {
+          throw new Error(data.error || 'Etkinlik kaydı iptal edilemedi.');
+        }
+        return;
+      }
+    } catch (rpcErr: any) {
+      if (
+        rpcErr.message &&
+        !rpcErr.message.includes('Could not find the function') &&
+        !rpcErr.message.includes('schema cache')
+      ) {
+        throw rpcErr;
+      }
+      console.warn('RPC atomic_leave_event exception, attempting direct fallback:', rpcErr);
     }
 
-    if (data && data.success === false) {
-      throw new Error(data.error || 'Etkinlik kaydı iptal edilemedi.');
+    // Direct fallback
+    const { error: updateError } = await supabase
+      .from('event_participants')
+      .update({ status: 'cancelled' })
+      .eq('id', participantId);
+
+    if (updateError) {
+      throw new Error(updateError.message || 'Etkinlik kaydı iptal edilemedi.');
     }
   },
 };
