@@ -30,6 +30,7 @@ import { TrainingService, TrainingSession } from '../../services/trainingService
 import { GroupClassService, BookedClassItem } from '../../services/groupClassService';
 import { GoalService, UserGoal } from '../../services/goalService';
 import { UserService } from '../../services/userService';
+import { StreakService } from '../../services/streakService';
 import { NotificationService } from '../../services/notificationService';
 import { supabase } from '../../services/supabaseClient';
 
@@ -88,6 +89,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
   };
   const [weekDays, setWeekDays] = useState<WeekDay[]>(() => buildWeekDays());
   const [loading, setLoading] = useState(false);
+  const [streakCount, setStreakCount] = useState(0);
 
   // Live Supabase Data State
   const [scheduledPrograms, setScheduledPrograms] = useState<ScheduledProgram[]>([]);
@@ -198,19 +200,23 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
 
     setLoading(true);
     try {
-      const [programs, sessions, bookings, goals] = await Promise.all([
+      const [programs, sessions, bookings, goals, streakData] = await Promise.all([
         ScheduleService.fetchScheduledPrograms(userId, selectedDate),
         TrainingService.fetchCompletedSessionsForDate(userId, selectedDate),
         isIndividualUser
           ? Promise.resolve([])
           : GroupClassService.fetchBookedClassesForDate(userId, selectedDate),
         GoalService.fetchGoalsForDate(userId, selectedDate),
+        StreakService.fetchStreakData(userId),
       ]);
 
       setScheduledPrograms(programs);
       setCompletedSessions(sessions);
       setBookedGroupClasses(bookings);
       setUserGoals(goals);
+      if (streakData) {
+        setStreakCount(streakData.currentStreak);
+      }
     } catch (e) {
       console.error('Error loading Supabase live data:', e);
     } finally {
@@ -222,7 +228,6 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
     fetchLiveData();
   }, [fetchLiveData]);
 
-  const streakCount = userProfile?.current_streak || 0;
   const hasContent =
     scheduledPrograms.length > 0 ||
     completedSessions.length > 0 ||

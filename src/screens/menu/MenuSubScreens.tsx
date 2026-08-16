@@ -30,6 +30,7 @@ import {
 import { Colors } from '../../theme/colors';
 import { AuthService } from '../../services/authService';
 import { UserService } from '../../services/userService';
+import { StreakService } from '../../services/streakService';
 import { supabase } from '../../services/supabaseClient';
 import { DateTimePickerModal } from '../../components/DateTimePickerModal';
 import { SmoothModal } from '../../components/motion/SmoothModal';
@@ -738,9 +739,9 @@ export const PersonalRecordsScreen: React.FC<ScreenProps> = ({ navigation }) => 
       setLoading(true);
       const user = await AuthService.getCurrentUser();
       if (user) {
-        // Fetch User Profile for streak
-        const profile = await UserService.fetchProfile(user.id);
-        setStreakCount(profile?.current_streak || 0);
+        // Fetch dynamic streak
+        const streakData = await StreakService.fetchStreakData(user.id);
+        setStreakCount(streakData.currentStreak);
 
         // Fetch PRs from database
         const { data: prData } = await supabase

@@ -24,6 +24,7 @@ import { Colors } from '../../theme/colors';
 import { AuthService } from '../../services/authService';
 import { UserService } from '../../services/userService';
 import { supabase } from '../../services/supabaseClient';
+import { StreakService } from '../../services/streakService';
 import { Collapsible } from '../../components/motion/Collapsible';
 import { FadeView } from '../../components/motion/FadeView';
 import { formatPRDisplayValue, formatPRDetailText } from '../../utils/recordFormatters';
@@ -54,7 +55,7 @@ export const PersonalRecordsScreen: React.FC<PersonalRecordsScreenProps> = ({ na
   const insets = useSafeAreaInsets();
   const [loading, setLoading] = useState(true);
   const [selectedTab, setSelectedTab] = useState<number>(0); // 0: Antrenmanlar, 1: Kişisel Rekorlar
-  const [streakCount, setStreakCount] = useState<number>(1);
+  const [streakCount, setStreakCount] = useState<number>(0);
   const [currentDate, setCurrentDate] = useState<Date>(new Date());
   const [selectedDayStr, setSelectedDayStr] = useState<string | null>(null);
 
@@ -85,11 +86,9 @@ export const PersonalRecordsScreen: React.FC<PersonalRecordsScreenProps> = ({ na
         return;
       }
 
-      // Fetch user profile for streak
-      const profile = await UserService.fetchProfile(user.id);
-      if (profile?.current_streak) {
-        setStreakCount(profile.current_streak);
-      }
+      // Fetch dynamic streak
+      const streakData = await StreakService.fetchStreakData(user.id);
+      setStreakCount(streakData.currentStreak);
 
       // Fetch PRs
       const { data: prData } = await supabase

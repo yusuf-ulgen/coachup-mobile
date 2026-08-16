@@ -1,32 +1,43 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { Flame, Trophy, CalendarCheck, Quote, ChevronLeft } from 'lucide-react-native';
 import { Colors } from '../../theme/colors';
 import { useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { AuthService } from '../../services/authService';
+import { StreakService, StreakDayInfo, StreakRecentActivity } from '../../services/streakService';
 
 export const StreakScreen = () => {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation();
-  const [currentStreak] = useState(12);
-  const [longestStreak] = useState(24);
-  const milestones = [3, 7, 14, 30, 50, 100];
-  
-  // Son 7 Gün Aktivite Izgara (Pzt-Paz)
-  const last7Days = [
-    { day: 'Pzt', active: true },
-    { day: 'Sal', active: true },
-    { day: 'Çar', active: false },
-    { day: 'Per', active: true },
-    { day: 'Cum', active: true },
-    { day: 'Cmt', active: false },
-    { day: 'Paz', active: true },
-  ];
+  const [loading, setLoading] = useState(true);
+  const [currentStreak, setCurrentStreak] = useState(0);
+  const [longestStreak, setLongestStreak] = useState(0);
+  const [last7Days, setLast7Days] = useState<StreakDayInfo[]>([]);
+  const [recentActivities, setRecentActivities] = useState<StreakRecentActivity[]>([]);
 
-  const recentActivities = [
-    { id: 1, title: 'Üst Vücut Antrenmanı', date: 'Bugün' },
-    { id: 2, title: 'Kardiyo 30dk', date: 'Dün' },
-  ];
+  const milestones = [3, 7, 14, 30, 50, 100];
+
+  useEffect(() => {
+    const loadData = async () => {
+      setLoading(true);
+      try {
+        const user = await AuthService.getCurrentUser();
+        if (user?.id) {
+          const streakData = await StreakService.fetchStreakData(user.id);
+          setCurrentStreak(streakData.currentStreak);
+          setLongestStreak(streakData.longestStreak);
+          setLast7Days(streakData.last7Days);
+          setRecentActivities(streakData.recentActivities);
+        }
+      } catch (e) {
+        console.error('Error loading streak data in StreakScreen:', e);
+      } finally {
+        setLoading(false);
+      }
+    };
+    loadData();
+  }, []);
 
   return (
     <View style={styles.container}>
@@ -38,76 +49,88 @@ export const StreakScreen = () => {
         <View style={{ width: 24 }} />
       </View>
 
-      <ScrollView contentContainerStyle={[styles.scrollContent, { paddingBottom: 24 + insets.bottom }]}>
-        {/* Büyük Alev İkonu ve Gün Sayısı */}
-        <View style={styles.fireContainer}>
-          <Flame size={80} color={Colors.primary} fill={Colors.primary} />
-          <Text style={styles.streakCount}>{currentStreak}</Text>
-          <Text style={styles.streakLabel}>Günlük Seri</Text>
+      {loading ? (
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+          <ActivityIndicator size="large" color={Colors.primary} />
         </View>
-
-        {/* En Uzun Seri */}
-        <View style={styles.longestStreakContainer}>
-          <Trophy size={24} color={Colors.warning} />
-          <Text style={styles.longestStreakText}>En Uzun Seri: {longestStreak} Gün</Text>
-        </View>
-
-        {/* Milestone Rozetleri */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Rozetler</Text>
-          <View style={styles.badgesGrid}>
-            {milestones.map((milestone) => (
-              <View 
-                key={milestone} 
-                style={[
-                  styles.badgeCard,
-                  currentStreak >= milestone ? styles.badgeActive : styles.badgeLocked
-                ]}
-              >
-                <Trophy 
-                  size={32} 
-                  color={currentStreak >= milestone ? Colors.warning : Colors.textSecondaryDark} 
-                />
-                <Text style={styles.badgeText}>{milestone} Gün</Text>
-              </View>
-            ))}
+      ) : (
+        <ScrollView contentContainerStyle={[styles.scrollContent, { paddingBottom: 24 + insets.bottom }]}>
+          {/* Büyük Alev İkonu ve Gün Sayısı */}
+          <View style={styles.fireContainer}>
+            <Flame
+              size={80}
+              color={currentStreak > 0 ? Colors.primary : Colors.textSecondaryDark}
+              fill={currentStreak > 0 ? Colors.primary : 'transparent'}
+            />
+            <Text style={styles.streakCount}>{currentStreak}</Text>
+            <Text style={styles.streakLabel}>Günlük Seri</Text>
           </View>
-        </View>
 
-        {/* Son 7 Gün Aktivite Izgara */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Son 7 Gün</Text>
-          <View style={styles.daysGrid}>
-            {last7Days.map((d, idx) => (
-              <View key={idx} style={styles.dayCol}>
-                <View style={[styles.dayCircle, d.active ? styles.dayActive : styles.dayInactive]}>
-                  {d.active && <CalendarCheck size={16} color={Colors.allWhite} />}
-                </View>
-                <Text style={styles.dayLabel}>{d.day}</Text>
-              </View>
-            ))}
+          {/* En Uzun Seri */}
+          <View style={styles.longestStreakContainer}>
+            <Trophy size={24} color={Colors.warning} />
+            <Text style={styles.longestStreakText}>En Uzun Seri: {longestStreak} Gün</Text>
           </View>
-        </View>
 
-        {/* Son Tamamlanan Aktiviteler Listesi */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Son Aktiviteler</Text>
-          {recentActivities.map(activity => (
-            <View key={activity.id} style={styles.activityItem}>
-              <Text style={styles.activityTitle}>{activity.title}</Text>
-              <Text style={styles.activityDate}>{activity.date}</Text>
+          {/* Milestone Rozetleri */}
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Rozetler</Text>
+            <View style={styles.badgesGrid}>
+              {milestones.map((milestone) => {
+                const isUnlocked = longestStreak >= milestone || currentStreak >= milestone;
+                return (
+                  <View
+                    key={milestone}
+                    style={[styles.badgeCard, isUnlocked ? styles.badgeActive : styles.badgeLocked]}
+                  >
+                    <Trophy
+                      size={32}
+                      color={isUnlocked ? Colors.warning : Colors.textSecondaryDark}
+                    />
+                    <Text style={styles.badgeText}>{milestone} Gün</Text>
+                  </View>
+                );
+              })}
             </View>
-          ))}
-        </View>
+          </View>
 
-        {/* Motivasyon Mesajı Kartı */}
-        <View style={styles.motivationCard}>
-          <Quote size={24} color={Colors.primary} style={styles.quoteIcon} />
-          <Text style={styles.motivationText}>
-            "Başarı her gün tekrarlanan küçük çabaların toplamıdır."
-          </Text>
-        </View>
-      </ScrollView>
+          {/* Son 7 Gün Aktivite Izgara */}
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Bu Hafta</Text>
+            <View style={styles.daysGrid}>
+              {last7Days.map((d, idx) => (
+                <View key={idx} style={styles.dayCol}>
+                  <View style={[styles.dayCircle, d.active ? styles.dayActive : styles.dayInactive]}>
+                    {d.active && <CalendarCheck size={16} color={Colors.allWhite} />}
+                  </View>
+                  <Text style={styles.dayLabel}>{d.day}</Text>
+                </View>
+              ))}
+            </View>
+          </View>
+
+          {/* Son Tamamlanan Aktiviteler Listesi */}
+          {recentActivities.length > 0 && (
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>Son Aktiviteler</Text>
+              {recentActivities.map((activity) => (
+                <View key={activity.id} style={styles.activityItem}>
+                  <Text style={styles.activityTitle}>{activity.title}</Text>
+                  <Text style={styles.activityDate}>{activity.relativeDate}</Text>
+                </View>
+              ))}
+            </View>
+          )}
+
+          {/* Motivasyon Mesajı Kartı */}
+          <View style={styles.motivationCard}>
+            <Quote size={24} color={Colors.primary} style={styles.quoteIcon} />
+            <Text style={styles.motivationText}>
+              "Başarı her gün tekrarlanan küçük çabaların toplamıdır."
+            </Text>
+          </View>
+        </ScrollView>
+      )}
     </View>
   );
 };
