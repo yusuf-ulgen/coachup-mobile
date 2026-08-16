@@ -470,7 +470,7 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({ navigation }) =>
                         try {
                           const uid = userProfile?.id || userProfile?.user_id;
                           if (booking) {
-                            await GroupClassService.cancelBooking(uid, booking.id);
+                            await GroupClassService.cancelBooking(booking.id, uid);
                             CustomAlert.show({
                               title: 'Bilgi',
                               message: 'Dersten ayrıldınız.',

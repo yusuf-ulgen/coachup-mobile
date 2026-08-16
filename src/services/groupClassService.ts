@@ -114,20 +114,43 @@ export const GroupClassService = {
   },
 
   async cancelBooking(bookingId: string, userId?: string) {
-    const { data, error } = await supabase.rpc('atomic_cancel_group_class', {
-      p_user_id: userId || (await supabase.auth.getUser()).data.user?.id,
-      p_booking_id: bookingId,
-    });
+    const currentUserId = userId || (await supabase.auth.getUser()).data.user?.id;
+    
+    // 1. Try atomic RPC first
+    try {
+      const { data, error } = await supabase.rpc('atomic_cancel_group_class', {
+        p_user_id: currentUserId,
+        p_booking_id: bookingId,
+      });
 
-    if (error) {
-      throw new Error(error.message || 'Rezervasyon iptal edilemedi.');
+      if (!error && data?.success !== false) {
+        return data;
+      }
+
+      if (data && data.success === false) {
+        throw new Error(data.error || 'Rezervasyon iptal edilemedi.');
+      }
+
+      if (error) {
+        console.warn('RPC atomic_cancel_group_class error, attempting direct fallback:', error);
+      }
+    } catch (rpcErr: any) {
+      console.warn('RPC atomic_cancel_group_class exception, attempting direct fallback:', rpcErr);
     }
 
-    if (data && data.success === false) {
-      throw new Error(data.error || 'Rezervasyon iptal edilemedi.');
+    // 2. Direct fallback update
+    const { data: updateData, error: updateError } = await supabase
+      .from('class_bookings')
+      .update({ status: 'cancelled' })
+      .eq('id', bookingId)
+      .select()
+      .single();
+
+    if (updateError) {
+      throw new Error(updateError.message || 'Rezervasyon iptal edilemedi.');
     }
 
-    return data;
+    return { success: true, booking: updateData };
   },
 
   // Fetch only the classes the user has booked for a specific date,
