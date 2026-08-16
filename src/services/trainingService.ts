@@ -13,7 +13,14 @@ export interface TrainingProgram {
   exercise_names?: string[];
   difficulty?: 'beginner' | 'intermediate' | 'advanced' | string;
   visible_member_ids?: string[];
-  source?: 'gym' | 'ai' | 'builtin';
+  source?: 'gym' | 'ai' | 'assigned';
+  assigned_info?: {
+    start_date?: string;
+    end_date?: string;
+    status?: string;
+    progress?: number;
+    coach?: { id: string; name: string; surname?: string };
+  };
 }
 
 export interface TrainingSession {
@@ -32,6 +39,42 @@ export interface TrainingSession {
 }
 
 export const TrainingService = {
+  async fetchAssignedPrograms(userId: string): Promise<TrainingProgram[]> {
+    try {
+      const { data, error } = await supabase
+        .from('user_assigned_programs')
+        .select(`
+          *,
+          program:training_programs(*),
+          coach:coaches(id, name, surname)
+        `)
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false });
+
+      if (error || !data) {
+        console.error('Error fetching assigned programs:', error);
+        return [];
+      }
+
+      return data
+        .filter((item: any) => item.program)
+        .map((item: any) => ({
+          ...item.program,
+          source: 'assigned',
+          assigned_info: {
+            start_date: item.start_date,
+            end_date: item.end_date,
+            status: item.status,
+            progress: item.progress,
+            coach: item.coach,
+          },
+        }));
+    } catch (e) {
+      console.error('Error in fetchAssignedPrograms:', e);
+      return [];
+    }
+  },
+
   async fetchGymPrograms(gymId?: string): Promise<TrainingProgram[]> {
     try {
       let query = supabase
@@ -65,12 +108,7 @@ export const TrainingService = {
       }
 
       const { data, error } = await query;
-      if (error) {
-        // Fallback if ai_programs table exists in some environments
-        const { data: fallback } = await supabase.from('ai_programs').select('*');
-        if (fallback) return fallback.map((p: any) => ({ ...p, source: 'ai' }));
-        throw error;
-      }
+      if (error) throw error;
       return (data || []).map((p: any) => ({ ...p, source: 'ai' }));
     } catch (e) {
       console.error('Error fetching AI programs:', e);
@@ -133,18 +171,7 @@ export const TrainingService = {
       .select()
       .single();
 
-    if (error) {
-      const { data: fallbackData } = await supabase
-        .from('training_sessions')
-        .update({
-          completed_at: now,
-          status: 'completed',
-        })
-        .eq('id', sessionId)
-        .select()
-        .single();
-      return fallbackData;
-    }
+    if (error) throw error;
     return data;
   },
 
@@ -156,16 +183,7 @@ export const TrainingService = {
         .eq('program_id', programId)
         .order('order_index', { ascending: true });
 
-      if (error) {
-        // Fallback query if FK relationship uses different alias
-        const { data: fallbackData } = await supabase
-          .from('program_exercises')
-          .select('*, exercise:exercises(*)')
-          .eq('program_id', programId)
-          .order('order_index', { ascending: true });
-        if (fallbackData) return fallbackData;
-        throw error;
-      }
+      if (error) throw error;
       return data || [];
     } catch (e) {
       console.error('Error fetching program exercises:', e);
@@ -184,10 +202,9 @@ export const TrainingService = {
         const { data: result, error } = await supabase
           .from('workout_sets')
           .update({
-            reps: data.reps,
+            reps_count: data.reps,
             weight: data.weight,
-            completed_at: new Date().toISOString(),
-            is_completed: true,
+            created_at: new Date().toISOString(),
           })
           .eq('id', setId)
           .select();
@@ -196,32 +213,18 @@ export const TrainingService = {
         return result;
       } else {
         const payload: any = {
-          reps: data.reps,
+          reps_count: data.reps,
           weight: data.weight,
-          completed_at: new Date().toISOString(),
-          is_completed: true,
+          created_at: new Date().toISOString(),
         };
-        if (data.sessionId) payload.session_id = data.sessionId;
         if (data.exerciseId) payload.exercise_id = data.exerciseId;
-        if (data.setNumber !== undefined) payload.set_number = data.setNumber + 1;
-        
-        let currentUserId = data.userId;
-        if (!currentUserId) {
-          try {
-            const { data: { user } } = await supabase.auth.getUser();
-            currentUserId = user?.id;
-          } catch (e) {}
-        }
-        if (currentUserId) payload.user_id = currentUserId;
 
         const { data: result, error } = await supabase
           .from('workout_sets')
           .insert(payload)
           .select();
 
-        if (error) {
-          return null;
-        }
+        if (error) throw error;
         return result;
       }
     } catch (e) {

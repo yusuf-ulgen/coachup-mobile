@@ -1,121 +1,119 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Colors } from '../../theme/colors';
-import { Info, MapPin, CheckCircle, Clock, XCircle, X, ArrowLeft, Calendar } from 'lucide-react-native';
+import { MapPin, Clock, X, ArrowLeft, Calendar, Plus } from 'lucide-react-native';
 import { DateTimePickerModal } from '../../components/DateTimePickerModal';
 import { feedback } from '../../services/feedbackService';
 import { supabase } from '../../services/supabaseClient';
 import { AuthService } from '../../services/authService';
+import { UserService } from '../../services/userService';
 import { SmoothModal } from '../../components/motion/SmoothModal';
 
 export const ReservationsScreen = ({ navigation }: any) => {
+  const [loading, setLoading] = useState(true);
+  const [areas, setAreas] = useState<any[]>([]);
   const [reservations, setReservations] = useState<any[]>([]);
   const [modalVisible, setModalVisible] = useState(false);
-  const [selectedArea, setSelectedArea] = useState('');
+  const [selectedAreaId, setSelectedAreaId] = useState('');
   const [reservationNote, setReservationNote] = useState('');
   const [resDate, setResDate] = useState('');
-  const [resTime, setResTime] = useState('');
+  const [startTime, setStartTime] = useState('14:00');
+  const [endTime, setEndTime] = useState('15:00');
   const [showDatePicker, setShowDatePicker] = useState(false);
-  const [showTimePicker, setShowTimePicker] = useState(false);
-
-  const STORAGE_KEY = '@user_reservations_cache';
-
-  const saveLocalReservations = async (list: any[]) => {
-    try {
-      await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(list));
-    } catch (e) {
-      console.error('Error saving reservations locally:', e);
-    }
-  };
-
-  const loadReservations = async () => {
-    let localData: any[] = [];
-    try {
-      const stored = await AsyncStorage.getItem(STORAGE_KEY);
-      if (stored) localData = JSON.parse(stored);
-    } catch (e) {
-      console.error('Error loading local reservations:', e);
-    }
-
-    try {
-      const user = await AuthService.getCurrentUser();
-      if (user?.id) {
-        const { data, error } = await supabase
-          .from('user_reservations')
-          .select('*')
-          .eq('user_id', user.id)
-          .order('created_at', { ascending: false });
-
-        if (!error && data && data.length > 0) {
-          const remoteIds = new Set(data.map((r) => r.id));
-          const localOnly = localData.filter((lr) => !remoteIds.has(lr.id));
-          const merged = [...data, ...localOnly];
-          setReservations(merged);
-          saveLocalReservations(merged);
-          return;
-        }
-      }
-    } catch (e) {
-      console.error('Error fetching remote reservations:', e);
-    }
-
-    setReservations(localData);
-  };
+  const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
-    loadReservations();
+    loadData();
   }, []);
 
-  const openReservationModal = (area: string) => {
-    setSelectedArea(area);
-    setModalVisible(true);
+  const loadData = async () => {
+    setLoading(true);
+    try {
+      const user = await AuthService.getCurrentUser();
+      if (!user) return;
+      const profile = await UserService.fetchProfile(user.id);
+      const gymId = await UserService.resolveActiveGymIdForContent(profile);
+
+      // 1. gym_areas çek
+      let areaQuery = supabase.from('gym_areas').select('*').eq('is_active', true);
+      if (gymId && gymId !== 'staff') {
+        areaQuery = areaQuery.eq('gym_id', gymId);
+      }
+      const { data: areaData } = await areaQuery;
+      setAreas(areaData || []);
+      if (areaData && areaData.length > 0) {
+        setSelectedAreaId(areaData[0].id);
+      }
+
+      // 2. user_reservations çek
+      const { data: resData, error: resErr } = await supabase
+        .from('user_reservations')
+        .select(`
+          *,
+          area:gym_areas(id, name, description)
+        `)
+        .eq('user_id', user.id)
+        .order('reservation_date', { ascending: false });
+
+      if (resErr) {
+        console.error('Error fetching reservations:', resErr);
+      }
+      setReservations(resData || []);
+    } catch (e) {
+      console.error('Error in loadData:', e);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleMakeReservation = async () => {
-    if (!resDate || !resTime) {
+    if (!resDate || !startTime || !endTime) {
       feedback.warning({ title: 'Hata', message: 'Lütfen tarih ve saat aralığı seçin.' });
       return;
     }
 
-    const user = await AuthService.getCurrentUser();
-    const newRes = {
-      id: 'res_' + Date.now(),
-      user_id: user?.id || 'guest',
-      area: selectedArea,
-      date: resDate,
-      time: resTime,
-      notes: reservationNote,
-      status: 'pending',
-      created_at: new Date().toISOString(),
-    };
+    setSubmitting(true);
+    try {
+      const user = await AuthService.getCurrentUser();
+      if (!user) throw new Error('Kullanıcı oturumu bulunamadı.');
 
-    const updated = [newRes, ...reservations];
-    setReservations(updated);
-    await saveLocalReservations(updated);
+      const selectedArea = areas.find((a) => a.id === selectedAreaId);
+      const gymId = selectedArea?.gym_id || null;
 
-    if (user?.id) {
-      try {
-        await supabase.from('user_reservations').insert([
-          {
-            user_id: user.id,
-            area: selectedArea,
-            date: resDate,
-            time: resTime,
-            notes: reservationNote,
-            status: 'pending',
-          },
-        ]);
-      } catch {}
+      const payload = {
+        user_id: user.id,
+        gym_id: gymId,
+        area_id: selectedAreaId || null,
+        reservation_date: resDate,
+        start_time: startTime,
+        end_time: endTime,
+        notes: reservationNote.trim() || null,
+        status: 'pending',
+      };
+
+      const { data, error } = await supabase
+        .from('user_reservations')
+        .insert(payload)
+        .select(`
+          *,
+          area:gym_areas(id, name, description)
+        `)
+        .single();
+
+      if (error) throw error;
+
+      setReservations((prev) => [data, ...prev]);
+      setModalVisible(false);
+      setReservationNote('');
+      setResDate('');
+      feedback.success({ title: 'Başarılı', message: 'Rezervasyon talebiniz salon yönetimine iletildi.' });
+    } catch (e: any) {
+      console.error('Reservation error:', e);
+      feedback.error({ title: 'Hata', message: e, fallbackMessage: 'Rezervasyon oluşturulamadı.' });
+    } finally {
+      setSubmitting(false);
     }
-
-    setModalVisible(false);
-    setReservationNote('');
-    setResDate('');
-    setResTime('');
-
-    feedback.success({ title: 'Başarılı', message: `${selectedArea} alanına rezervasyon talebiniz alındı.` });
   };
 
   const handleCancelReservation = async (id: string) => {
@@ -128,222 +126,434 @@ export const ReservationsScreen = ({ navigation }: any) => {
 
     if (!confirmed) return;
 
-    const updated = reservations.map((r) => (r.id === id ? { ...r, status: 'cancelled' } : r));
-    setReservations(updated);
-    await saveLocalReservations(updated);
-
     try {
-      await supabase.from('user_reservations').update({ status: 'cancelled' }).eq('id', id);
-    } catch {}
+      const { error } = await supabase
+        .from('user_reservations')
+        .update({ status: 'cancelled' })
+        .eq('id', id);
 
-    feedback.toast('Rezervasyon iptal edildi.', 'info');
+      if (error) throw error;
+
+      setReservations((prev) =>
+        prev.map((r) => (r.id === id ? { ...r, status: 'cancelled' } : r))
+      );
+      feedback.success({ title: 'Bilgi', message: 'Rezervasyon iptal edildi.' });
+    } catch (e: any) {
+      feedback.error({ title: 'Hata', message: e, fallbackMessage: 'Rezervasyon iptal edilemedi.' });
+    }
+  };
+
+  const getStatusBadge = (status: string) => {
+    switch (status) {
+      case 'approved':
+        return { label: 'Onaylandı', color: '#10B981', bg: 'rgba(16, 185, 129, 0.15)' };
+      case 'rejected':
+        return { label: 'Reddedildi', color: '#EF4444', bg: 'rgba(239, 68, 68, 0.15)' };
+      case 'cancelled':
+        return { label: 'İptal Edildi', color: '#64748B', bg: 'rgba(100, 116, 139, 0.15)' };
+      default:
+        return { label: 'Onay Bekliyor', color: '#F59E0B', bg: 'rgba(245, 158, 11, 0.15)' };
+    }
   };
 
   return (
     <SafeAreaView style={styles.container}>
-      <View style={styles.headerRow}>
-        <TouchableOpacity onPress={() => navigation?.goBack()} style={styles.backBtn}>
-          <ArrowLeft size={22} color={Colors.allWhite} />
+      <View style={styles.header}>
+        <TouchableOpacity onPress={() => navigation?.goBack()} style={styles.backButton}>
+          <ArrowLeft size={24} color={Colors.textDark} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Rezervasyonlar</Text>
-      </View>
-      <ScrollView contentContainerStyle={{ padding: 16 }}>
-      {/* Bilgilendirme kartı */}
-      <View style={styles.infoCard}>
-        <Info color={Colors.primary} size={20} />
-        <Text style={styles.infoText}>Rezervasyonlarınızı ders veya alan kullanımından en az 2 saat öncesinde iptal etmeniz gerekmektedir.</Text>
-      </View>
-
-      {/* Rezerve Edilebilir Salon Alanları */}
-      <Text style={styles.sectionTitle}>Rezerve Edilebilir Alanlar</Text>
-      <View style={styles.areasGrid}>
-        <TouchableOpacity style={styles.areaCard} onPress={() => openReservationModal('Stüdyo')}>
-          <MapPin color={Colors.primary} size={24} />
-          <Text style={styles.areaTitle}>Stüdyo</Text>
-          <Text style={styles.areaCapacity}>Kapasite: 15</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.areaCard} onPress={() => openReservationModal('Havuz')}>
-          <MapPin color={Colors.primary} size={24} />
-          <Text style={styles.areaTitle}>Havuz</Text>
-          <Text style={styles.areaCapacity}>Kapasite: 10</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.areaCard} onPress={() => openReservationModal('Sauna')}>
-          <MapPin color={Colors.primary} size={24} />
-          <Text style={styles.areaTitle}>Sauna</Text>
-          <Text style={styles.areaCapacity}>Kapasite: 5</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.areaCard} onPress={() => openReservationModal('Kort')}>
-          <MapPin color={Colors.primary} size={24} />
-          <Text style={styles.areaTitle}>Kort</Text>
-          <Text style={styles.areaCapacity}>Kapasite: 4</Text>
+        <Text style={styles.headerTitle}>Alan Rezervasyonları</Text>
+        <TouchableOpacity onPress={() => setModalVisible(true)} style={styles.addBtn}>
+          <Plus size={20} color="#FFFFFF" />
         </TouchableOpacity>
       </View>
 
-      {/* Aktif Rezervasyonlarım */}
-      <Text style={styles.sectionTitle}>Aktif Rezervasyonlarım</Text>
-      <View style={styles.reservationList}>
-        {reservations.length === 0 ? (
-          <View style={{ padding: 20, alignItems: 'center' }}>
-            <Text style={{ color: Colors.textSecondary, fontSize: 14 }}>Henüz aktif bir rezervasyonunuz bulunmamaktadır.</Text>
-          </View>
-        ) : (
-          reservations.map((item) => (
-            <View key={item.id} style={styles.reservationItem}>
-              <View style={styles.resInfo}>
-                <Text style={styles.resArea}>{item.area}</Text>
-                <Text style={styles.resDate}>{item.date} - {item.time}</Text>
-                {item.status === 'approved' && (
-                  <View style={[styles.statusBadge, { backgroundColor: Colors.success + '20' }]}>
-                    <CheckCircle color={Colors.success} size={14} />
-                    <Text style={[styles.statusText, { color: Colors.success }]}>Onaylandı</Text>
-                  </View>
-                )}
-                {item.status === 'pending' && (
-                  <View style={[styles.statusBadge, { backgroundColor: Colors.warning + '20' }]}>
-                    <Clock color={Colors.warning} size={14} />
-                    <Text style={[styles.statusText, { color: Colors.warning }]}>Bekliyor</Text>
-                  </View>
-                )}
-                {item.status === 'cancelled' && (
-                  <View style={[styles.statusBadge, { backgroundColor: Colors.error + '20' }]}>
-                    <XCircle color={Colors.error} size={14} />
-                    <Text style={[styles.statusText, { color: Colors.error }]}>İptal</Text>
-                  </View>
-                )}
-              </View>
-              {item.status !== 'cancelled' && (
-                <TouchableOpacity style={styles.cancelBtn} onPress={() => handleCancelReservation(item.id)}>
-                  <Text style={styles.cancelBtnText}>İptal Et</Text>
-                </TouchableOpacity>
-              )}
+      {loading ? (
+        <View style={styles.centerBox}>
+          <ActivityIndicator size="large" color={Colors.primary} />
+        </View>
+      ) : (
+        <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+          {/* Rezervasyonlarım Listesi */}
+          <Text style={styles.sectionTitle}>Mevcut Taleplerim & Rezervasyonlarım</Text>
+
+          {reservations.length === 0 ? (
+            <View style={styles.emptyState}>
+              <Calendar size={48} color={Colors.textSecondaryDark} />
+              <Text style={styles.emptyTitle}>Kayıtlı Rezervasyon Yok</Text>
+              <Text style={styles.emptySubtitle}>
+                Stüdyo, kort veya havuz gibi salon alanları için rezervasyon talebinde bulunabilirsiniz.
+              </Text>
+              <TouchableOpacity onPress={() => setModalVisible(true)} style={styles.createBtn}>
+                <Text style={styles.createBtnText}>Yeni Rezervasyon Yap</Text>
+              </TouchableOpacity>
             </View>
-          ))
-        )}
-      </View>
+          ) : (
+            reservations.map((item) => {
+              const badge = getStatusBadge(item.status);
+              const areaName = item.area?.name || item.area || 'Salon Alanı';
 
-      {/* Rezervasyon Yapma Dialogu */}
-      <SmoothModal visible={modalVisible} onClose={() => setModalVisible(false)} variant="bottom-sheet">
-        <View style={styles.modalContainer}>
-          <View style={styles.modalHeader}>
-            <Text style={styles.modalTitle}>Rezervasyon Yap</Text>
-            <TouchableOpacity onPress={() => setModalVisible(false)}>
-              <X color={Colors.text} size={24} />
-            </TouchableOpacity>
-          </View>
-          <Text style={styles.modalSub}>Seçilen Alan: {selectedArea}</Text>
-          
-          <View style={styles.inputGroup}>
-            <Text style={styles.inputLabel}>Tarih</Text>
-            <TouchableOpacity 
-              onPress={() => setShowDatePicker(true)}
-              style={[styles.input, { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }]}
-            >
-              <Text style={{ color: resDate ? Colors.text : Colors.textSecondary }}>
-                {resDate || 'Tarih Seçin (YYYY-MM-DD)'}
-              </Text>
-              <Calendar size={18} color={Colors.primary} />
-            </TouchableOpacity>
-          </View>
-          
-          <View style={styles.inputGroup}>
-            <Text style={styles.inputLabel}>Saat Aralığı</Text>
-            <TouchableOpacity 
-              onPress={() => setShowTimePicker(true)}
-              style={[styles.input, { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }]}
-            >
-              <Text style={{ color: resTime ? Colors.text : Colors.textSecondary }}>
-                {resTime || 'Saat Seçin (Örn: 18:00 - 19:00)'}
-              </Text>
-              <Clock size={18} color={Colors.primary} />
-            </TouchableOpacity>
-          </View>
-          
-          <View style={styles.inputGroup}>
-            <Text style={styles.inputLabel}>Not (Opsiyonel)</Text>
-            <TextInput 
-              style={[styles.input, styles.textArea]} 
-              placeholder="Örn: Ekipman talebi..." 
-              placeholderTextColor={Colors.textSecondary}
-              multiline
-              value={reservationNote}
-              onChangeText={setReservationNote}
-            />
-          </View>
+              return (
+                <View key={item.id} style={styles.card}>
+                  <View style={styles.cardHeader}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.areaTitle}>{areaName}</Text>
+                      <Text style={styles.timeText}>
+                        {item.reservation_date || item.date} • {item.start_time || item.time} - {item.end_time || ''}
+                      </Text>
+                    </View>
+                    <View style={[styles.statusBadge, { backgroundColor: badge.bg }]}>
+                      <Text style={[styles.statusText, { color: badge.color }]}>{badge.label}</Text>
+                    </View>
+                  </View>
 
-          <TouchableOpacity style={styles.submitBtn} onPress={handleMakeReservation}>
-            <Text style={styles.submitBtnText}>Rezervasyonu Tamamla</Text>
+                  {item.notes ? (
+                    <Text style={styles.notesText}>Not: {item.notes}</Text>
+                  ) : null}
+
+                  {item.status === 'pending' || item.status === 'approved' ? (
+                    <View style={styles.cardActions}>
+                      <TouchableOpacity
+                        onPress={() => handleCancelReservation(item.id)}
+                        style={styles.cancelBtn}
+                      >
+                        <Text style={styles.cancelBtnText}>İptal Et</Text>
+                      </TouchableOpacity>
+                    </View>
+                  ) : null}
+                </View>
+              );
+            })
+          )}
+        </ScrollView>
+      )}
+
+      {/* Yeni Rezervasyon Modalı */}
+      <SmoothModal visible={modalVisible} onClose={() => setModalVisible(false)}>
+        <View style={styles.modalContent}>
+          <Text style={styles.modalTitle}>Alan Rezervasyonu</Text>
+
+          {/* Alan Seçimi */}
+          <Text style={styles.inputLabel}>Rezervasyon Alanı</Text>
+          {areas.length > 0 ? (
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 4 }}>
+              {areas.map((a) => (
+                <TouchableOpacity
+                  key={a.id}
+                  onPress={() => setSelectedAreaId(a.id)}
+                  style={[
+                    styles.areaChip,
+                    selectedAreaId === a.id && styles.areaChipActive,
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.areaChipText,
+                      selectedAreaId === a.id && styles.areaChipTextActive,
+                    ]}
+                  >
+                    {a.name}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          ) : (
+            <Text style={{ color: Colors.textSecondaryDark, fontSize: 13, marginBottom: 8 }}>
+              Kayıtlı salon alanı bulunamadı.
+            </Text>
+          )}
+
+          {/* Tarih Seçimi */}
+          <Text style={styles.inputLabel}>Tarih</Text>
+          <TouchableOpacity
+            onPress={() => setShowDatePicker(true)}
+            style={styles.dateSelector}
+          >
+            <Calendar size={18} color={Colors.primary} />
+            <Text style={{ color: resDate ? Colors.textDark : Colors.textSecondaryDark }}>
+              {resDate || 'Tarih Seçin (YYYY-AA-GG)'}
+            </Text>
           </TouchableOpacity>
+
+          {/* Saatler */}
+          <View style={{ flexDirection: 'row', gap: 12 }}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.inputLabel}>Başlangıç</Text>
+              <TextInput
+                style={styles.modalInput}
+                value={startTime}
+                onChangeText={setStartTime}
+                placeholder="14:00"
+                placeholderTextColor={Colors.textSecondaryDark}
+              />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.inputLabel}>Bitiş</Text>
+              <TextInput
+                style={styles.modalInput}
+                value={endTime}
+                onChangeText={setEndTime}
+                placeholder="15:00"
+                placeholderTextColor={Colors.textSecondaryDark}
+              />
+            </View>
+          </View>
+
+          {/* Notlar */}
+          <Text style={styles.inputLabel}>Notlar (İsteğe Bağlı)</Text>
+          <TextInput
+            style={[styles.modalInput, { height: 60 }]}
+            value={reservationNote}
+            onChangeText={setReservationNote}
+            placeholder="Ekstra ekipman talebi veya bilgi..."
+            placeholderTextColor={Colors.textSecondaryDark}
+            multiline
+          />
+
+          <View style={styles.modalButtons}>
+            <TouchableOpacity
+              onPress={() => setModalVisible(false)}
+              style={styles.modalCancelBtn}
+              disabled={submitting}
+            >
+              <Text style={styles.modalCancelText}>Vazgeç</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={handleMakeReservation}
+              style={styles.modalSubmitBtn}
+              disabled={submitting}
+            >
+              {submitting ? (
+                <ActivityIndicator size="small" color="#FFFFFF" />
+              ) : (
+                <Text style={styles.modalSubmitText}>Talep Gönder</Text>
+              )}
+            </TouchableOpacity>
+          </View>
         </View>
       </SmoothModal>
 
-      {/* Date & Time Picker Modals */}
       <DateTimePickerModal
         visible={showDatePicker}
         mode="date"
-        title="Rezervasyon Tarihi Seç"
         initialValue={resDate}
-        onConfirm={(d) => {
-          setResDate(d);
+        onConfirm={(val) => {
+          setResDate(val);
           setShowDatePicker(false);
         }}
         onCancel={() => setShowDatePicker(false)}
       />
-
-      <DateTimePickerModal
-        visible={showTimePicker}
-        mode="time"
-        title="Rezervasyon Saati Seç"
-        initialValue={resTime}
-        onConfirm={(t) => {
-          setResTime(t);
-          setShowTimePicker(false);
-        }}
-        onCancel={() => setShowTimePicker(false)}
-      />
-      </ScrollView>
     </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Colors.backgroundDark },
-  headerRow: {
+  container: {
+    flex: 1,
+    backgroundColor: '#0F172A',
+  },
+  header: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'space-between',
     paddingHorizontal: 16,
-    paddingTop: 12,
-    paddingBottom: 8,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#1E293B',
   },
-  backBtn: {
+  backButton: {
+    padding: 4,
+  },
+  headerTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: Colors.textDark,
+  },
+  addBtn: {
+    backgroundColor: Colors.primary,
     padding: 8,
-    marginRight: 8,
+    borderRadius: 8,
   },
-  headerTitle: { fontSize: 24, fontWeight: 'bold', color: Colors.allWhite },
-  infoCard: { flexDirection: 'row', backgroundColor: Colors.cardDark, padding: 12, borderRadius: 8, marginBottom: 20, alignItems: 'center' },
-  infoText: { flex: 1, fontSize: 12, color: Colors.textSecondaryDark, marginLeft: 12 },
-  sectionTitle: { fontSize: 18, fontWeight: '600', color: Colors.allWhite, marginBottom: 12, marginTop: 8 },
-  areasGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', marginBottom: 20 },
-  areaCard: { width: '48%', backgroundColor: Colors.cardDark, padding: 16, borderRadius: 12, alignItems: 'center', marginBottom: 12 },
-  areaTitle: { fontSize: 16, fontWeight: 'bold', color: Colors.allWhite, marginTop: 8 },
-  areaCapacity: { fontSize: 12, color: Colors.textSecondaryDark, marginTop: 4 },
-  reservationList: { marginBottom: 30 },
-  reservationItem: { flexDirection: 'row', backgroundColor: Colors.cardDark, padding: 16, borderRadius: 12, marginBottom: 12, alignItems: 'center', justifyContent: 'space-between' },
-  resInfo: { flex: 1 },
-  resArea: { fontSize: 16, fontWeight: 'bold', color: Colors.allWhite, marginBottom: 4 },
-  resDate: { fontSize: 14, color: Colors.textSecondaryDark, marginBottom: 8 },
-  statusBadge: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 12, alignSelf: 'flex-start' },
-  statusText: { fontSize: 12, fontWeight: '600', marginLeft: 4 },
-  cancelBtn: { backgroundColor: Colors.error + '20', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8 },
-  cancelBtnText: { color: Colors.error, fontSize: 12, fontWeight: 'bold' },
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', padding: 20 },
-  modalContainer: { backgroundColor: Colors.cardDark, borderRadius: 16, padding: 20 },
-  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
-  modalTitle: { fontSize: 20, fontWeight: 'bold', color: Colors.allWhite },
-  modalSub: { fontSize: 16, color: Colors.primary, marginBottom: 20, fontWeight: '500' },
-  inputGroup: { marginBottom: 16 },
-  inputLabel: { fontSize: 14, color: Colors.textSecondaryDark, marginBottom: 8 },
-  input: { backgroundColor: Colors.backgroundDark, borderWidth: 1, borderColor: Colors.borderDark, borderRadius: 8, padding: 12, color: Colors.allWhite },
-  textArea: { minHeight: 80, textAlignVertical: 'top' },
-  submitBtn: { backgroundColor: Colors.primary, padding: 16, borderRadius: 8, alignItems: 'center', marginTop: 8 },
-  submitBtnText: { color: Colors.allWhite, fontSize: 16, fontWeight: 'bold' }
+  content: {
+    padding: 16,
+    gap: 14,
+  },
+  centerBox: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  sectionTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: Colors.textDark,
+  },
+  card: {
+    backgroundColor: '#1E293B',
+    borderRadius: 14,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: '#334155',
+    gap: 10,
+  },
+  cardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+  },
+  areaTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: Colors.textDark,
+  },
+  timeText: {
+    fontSize: 13,
+    color: Colors.primary,
+    marginTop: 2,
+    fontWeight: '500',
+  },
+  statusBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+  },
+  statusText: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  notesText: {
+    fontSize: 12,
+    color: '#94A3B8',
+    fontStyle: 'italic',
+  },
+  cardActions: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    borderTopWidth: 1,
+    borderTopColor: '#334155',
+    paddingTop: 8,
+  },
+  cancelBtn: {
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+  },
+  cancelBtnText: {
+    fontSize: 12,
+    color: Colors.error,
+    fontWeight: '600',
+  },
+  emptyState: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 60,
+    gap: 12,
+  },
+  emptyTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: Colors.textDark,
+  },
+  emptySubtitle: {
+    fontSize: 13,
+    color: Colors.textSecondaryDark,
+    textAlign: 'center',
+    paddingHorizontal: 32,
+    lineHeight: 18,
+  },
+  createBtn: {
+    backgroundColor: Colors.primary,
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 8,
+    marginTop: 8,
+  },
+  createBtnText: {
+    color: '#FFFFFF',
+    fontWeight: '600',
+    fontSize: 14,
+  },
+  modalContent: {
+    padding: 16,
+    gap: 10,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: Colors.textDark,
+    marginBottom: 4,
+  },
+  inputLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: Colors.textSecondaryDark,
+    marginTop: 4,
+  },
+  areaChip: {
+    backgroundColor: '#0F172A',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    marginRight: 8,
+    borderWidth: 1,
+    borderColor: '#334155',
+  },
+  areaChipActive: {
+    borderColor: Colors.primary,
+    backgroundColor: 'rgba(255, 96, 71, 0.15)',
+  },
+  areaChipText: {
+    fontSize: 13,
+    color: Colors.textSecondaryDark,
+  },
+  areaChipTextActive: {
+    color: Colors.primary,
+    fontWeight: '600',
+  },
+  dateSelector: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    backgroundColor: '#0F172A',
+    borderRadius: 8,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: '#334155',
+  },
+  modalInput: {
+    backgroundColor: '#0F172A',
+    borderRadius: 8,
+    padding: 10,
+    color: Colors.textDark,
+    borderWidth: 1,
+    borderColor: '#334155',
+    fontSize: 13,
+  },
+  modalButtons: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 12,
+  },
+  modalCancelBtn: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#334155',
+    alignItems: 'center',
+  },
+  modalCancelText: {
+    color: Colors.textSecondaryDark,
+    fontWeight: '600',
+  },
+  modalSubmitBtn: {
+    flex: 1,
+    backgroundColor: Colors.primary,
+    paddingVertical: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  modalSubmitText: {
+    color: '#FFFFFF',
+    fontWeight: '600',
+  },
 });

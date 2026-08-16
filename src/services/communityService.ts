@@ -70,11 +70,23 @@ export const CommunityService = {
       let { data: rawPosts, error } = await query;
 
       if (error || !rawPosts) {
-        const { data: fallbackPosts } = await supabase
+        let fallbackQuery = supabase
           .from('community_posts')
           .select('*')
           .eq('is_active', true)
           .order('created_at', { ascending: false });
+
+        if (scope === 'gym' && gymId) {
+          fallbackQuery = fallbackQuery.eq('scope', 'gym').eq('gym_id', gymId);
+        } else {
+          fallbackQuery = fallbackQuery.eq('scope', 'general');
+        }
+
+        if (groupId) {
+          fallbackQuery = fallbackQuery.eq('group_id', groupId);
+        }
+
+        const { data: fallbackPosts } = await fallbackQuery;
         rawPosts = fallbackPosts || [];
       }
 

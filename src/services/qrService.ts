@@ -8,6 +8,7 @@ export interface EntryHistory {
   date: Date;
   time: string;
   entry_time: string;
+  exit_time?: string | null;
 }
 
 // Validates a QR / manual code. Returns an error string or null if valid.
@@ -24,14 +25,14 @@ export function validateCode(code: string): string | null {
 export function resolveCodeType(code: string): 'entry' | 'exit' {
   if (code.startsWith('COACHUP_EXIT:')) return 'exit';
   if (code.startsWith('COACHUP_ENTRY:')) return 'entry';
-  // 6-digit TOTP: try to guess from raw value (default entry)
+  // 6-digit TOTP: default entry
   return 'entry';
 }
 
 export const QRService = {
   async fetchEntryCount(userId: string): Promise<number> {
     const { count, error } = await supabase
-      .from('gym_entries')
+      .from('qr_entries')
       .select('*', { count: 'exact', head: true })
       .eq('user_id', userId);
     return count || 0;
@@ -39,26 +40,30 @@ export const QRService = {
 
   async fetchEntries(userId: string, limit = 50): Promise<EntryHistory[]> {
     const { data, error } = await supabase
-      .from('gym_entries')
+      .from('qr_entries')
       .select('*')
       .eq('user_id', userId)
-      .order('entry_time', { ascending: false })
+      .order('entry_timestamp', { ascending: false })
       .limit(limit);
 
     if (error || !data) return [];
 
     return data.map((row: any) => {
-      const dt = new Date(row.entry_time);
+      const timestampStr = row.entry_timestamp || (row.entry_date && row.entry_time ? `${row.entry_date}T${row.entry_time}` : row.created_at);
+      const dt = timestampStr ? new Date(timestampStr) : new Date();
       const timeStr = dt.toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' });
-      const location = row.entry_type === 'exit' ? 'Salon Çıkışı' : 'Salon Girişi';
+      const isExit = !!row.exit_time;
+      const location = isExit ? 'Salon Çıkışı' : 'Salon Girişi';
+
       return {
         id: row.id,
         type: (row.entry_method === 'manual' ? 'manual' : 'qr') as 'qr' | 'manual',
-        entry_type: row.entry_type as 'entry' | 'exit',
+        entry_type: isExit ? 'exit' : 'entry',
         location,
         date: dt,
         time: timeStr,
-        entry_time: row.entry_time,
+        entry_time: timestampStr,
+        exit_time: row.exit_time,
       };
     });
   },
@@ -66,20 +71,24 @@ export const QRService = {
   async recordEntry(
     userId: string,
     code: string,
-    method: 'qr' | 'manual'
+    _method: 'qr' | 'manual'
   ): Promise<void> {
     const entryType = resolveCodeType(code);
     
     if (entryType === 'entry') {
-      const { error } = await supabase.functions.invoke('qr-validate', {
-        body: { code, method }
+      const { data, error } = await supabase.functions.invoke('qr-validate', {
+        body: { qr: code, user_id: userId }
       });
-      if (error) throw new Error(error.message || 'Giriş işlemi başarısız');
+      if (error || data?.error) {
+        throw new Error(data?.error || error?.message || 'Giriş işlemi başarısız');
+      }
     } else {
-      const { error } = await supabase.functions.invoke('qr-exit', {
-        body: { code, method }
+      const { data, error } = await supabase.functions.invoke('qr-exit', {
+        body: { qr: code, user_id: userId }
       });
-      if (error) throw new Error(error.message || 'Çıkış işlemi başarısız');
+      if (error || data?.error) {
+        throw new Error(data?.error || error?.message || 'Çıkış işlemi başarısız');
+      }
     }
   },
 };

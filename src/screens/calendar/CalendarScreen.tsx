@@ -470,15 +470,14 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({ navigation }) =>
                         try {
                           const uid = userProfile?.id || userProfile?.user_id;
                           if (booking) {
-                            await GroupClassService.cancelBooking(booking.id);
+                            await GroupClassService.cancelBooking(uid, booking.id);
                             CustomAlert.show({
                               title: 'Bilgi',
                               message: 'Dersten ayrıldınız.',
                               type: 'info',
                             });
                           } else {
-                            const status = isFull ? 'waitlist' : 'booked';
-                            await GroupClassService.bookClass(uid, cls.id, selectedDateStr, status);
+                            await GroupClassService.bookClass(uid, cls.id, selectedDateStr);
                             CustomAlert.show({
                               title: 'Başarılı 🎉',
                               message: isFull
@@ -649,7 +648,7 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({ navigation }) =>
                             if (!uid) return;
                             try {
                               if (isJoined && participation) {
-                                await GymEventService.leaveEvent(participation.id);
+                                await GymEventService.leaveEvent(uid, participation.id);
                               } else {
                                 await GymEventService.joinEvent(uid, evt.id);
                               }

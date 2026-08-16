@@ -21,158 +21,148 @@ export const CoachChatScreen: React.FC<any> = ({ route, navigation }) => {
   const currentUserId = session?.user?.id;
 
   useEffect(() => {
+    if (!currentUserId || !coachId) return;
+
     fetchMessages();
     
-    // Subscribe to real-time messages
+    // Subscribe to real-time coach_messages
     const channel = supabase
-      .channel(`chat_${currentUserId}_${coachId}`)
+      .channel(`coach_messages:${currentUserId}:${coachId}`)
       .on('postgres_changes', {
         event: 'INSERT',
         schema: 'public',
-        table: 'messages',
-        filter: `sender_id=eq.${coachId}`, // Or listen to all related messages
+        table: 'coach_messages',
+        filter: `user_id=eq.${currentUserId}`,
       }, (payload) => {
-        setMessages(prev => {
-          // Prevent duplicates if optimistic update already added it
-          if (prev.some(m => m.id === payload.new.id)) return prev;
-          return [payload.new, ...prev];
-        });
+        if (payload.new && payload.new.coach_id === coachId) {
+          setMessages(prev => {
+            if (prev.some(m => m.id === payload.new.id)) return prev;
+            return [payload.new, ...prev];
+          });
+        }
       })
       .subscribe();
 
     return () => {
       supabase.removeChannel(channel);
     };
-  }, []);
+  }, [currentUserId, coachId]);
 
   const fetchMessages = async () => {
+    if (!currentUserId || !coachId) return;
     setLoading(true);
     try {
-      // Fetch messages between current user and coach
       const { data, error } = await supabase
-        .from('messages')
+        .from('coach_messages')
         .select('*')
-        .or(`and(sender_id.eq.${currentUserId},receiver_id.eq.${coachId}),and(sender_id.eq.${coachId},receiver_id.eq.${currentUserId})`)
+        .eq('user_id', currentUserId)
+        .eq('coach_id', coachId)
         .order('created_at', { ascending: false });
 
       if (error) {
-        // Table might not exist, using mock data for demo
-        console.log('Messages table might not exist, using mock data');
-        setMessages([
-          { id: '1', content: 'Merhaba, nasıl yardımcı olabilirim?', sender_id: coachId, created_at: new Date(Date.now() - 3600000).toISOString(), status: 'read' },
-          { id: '2', content: 'Antrenman programım hakkında bir sorum olacaktı.', sender_id: currentUserId, created_at: new Date(Date.now() - 3500000).toISOString(), status: 'read' }
-        ]);
+        console.error('Error fetching coach messages:', error);
+        setMessages([]);
       } else {
         setMessages(data || []);
       }
     } catch (e) {
-      console.error(e);
+      console.error('Error in fetchMessages:', e);
+      setMessages([]);
     } finally {
       setLoading(false);
     }
   };
 
   const sendMessage = async () => {
-    if (!inputText.trim()) return;
+    if (!inputText.trim() || !currentUserId || !coachId) return;
 
-    const tempId = `temp-${Date.now()}`;
-    const newMessage = {
-      id: tempId,
-      content: inputText.trim(),
-      sender_id: currentUserId,
-      receiver_id: coachId,
-      created_at: new Date().toISOString(),
-      status: 'sending'
-    };
-
-    // Optimistic UI Update
-    setMessages(prev => [newMessage, ...prev]);
+    const messageText = inputText.trim();
     setInputText('');
 
     try {
       const { data, error } = await supabase
-        .from('messages')
-        .insert([{
-          content: newMessage.content,
-          sender_id: currentUserId,
-          receiver_id: coachId
-        }])
+        .from('coach_messages')
+        .insert({
+          user_id: currentUserId,
+          coach_id: coachId,
+          message: messageText,
+          sender_type: 'user',
+          is_read: false,
+          created_at: new Date().toISOString(),
+        })
         .select()
         .single();
 
       if (error) throw error;
 
-      // Update the temporary message with real ID and status
-      setMessages(prev => prev.map(m => m.id === tempId ? { ...data, status: 'sent' } : m));
-    } catch (e) {
-      console.error(e);
-      // Fallback for demo if table doesn't exist
-      setTimeout(() => {
-        setMessages(prev => prev.map(m => m.id === tempId ? { ...m, status: 'sent' } : m));
-      }, 500);
+      setMessages(prev => [data, ...prev]);
+    } catch (err: any) {
+      console.error('Error sending message:', err);
     }
-  };
-
-  const renderMessage = ({ item }: { item: any }) => {
-    const isMine = item.sender_id === currentUserId;
-    
-    return (
-      <View style={[styles.messageWrapper, isMine ? styles.messageWrapperMine : styles.messageWrapperOther]}>
-        <View style={[styles.messageBubble, isMine ? styles.messageBubbleMine : styles.messageBubbleOther]}>
-          <Text style={styles.messageText}>{item.content}</Text>
-          <View style={styles.messageFooter}>
-            <Text style={styles.timeText}>
-              {new Date(item.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-            </Text>
-            {isMine && (
-              <View style={styles.statusIcon}>
-                {item.status === 'sending' ? (
-                  <ActivityIndicator size="small" color={Colors.textSecondaryDark} />
-                ) : item.status === 'read' ? (
-                  <CheckCheck size={14} color={Colors.primary} />
-                ) : (
-                  <Check size={14} color={Colors.textSecondaryDark} />
-                )}
-              </View>
-            )}
-          </View>
-        </View>
-      </View>
-    );
   };
 
   return (
     <KeyboardAvoidingView 
-      style={styles.container}
+      style={styles.container} 
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
     >
       <View style={[styles.header, { paddingTop: Math.max(16, insets.top + 8) }]}>
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
+        <TouchableOpacity onPress={() => navigation?.goBack()} style={styles.backButton}>
           <ArrowLeft size={24} color={Colors.textDark} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>{coachName}</Text>
+        <View style={styles.headerInfo}>
+          <Text style={styles.headerTitle}>{coachName || 'Eğitmen'}</Text>
+          <Text style={styles.onlineStatus}>Çevrimiçi</Text>
+        </View>
       </View>
 
       {loading ? (
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={Colors.primary} />
         </View>
+      ) : messages.length === 0 ? (
+        <View style={styles.emptyContainer}>
+          <Text style={styles.emptyTitle}>Henüz Mesaj Yok</Text>
+          <Text style={styles.emptySubtitle}>Eğitmeninize bir soru sorarak sohbete başlayabilirsiniz.</Text>
+        </View>
       ) : (
         <FlatList
           ref={flatListRef}
           data={messages}
-          keyExtractor={(item) => item.id.toString()}
-          renderItem={renderMessage}
-          contentContainerStyle={styles.chatContainer}
-          inverted={true}
+          keyExtractor={(item) => item.id}
+          inverted
+          contentContainerStyle={styles.messagesList}
+          renderItem={({ item }) => {
+            const isMe = item.sender_type === 'user';
+            return (
+              <View style={[styles.messageBubble, isMe ? styles.myMessage : styles.theirMessage]}>
+                <Text style={[styles.messageText, isMe ? styles.myMessageText : styles.theirMessageText]}>
+                  {item.message}
+                </Text>
+                <View style={styles.messageFooter}>
+                  <Text style={[styles.messageTime, isMe ? styles.myMessageTime : styles.theirMessageTime]}>
+                    {new Date(item.created_at).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}
+                  </Text>
+                  {isMe && (
+                    item.is_read ? (
+                      <CheckCheck size={14} color="#60A5FA" style={{ marginLeft: 4 }} />
+                    ) : (
+                      <Check size={14} color="rgba(255,255,255,0.7)" style={{ marginLeft: 4 }} />
+                    )
+                  )}
+                </View>
+              </View>
+            );
+          }}
         />
       )}
 
-      <View style={[styles.inputContainer, { paddingBottom: Math.max(12, insets.bottom + 6) }]}>
+      <View style={[styles.inputContainer, { paddingBottom: Math.max(12, insets.bottom + 8) }]}>
         <TextInput
           style={styles.input}
-          placeholder="Mesaj yazın..."
-          placeholderTextColor={Colors.textSecondaryDark}
+          placeholder="Mesajınızı yazın..."
+          placeholderTextColor="#64748B"
           value={inputText}
           onChangeText={setInputText}
           multiline
@@ -182,7 +172,7 @@ export const CoachChatScreen: React.FC<any> = ({ route, navigation }) => {
           onPress={sendMessage}
           disabled={!inputText.trim()}
         >
-          <Send size={20} color={inputText.trim() ? Colors.allWhite : Colors.textSecondaryDark} />
+          <Send size={18} color={Colors.allWhite} />
         </TouchableOpacity>
       </View>
     </KeyboardAvoidingView>
@@ -192,113 +182,137 @@ export const CoachChatScreen: React.FC<any> = ({ route, navigation }) => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: Colors.backgroundDark,
+    backgroundColor: '#0F172A',
   },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingTop: 50,
-    paddingBottom: 16,
-    backgroundColor: Colors.cardDark,
+    paddingHorizontal: 16,
+    paddingBottom: 12,
+    backgroundColor: '#1E293B',
     borderBottomWidth: 1,
-    borderBottomColor: Colors.borderDark,
+    borderBottomColor: '#334155',
   },
   backButton: {
+    padding: 4,
     marginRight: 12,
   },
+  headerInfo: {
+    flex: 1,
+  },
   headerTitle: {
-    fontSize: 18,
+    fontSize: 17,
     fontWeight: '700',
     color: Colors.textDark,
+  },
+  onlineStatus: {
+    fontSize: 12,
+    color: '#10B981',
+    fontWeight: '500',
   },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  chatContainer: {
+  emptyContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 32,
+    gap: 8,
+  },
+  emptyTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: Colors.textDark,
+  },
+  emptySubtitle: {
+    fontSize: 13,
+    color: Colors.textSecondaryDark,
+    textAlign: 'center',
+    lineHeight: 18,
+  },
+  messagesList: {
     padding: 16,
-  },
-  messageWrapper: {
-    flexDirection: 'row',
-    marginBottom: 12,
-  },
-  messageWrapperMine: {
-    justifyContent: 'flex-end',
-  },
-  messageWrapperOther: {
-    justifyContent: 'flex-start',
+    gap: 8,
   },
   messageBubble: {
     maxWidth: '80%',
-    padding: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
     borderRadius: 16,
+    marginBottom: 6,
   },
-  messageBubbleMine: {
+  myMessage: {
+    alignSelf: 'flex-end',
     backgroundColor: Colors.primary,
     borderBottomRightRadius: 4,
   },
-  messageBubbleOther: {
-    backgroundColor: Colors.cardDark,
-    borderWidth: 1,
-    borderColor: Colors.borderDark,
+  theirMessage: {
+    alignSelf: 'flex-start',
+    backgroundColor: '#1E293B',
     borderBottomLeftRadius: 4,
+    borderWidth: 1,
+    borderColor: '#334155',
   },
   messageText: {
-    fontSize: 15,
-    color: Colors.textDark,
+    fontSize: 14,
     lineHeight: 20,
+  },
+  myMessageText: {
+    color: '#FFFFFF',
+  },
+  theirMessageText: {
+    color: Colors.textDark,
   },
   messageFooter: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'flex-end',
     marginTop: 4,
-    gap: 4,
   },
-  timeText: {
-    fontSize: 11,
+  messageTime: {
+    fontSize: 10,
+  },
+  myMessageTime: {
+    color: 'rgba(255,255,255,0.7)',
+  },
+  theirMessageTime: {
     color: Colors.textSecondaryDark,
-  },
-  statusIcon: {
-    marginLeft: 2,
   },
   inputContainer: {
     flexDirection: 'row',
-    alignItems: 'flex-end',
-    padding: 12,
-    paddingBottom: Platform.OS === 'ios' ? 32 : 12,
-    backgroundColor: Colors.cardDark,
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingTop: 10,
+    backgroundColor: '#1E293B',
     borderTopWidth: 1,
-    borderTopColor: Colors.borderDark,
+    borderTopColor: '#334155',
+    gap: 10,
   },
   input: {
     flex: 1,
-    backgroundColor: Colors.backgroundDark,
-    borderWidth: 1,
-    borderColor: Colors.borderDark,
+    minHeight: 40,
+    maxHeight: 100,
+    backgroundColor: '#0F172A',
     borderRadius: 20,
     paddingHorizontal: 16,
-    paddingTop: 12,
-    paddingBottom: 12,
-    minHeight: 44,
-    maxHeight: 120,
+    paddingVertical: 8,
     color: Colors.textDark,
-    fontSize: 15,
-    marginRight: 12,
+    fontSize: 14,
+    borderWidth: 1,
+    borderColor: '#334155',
   },
   sendButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     backgroundColor: Colors.primary,
     justifyContent: 'center',
     alignItems: 'center',
   },
   sendButtonDisabled: {
-    backgroundColor: Colors.cardDark,
-    borderWidth: 1,
-    borderColor: Colors.borderDark,
+    opacity: 0.5,
   },
 });

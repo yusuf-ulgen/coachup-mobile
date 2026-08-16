@@ -14,8 +14,7 @@ export const CoachDetailScreen: React.FC<any> = ({ route, navigation }) => {
   useEffect(() => {
     const fetchCoachDetail = async () => {
       try {
-        const data = await CoachService.fetchCoaches();
-        const found = data.find(c => c.id === coachId);
+        const found = await CoachService.fetchCoachDetail(coachId);
         if (found) setCoach(found);
       } catch (e) {
         console.error(e);
@@ -48,10 +47,27 @@ export const CoachDetailScreen: React.FC<any> = ({ route, navigation }) => {
   }
 
   const fullName = `${coach.name || ''} ${coach.surname || ''}`.trim() || 'Koç';
-  const bio = (coach as any).bio || `${fullName}, alanında uzman ve deneyimli bir eğitmendir. Hedeflerinize ulaşmanız için size özel programlar hazırlar.`;
-  const specialties = (coach as any).specialties || ['Fitness', 'Crossfit', 'Kilo Verme', 'Kas Geliştirme'];
-  const certificates = (coach as any).certificates || ['ACE Certified Personal Trainer', 'CrossFit Level 1', 'First Aid / CPR'];
-  const experienceYears = (coach as any).experience_years || 5;
+  const bio = coach.bio || `${fullName}, salonumuzun uzman eğitmenidir.`;
+  
+  // Format specializations
+  let specialties: string[] = [];
+  if (Array.isArray(coach.specializations)) {
+    specialties = coach.specializations;
+  } else if (typeof coach.specializations === 'string' && coach.specializations) {
+    specialties = coach.specializations.split(',').map((s) => s.trim());
+  } else if (coach.specialty) {
+    specialties = [coach.specialty];
+  }
+
+  // Format certifications
+  let certificates: string[] = [];
+  if (Array.isArray(coach.certifications)) {
+    certificates = coach.certifications;
+  } else if (typeof coach.certifications === 'string' && coach.certifications) {
+    certificates = coach.certifications.split(',').map((c) => c.trim());
+  }
+
+  const experienceYears = coach.experience_years || null;
 
   return (
     <View style={styles.container}>
@@ -62,7 +78,7 @@ export const CoachDetailScreen: React.FC<any> = ({ route, navigation }) => {
         <Text style={styles.headerTitle}>Koç Profili</Text>
       </View>
 
-      <ScrollView contentContainerStyle={styles.content}>
+      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         <View style={styles.profileHeader}>
           {coach.avatar_url ? (
             <Image source={{ uri: coach.avatar_url }} style={styles.avatar} />
@@ -80,44 +96,54 @@ export const CoachDetailScreen: React.FC<any> = ({ route, navigation }) => {
                 </View>
               )}
             </View>
-            <Text style={styles.branch}>{coach.speciality || 'Fitness Eğitmeni'}</Text>
+            <Text style={styles.branch}>{coach.specialty || 'Fitness Eğitmeni'}</Text>
             <View style={styles.statsRow}>
-              <View style={styles.statChip}>
-                <Text style={styles.statChipText}>{coach.rating || '4.8'} ⭐ Rating</Text>
-              </View>
-              <View style={styles.statChip}>
-                <Text style={styles.statChipText}>{experienceYears} Yıl Deneyim</Text>
-              </View>
+              {coach.rating ? (
+                <View style={styles.statChip}>
+                  <Text style={styles.statChipText}>{coach.rating} ⭐ Rating</Text>
+                </View>
+              ) : null}
+              {experienceYears ? (
+                <View style={styles.statChip}>
+                  <Text style={styles.statChipText}>{experienceYears} Yıl Deneyim</Text>
+                </View>
+              ) : null}
             </View>
           </View>
         </View>
 
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Biyografi</Text>
-          <Text style={styles.bioText}>{bio}</Text>
-        </View>
-
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Uzmanlık Alanları</Text>
-          <View style={styles.flowContainer}>
-            {specialties.map((item: string, index: number) => (
-              <View key={index} style={styles.flowChip}>
-                <Text style={styles.flowChipText}>{item}</Text>
-              </View>
-            ))}
+        {bio ? (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Biyografi</Text>
+            <Text style={styles.bioText}>{bio}</Text>
           </View>
-        </View>
+        ) : null}
 
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Sertifikalar</Text>
-          <View style={styles.flowContainer}>
-            {certificates.map((item: string, index: number) => (
-              <View key={index} style={styles.flowChip}>
-                <Text style={styles.flowChipText}>{item}</Text>
-              </View>
-            ))}
+        {specialties.length > 0 ? (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Uzmanlık Alanları</Text>
+            <View style={styles.flowContainer}>
+              {specialties.map((item: string, index: number) => (
+                <View key={index} style={styles.flowChip}>
+                  <Text style={styles.flowChipText}>{item}</Text>
+                </View>
+              ))}
+            </View>
           </View>
-        </View>
+        ) : null}
+
+        {certificates.length > 0 ? (
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Sertifikalar</Text>
+            <View style={styles.flowContainer}>
+              {certificates.map((item: string, index: number) => (
+                <View key={index} style={styles.flowChip}>
+                  <Text style={styles.flowChipText}>{item}</Text>
+                </View>
+              ))}
+            </View>
+          </View>
+        ) : null}
       </ScrollView>
 
       <View style={[styles.footer, { paddingBottom: Math.max(20, insets.bottom + 12) }]}>
@@ -144,13 +170,13 @@ export const CoachDetailScreen: React.FC<any> = ({ route, navigation }) => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: Colors.backgroundDark,
+    backgroundColor: '#0F172A',
   },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: Colors.backgroundDark,
+    backgroundColor: '#0F172A',
   },
   header: {
     flexDirection: 'row',
@@ -158,108 +184,112 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingTop: 50,
     paddingBottom: 16,
-    backgroundColor: Colors.cardDark,
+    backgroundColor: '#1E293B',
+    borderBottomWidth: 1,
+    borderBottomColor: '#334155',
   },
   backButton: {
     marginRight: 12,
   },
   headerTitle: {
-    fontSize: 22,
+    fontSize: 20,
     fontWeight: '700',
     color: Colors.textDark,
   },
   content: {
     padding: 20,
     paddingBottom: 40,
+    gap: 16,
   },
   profileHeader: {
     flexDirection: 'row',
-    marginBottom: 24,
+    marginBottom: 8,
   },
   avatar: {
-    width: 90,
-    height: 90,
-    borderRadius: 45,
+    width: 80,
+    height: 80,
+    borderRadius: 40,
     marginRight: 16,
   },
   avatarPlaceholder: {
-    width: 90,
-    height: 90,
-    borderRadius: 45,
+    width: 80,
+    height: 80,
+    borderRadius: 40,
     backgroundColor: Colors.primary,
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 16,
   },
   avatarPlaceholderText: {
-    fontSize: 36,
+    fontSize: 32,
     color: Colors.allWhite,
     fontWeight: '700',
   },
   basicInfo: {
     flex: 1,
     justifyContent: 'center',
+    gap: 4,
   },
   nameRow: {
     flexDirection: 'row',
     alignItems: 'center',
-  },
-  name: {
-    fontSize: 22,
-    fontWeight: '700',
-    color: Colors.textDark,
-    marginRight: 8,
-  },
-  genderBadge: {
-    backgroundColor: Colors.cardDark,
-    borderRadius: 12,
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    borderWidth: 1,
-    borderColor: Colors.borderDark,
-  },
-  genderText: {
-    color: Colors.primary,
-    fontSize: 14,
-    fontWeight: 'bold',
-  },
-  branch: {
-    fontSize: 16,
-    color: Colors.textSecondaryDark,
-    marginTop: 4,
-    marginBottom: 8,
-  },
-  statsRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
     gap: 8,
   },
-  statChip: {
-    backgroundColor: Colors.cardDark,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: Colors.borderDark,
-  },
-  statChipText: {
-    color: Colors.textDark,
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  section: {
-    marginBottom: 24,
-  },
-  sectionTitle: {
+  name: {
     fontSize: 18,
     fontWeight: '700',
     color: Colors.textDark,
-    marginBottom: 12,
+  },
+  genderBadge: {
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    backgroundColor: '#334155',
+    borderRadius: 4,
+  },
+  genderText: {
+    fontSize: 12,
+    color: Colors.textDark,
+  },
+  branch: {
+    fontSize: 13,
+    color: Colors.primary,
+    fontWeight: '600',
+  },
+  statsRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 4,
+  },
+  statChip: {
+    backgroundColor: '#1E293B',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#334155',
+  },
+  statChipText: {
+    fontSize: 11,
+    color: Colors.textSecondaryDark,
+    fontWeight: '500',
+  },
+  section: {
+    backgroundColor: '#1E293B',
+    padding: 16,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#334155',
+    gap: 8,
+  },
+  sectionTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: Colors.textDark,
   },
   bioText: {
-    fontSize: 15,
+    fontSize: 13,
     color: Colors.textSecondaryDark,
-    lineHeight: 22,
+    lineHeight: 20,
   },
   flowContainer: {
     flexDirection: 'row',
@@ -267,23 +297,23 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   flowChip: {
-    backgroundColor: Colors.cardDark,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 20,
+    backgroundColor: '#0F172A',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 8,
     borderWidth: 1,
-    borderColor: Colors.borderDark,
+    borderColor: '#334155',
   },
   flowChipText: {
+    fontSize: 12,
     color: Colors.textDark,
-    fontSize: 14,
   },
   footer: {
     flexDirection: 'row',
-    padding: 20,
-    backgroundColor: Colors.cardDark,
+    padding: 16,
+    backgroundColor: '#1E293B',
     borderTopWidth: 1,
-    borderTopColor: Colors.borderDark,
+    borderTopColor: '#334155',
     gap: 12,
   },
   messageButton: {
@@ -291,31 +321,30 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: Colors.backgroundDark,
-    borderRadius: 16,
+    paddingVertical: 12,
+    borderRadius: 10,
     borderWidth: 1,
     borderColor: Colors.primary,
-    paddingVertical: 14,
     gap: 8,
   },
   messageButtonText: {
     color: Colors.primary,
-    fontSize: 16,
-    fontWeight: '700',
+    fontSize: 14,
+    fontWeight: '600',
   },
   bookButton: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
+    paddingVertical: 12,
+    borderRadius: 10,
     backgroundColor: Colors.primary,
-    borderRadius: 16,
-    paddingVertical: 14,
     gap: 8,
   },
   bookButtonText: {
     color: Colors.allWhite,
-    fontSize: 16,
-    fontWeight: '700',
+    fontSize: 14,
+    fontWeight: '600',
   },
 });

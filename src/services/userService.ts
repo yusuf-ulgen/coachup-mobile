@@ -8,8 +8,10 @@ export interface UserProfile {
   gender?: string | null;
   phone?: string | null;
   birth_date?: string | null;
-  height_cm?: number | null;
-  weight_kg?: number | null;
+  height?: number | null;
+  weight?: number | null;
+  height_cm?: number | null; // Compatibility alias
+  weight_kg?: number | null; // Compatibility alias
   role?: string;
   gym_id?: string;
   gym_name?: string;
@@ -47,6 +49,12 @@ export const UserService = {
         return null;
       }
 
+      // Populate compatibility aliases
+      if (data) {
+        data.height_cm = data.height;
+        data.weight_kg = data.weight;
+      }
+
       // If user has gym_id but missing gym_name, fetch from gyms table
       if (data?.gym_id && !data?.gym_name) {
         const { data: gym } = await supabase
@@ -69,61 +77,50 @@ export const UserService = {
 
   async updateUserProfile(userId: string, updates: Partial<UserProfile>) {
     try {
+      const payload: Record<string, any> = {};
+
+      if (updates.name !== undefined) payload.name = updates.name;
+      if (updates.surname !== undefined) payload.surname = updates.surname;
+      if (updates.phone !== undefined) payload.phone = updates.phone;
+      if (updates.gender !== undefined) payload.gender = updates.gender;
+      if (updates.birth_date !== undefined) payload.birth_date = updates.birth_date;
+      if (updates.avatar_url !== undefined) payload.avatar_url = updates.avatar_url;
+      if (updates.profile_image_url !== undefined) payload.profile_image_url = updates.profile_image_url;
+      if (updates.gym_id !== undefined) payload.gym_id = updates.gym_id;
+
+      // Canonical height & weight mappings
+      if (updates.height !== undefined) {
+        payload.height = updates.height;
+      } else if (updates.height_cm !== undefined) {
+        payload.height = updates.height_cm;
+      }
+
+      if (updates.weight !== undefined) {
+        payload.weight = updates.weight;
+      } else if (updates.weight_kg !== undefined) {
+        payload.weight = updates.weight_kg;
+      }
+
       const { data, error } = await supabase
         .from('users')
-        .update(updates)
+        .update(payload)
         .eq('id', userId)
         .select()
         .single();
 
-      if (!error) return data;
-
-      // Handle PGRST204 schema cache mismatch gracefully
-      if (error.code === 'PGRST204' || error.message?.includes('column')) {
-        const safeUpdates: any = {};
-        if (updates.name !== undefined) safeUpdates.name = updates.name;
-        if (updates.surname !== undefined) safeUpdates.surname = updates.surname;
-        if (updates.phone !== undefined) safeUpdates.phone = updates.phone;
-        if (updates.gender !== undefined) safeUpdates.gender = updates.gender;
-        if (updates.birth_date !== undefined) safeUpdates.birth_date = updates.birth_date;
-        if (updates.height_cm !== undefined) safeUpdates.height_cm = updates.height_cm;
-        if (updates.weight_kg !== undefined) safeUpdates.weight_kg = updates.weight_kg;
-        if (updates.avatar_url !== undefined) safeUpdates.avatar_url = updates.avatar_url;
-
-        const { data: retryData, error: retryError } = await supabase
-          .from('users')
-          .update(safeUpdates)
-          .eq('id', userId)
-          .select()
-          .single();
-
-        if (retryError) {
-          // If height_cm / weight_kg columns are named height / weight in DB table, try fallback column names
-          const fallbackUpdates: any = { ...safeUpdates };
-          if (updates.height_cm !== undefined) {
-            delete fallbackUpdates.height_cm;
-            fallbackUpdates.height = updates.height_cm;
-          }
-          if (updates.weight_kg !== undefined) {
-            delete fallbackUpdates.weight_kg;
-            fallbackUpdates.weight = updates.weight_kg;
-          }
-          const { data: fbData } = await supabase
-            .from('users')
-            .update(fallbackUpdates)
-            .eq('id', userId)
-            .select()
-            .single();
-          return fbData || { id: userId, ...updates };
-        }
-
-        return retryData || { id: userId, ...updates };
+      if (error) {
+        console.error('Error updating user profile in Supabase:', error);
+        throw error;
       }
-      throw error;
+
+      if (data) {
+        data.height_cm = data.height;
+        data.weight_kg = data.weight;
+      }
+
+      return data;
     } catch (e: any) {
-      if (e?.code === 'PGRST204' || e?.message?.includes('column')) {
-        return { id: userId, ...updates };
-      }
+      console.error('updateUserProfile error:', e);
       throw e;
     }
   },
@@ -146,7 +143,6 @@ export const UserService = {
   async selectMembership(userId: string, gymId: string, gymName: string) {
     return this.updateUserProfile(userId, {
       gym_id: gymId,
-      gym_name: gymName,
     });
   },
 
@@ -190,16 +186,15 @@ export const UserService = {
       return profile.gym_id && profile.gym_id.trim().length > 0 ? profile.gym_id : 'staff';
     }
 
-    if (profile.role === 'individual' || profile.is_individual) return null;
-
     try {
       const userId = profile.id || (profile as any).user_id;
       if (!userId) return null;
 
+      // 1. Primary Source of Truth: Active user_memberships
       const memberships = await this.fetchAvailableMemberships(userId);
       const activeMemberships = memberships.filter((m: any) => {
         const isNotDisabled = m.is_active !== false;
-        const notExpired = !m.end_date || new Date(m.end_date) > new Date();
+        const notExpired = !m.end_date || new Date(m.end_date) >= new Date();
         return isNotDisabled && notExpired;
       });
 
@@ -221,6 +216,11 @@ export const UserService = {
       console.error('Error resolving active gym ID:', e);
     }
 
+    // If profile has an active gym_id and not strictly flagged individual
+    if (profile.gym_id && profile.role !== 'individual' && !profile.is_individual) {
+      return profile.gym_id;
+    }
+
     return null;
   },
 
@@ -237,4 +237,3 @@ export const UserService = {
     return !!activeGymId;
   },
 };
-

@@ -10,26 +10,26 @@ export interface GroupClass {
   end_time: string;
   capacity?: number;
   date_str?: string;
+  day_of_week?: number;
 }
 
 export interface ClassBooking {
   id: string;
   class_id: string;
   user_id: string;
-  booked_at?: string;
+  created_at?: string;
   status?: string;
   is_waitlist?: boolean;
   group_class?: GroupClass;
 }
 
 export const GroupClassService = {
-  async fetchBookingsForDate(userId: string, dateStr: string): Promise<ClassBooking[]> {
+  async fetchBookingsForDate(userId: string, _dateStr: string): Promise<ClassBooking[]> {
     try {
       const { data, error } = await supabase
         .from('class_bookings')
         .select('*, group_class:group_classes(*)')
         .eq('user_id', userId)
-        .eq('booking_date', dateStr)
         .neq('status', 'cancelled');
 
       if (error) throw error;
@@ -79,26 +79,55 @@ export const GroupClassService = {
     }
   },
 
-  async bookClass(userId: string, classId: string, bookingDate?: string, status: string = 'booked') {
+  async bookClass(userId: string, classId: string, bookingDate?: string) {
     const targetDate = bookingDate || new Date().toISOString().split('T')[0];
-    const { data, error } = await supabase.from('class_bookings').insert({
-      user_id: userId,
-      class_id: classId,
-      booking_date: targetDate,
-      status: status,
+    
+    // Call atomic RPC
+    const { data, error } = await supabase.rpc('atomic_book_group_class', {
+      p_user_id: userId,
+      p_class_id: classId,
+      p_booking_date: targetDate,
     });
 
-    if (error) throw error;
+    if (error) {
+      // Direct insert fallback if RPC is not deployed yet
+      const { data: directData, error: directErr } = await supabase.from('class_bookings').insert({
+        user_id: userId,
+        class_id: classId,
+        status: 'booked',
+      }).select().single();
+      if (directErr) throw directErr;
+      return directData;
+    }
+
+    if (data && !data.success) {
+      throw new Error(data.error || 'Ders rezervasyonu oluşturulamadı.');
+    }
+
     return data;
   },
 
-  async cancelBooking(bookingId: string) {
-    const { data, error } = await supabase
-      .from('class_bookings')
-      .delete()
-      .eq('id', bookingId);
+  async cancelBooking(userId: string, bookingId: string) {
+    const { data, error } = await supabase.rpc('atomic_cancel_group_class', {
+      p_user_id: userId,
+      p_booking_id: bookingId,
+    });
 
-    if (error) throw error;
+    if (error) {
+      const { data: directData, error: directErr } = await supabase
+        .from('class_bookings')
+        .update({ status: 'cancelled' })
+        .eq('id', bookingId)
+        .select()
+        .single();
+      if (directErr) throw directErr;
+      return directData;
+    }
+
+    if (data && !data.success) {
+      throw new Error(data.error || 'Rezervasyon iptal edilemedi.');
+    }
+
     return data;
   },
 };

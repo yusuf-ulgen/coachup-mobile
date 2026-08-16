@@ -46,8 +46,8 @@ export const CoachListScreen: React.FC<CoachListScreenProps> = ({ navigation }) 
     const matchesSearch = !searchQuery ||
       coach.name?.toLowerCase().includes(searchLower) ||
       coach.surname?.toLowerCase().includes(searchLower) ||
-      coach.speciality?.toLowerCase().includes(searchLower) ||
-      (coach as any).specialization?.toLowerCase().includes(searchLower);
+      coach.specialty?.toLowerCase().includes(searchLower) ||
+      (typeof coach.specializations === 'string' && coach.specializations.toLowerCase().includes(searchLower));
     
     const matchesGender = genderFilter === 'all' || coach.gender === genderFilter;
     return matchesSearch && matchesGender;
@@ -125,7 +125,7 @@ export const CoachListScreen: React.FC<CoachListScreenProps> = ({ navigation }) 
                 <View style={styles.coachInfo}>
                   <Text style={styles.coachName}>{fullName}</Text>
                   <Text style={styles.coachBranch}>
-                    {item.speciality || 'Fitness & Vücut Geliştirme'}
+                    {item.specialty || 'Fitness & Vücut Geliştirme'}
                   </Text>
                   {item.rating ? (
                     <Text style={styles.coachRating}>{item.rating} ⭐</Text>

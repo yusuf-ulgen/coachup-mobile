@@ -15,7 +15,7 @@ export interface EventParticipant {
   id: string;
   event_id: string;
   user_id: string;
-  status: string;
+  status: 'registered' | 'waiting' | 'cancelled' | string;
 }
 
 export const GymEventService = {
@@ -34,21 +34,15 @@ export const GymEventService = {
     }
   },
 
-  async fetchParticipationsForDate(userId: string, dateStr: string): Promise<EventParticipant[]> {
+  async fetchParticipationsForDate(userId: string, _dateStr: string): Promise<EventParticipant[]> {
     try {
       const { data, error } = await supabase
         .from('event_participants')
         .select('*')
-        .eq('user_id', userId);
+        .eq('user_id', userId)
+        .neq('status', 'cancelled');
 
-      if (error) {
-        const { data: fallback } = await supabase
-          .from('gym_event_participants')
-          .select('*')
-          .eq('user_id', userId);
-        if (fallback) return fallback;
-        throw error;
-      }
+      if (error) throw error;
       return data || [];
     } catch (e) {
       console.error('Error fetching event participations:', e);
@@ -58,32 +52,56 @@ export const GymEventService = {
 
   async joinEvent(userId: string, eventId: string): Promise<string> {
     try {
-      const { data, error } = await supabase
-        .from('event_participants')
-        .insert({
-          event_id: eventId,
-          user_id: userId,
-          status: 'confirmed',
-        })
-        .select()
-        .single();
+      const { data, error } = await supabase.rpc('atomic_join_event', {
+        p_user_id: userId,
+        p_event_id: eventId,
+      });
 
-      if (error) throw error;
-      return data?.status || 'confirmed';
+      if (error) {
+        // Direct fallback
+        const { data: directData, error: directErr } = await supabase
+          .from('event_participants')
+          .insert({
+            event_id: eventId,
+            user_id: userId,
+            status: 'registered',
+          })
+          .select()
+          .single();
+        if (directErr) throw directErr;
+        return directData?.status || 'registered';
+      }
+
+      if (data && !data.success) {
+        throw new Error(data.error || 'Etkinlik kaydı yapılamadı.');
+      }
+
+      return data?.status || 'registered';
     } catch (e) {
       console.error('Error joining gym event:', e);
       throw e;
     }
   },
 
-  async leaveEvent(participantId: string): Promise<void> {
+  async leaveEvent(userId: string, participantId: string): Promise<void> {
     try {
-      const { error } = await supabase
-        .from('event_participants')
-        .delete()
-        .eq('id', participantId);
+      const { data, error } = await supabase.rpc('atomic_leave_event', {
+        p_user_id: userId,
+        p_participant_id: participantId,
+      });
 
-      if (error) throw error;
+      if (error) {
+        const { error: directErr } = await supabase
+          .from('event_participants')
+          .update({ status: 'cancelled' })
+          .eq('id', participantId);
+        if (directErr) throw directErr;
+        return;
+      }
+
+      if (data && !data.success) {
+        throw new Error(data.error || 'Etkinlik kaydı iptal edilemedi.');
+      }
     } catch (e) {
       console.error('Error leaving gym event:', e);
       throw e;

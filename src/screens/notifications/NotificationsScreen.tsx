@@ -7,11 +7,10 @@ import {
   FlatList,
   ActivityIndicator,
 } from 'react-native';
-import { ArrowLeft, Bell, CheckCheck, Trash2, ShieldAlert, Dumbbell, CreditCard, User, DollarSign, Clock, Shield, X } from 'lucide-react-native';
+import { ArrowLeft, Bell, CheckCheck, Trash2, Dumbbell, CreditCard, User, DollarSign, Clock, Shield, X } from 'lucide-react-native';
 import { Colors } from '../../theme/colors';
 import { AuthService } from '../../services/authService';
-import { NotificationService, AppNotification } from '../../services/notificationService';
-import { supabase } from '../../services/supabaseClient';
+import { NotificationService, NotificationItem } from '../../services/notificationService';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const getNotifIcon = (type: string) => {
@@ -32,50 +31,69 @@ interface NotificationsScreenProps {
 
 export const NotificationsScreen: React.FC<NotificationsScreenProps> = ({ navigation }) => {
   const insets = useSafeAreaInsets();
-  const [notifications, setNotifications] = useState<AppNotification[]>([]);
+  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [loading, setLoading] = useState(true);
 
   const unreadCount = notifications.filter((n) => !n.is_read).length;
 
   useEffect(() => {
-    loadNotifications();
-  }, []);
+    let unsubscribe: (() => void) | undefined;
 
-  const loadNotifications = async () => {
-    setLoading(true);
-    try {
-      const user = await AuthService.getCurrentUser();
-      if (!user) return;
-      const data = await NotificationService.fetchNotifications(user.id);
-      setNotifications(data);
-    } catch (e) {
-      console.error('Failed to load notifications:', e);
-    } finally {
-      setLoading(false);
-    }
-  };
+    const setup = async () => {
+      setLoading(true);
+      try {
+        const user = await AuthService.getCurrentUser();
+        if (!user) return;
+        const data = await NotificationService.fetchNotifications(user.id);
+        setNotifications(data);
+
+        unsubscribe = NotificationService.subscribeToNotifications(user.id, (payload) => {
+          if (payload.eventType === 'INSERT' && payload.new) {
+            setNotifications((prev) => [payload.new, ...prev.filter((n) => n.id !== payload.new.id)]);
+          } else if (payload.eventType === 'UPDATE' && payload.new) {
+            setNotifications((prev) => prev.map((n) => (n.id === payload.new.id ? payload.new : n)));
+          } else if (payload.eventType === 'DELETE' && payload.old) {
+            setNotifications((prev) => prev.filter((n) => n.id !== payload.old.id));
+          }
+        });
+      } catch (e) {
+        console.error('Failed to load notifications:', e);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    setup();
+
+    return () => {
+      if (unsubscribe) unsubscribe();
+    };
+  }, []);
 
   const handleMarkAllRead = async () => {
     const user = await AuthService.getCurrentUser();
     if (!user) return;
-    await NotificationService.markAllAsRead(user.id);
-    loadNotifications();
+    try {
+      await NotificationService.markAllAsRead(user.id);
+      setNotifications((prev) => prev.map((n) => ({ ...n, is_read: true })));
+    } catch (e) {
+      console.error('Error marking all as read:', e);
+    }
   };
 
-  const handleClearAll = async () => {
-    const user = await AuthService.getCurrentUser();
-    if (!user) return;
-    await NotificationService.clearAllNotifications(user.id);
-    setNotifications([]);
+  const handleMarkOneRead = async (notifId: string) => {
+    try {
+      await NotificationService.markAsRead(notifId);
+      setNotifications((prev) => prev.map((n) => (n.id === notifId ? { ...n, is_read: true } : n)));
+    } catch (e) {
+      console.error('Error marking as read:', e);
+    }
   };
 
   const handleDeleteNotification = async (notifId: string) => {
     try {
-      await supabase
-        .from('notifications')
-        .update({ is_read: true })
-        .eq('id', notifId);
-      setNotifications(prev => prev.filter(n => n.id !== notifId));
+      await NotificationService.deleteNotification(notifId);
+      setNotifications((prev) => prev.filter((n) => n.id !== notifId));
     } catch (e) {
       console.error('Bildirim silinirken hata:', e);
     }
@@ -99,9 +117,6 @@ export const NotificationsScreen: React.FC<NotificationsScreenProps> = ({ naviga
           <View style={styles.headerActions}>
             <TouchableOpacity style={styles.iconBtn} onPress={handleMarkAllRead}>
               <CheckCheck size={20} color={Colors.primary} />
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.iconBtn} onPress={handleClearAll}>
-              <Trash2 size={20} color={Colors.error} />
             </TouchableOpacity>
           </View>
         )}
@@ -128,20 +143,30 @@ export const NotificationsScreen: React.FC<NotificationsScreenProps> = ({ naviga
           renderItem={({ item }) => {
             const { icon: IconComponent, color: iconColor } = getNotifIcon(item.type || 'system');
             return (
-            <View style={[styles.card, !item.is_read && styles.unreadCard]}>
-              <View style={styles.cardHeader}>
-                <IconComponent size={18} color={!item.is_read ? iconColor : Colors.textSecondaryDark} />
-                <Text style={styles.cardTitle}>{item.title}</Text>
-                <TouchableOpacity onPress={() => handleDeleteNotification(item.id)}>
-                  <X size={18} color={Colors.textSecondaryDark} />
-                </TouchableOpacity>
-              </View>
-              <Text style={styles.cardBody}>{item.body}</Text>
-              <Text style={styles.cardTime}>
-                {new Date(item.created_at).toLocaleString('tr-TR')}
-              </Text>
-            </View>
-          )}}
+              <TouchableOpacity
+                activeOpacity={0.8}
+                onPress={() => !item.is_read && handleMarkOneRead(item.id)}
+                style={[styles.card, !item.is_read && styles.unreadCard]}
+              >
+                <View style={styles.cardHeader}>
+                  <IconComponent size={18} color={!item.is_read ? iconColor : Colors.textSecondaryDark} />
+                  <Text style={styles.cardTitle}>{item.title}</Text>
+                  <TouchableOpacity onPress={() => handleDeleteNotification(item.id)} style={{ padding: 4 }}>
+                    <X size={18} color={Colors.textSecondaryDark} />
+                  </TouchableOpacity>
+                </View>
+                <Text style={styles.cardBody}>{item.message}</Text>
+                <Text style={styles.cardTime}>
+                  {new Date(item.created_at).toLocaleDateString('tr-TR', {
+                    day: 'numeric',
+                    month: 'short',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                  })}
+                </Text>
+              </TouchableOpacity>
+            );
+          }}
         />
       )}
     </View>
@@ -151,31 +176,29 @@ export const NotificationsScreen: React.FC<NotificationsScreenProps> = ({ naviga
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: Colors.backgroundDark,
+    backgroundColor: '#0F172A',
   },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingTop: 50,
-    paddingBottom: 16,
-    backgroundColor: Colors.cardDark,
+    paddingHorizontal: 16,
+    paddingBottom: 12,
     borderBottomWidth: 1,
-    borderBottomColor: Colors.borderDark,
+    borderBottomColor: '#1E293B',
+    gap: 12,
   },
   backBtn: {
-    marginRight: 14,
+    padding: 4,
   },
   headerTitle: {
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: '700',
     color: Colors.textDark,
   },
   unreadText: {
     fontSize: 12,
     color: Colors.primary,
-    fontWeight: '600',
-    marginTop: 2,
+    fontWeight: '500',
   },
   headerActions: {
     flexDirection: 'row',
@@ -183,41 +206,23 @@ const styles = StyleSheet.create({
   },
   iconBtn: {
     padding: 8,
-    borderRadius: 10,
-    backgroundColor: Colors.backgroundDark,
-  },
-  centerBox: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 32,
-  },
-  emptyTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: Colors.textDark,
-    marginTop: 12,
-  },
-  emptySubtitle: {
-    fontSize: 13,
-    color: Colors.textSecondaryDark,
-    marginTop: 6,
-    textAlign: 'center',
+    borderRadius: 8,
+    backgroundColor: '#1E293B',
   },
   listContent: {
-    padding: 20,
+    padding: 16,
     gap: 12,
   },
   card: {
-    backgroundColor: Colors.cardDark,
-    borderRadius: 18,
-    padding: 16,
+    backgroundColor: '#1E293B',
+    borderRadius: 12,
+    padding: 14,
     borderWidth: 1,
-    borderColor: Colors.borderDark,
+    borderColor: '#334155',
   },
   unreadCard: {
     borderColor: Colors.primary,
-    backgroundColor: 'rgba(255, 96, 71, 0.06)',
+    backgroundColor: '#1e293b',
   },
   cardHeader: {
     flexDirection: 'row',
@@ -226,19 +231,37 @@ const styles = StyleSheet.create({
     marginBottom: 6,
   },
   cardTitle: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: Colors.textDark,
     flex: 1,
+    fontSize: 14,
+    fontWeight: '600',
+    color: Colors.textDark,
   },
   cardBody: {
-    fontSize: 14,
+    fontSize: 13,
     color: Colors.textSecondaryDark,
-    lineHeight: 20,
+    lineHeight: 18,
     marginBottom: 8,
   },
   cardTime: {
     fontSize: 11,
+    color: '#64748B',
+  },
+  centerBox: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 32,
+    gap: 12,
+  },
+  emptyTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: Colors.textDark,
+  },
+  emptySubtitle: {
+    fontSize: 13,
     color: Colors.textSecondaryDark,
+    textAlign: 'center',
+    lineHeight: 18,
   },
 });

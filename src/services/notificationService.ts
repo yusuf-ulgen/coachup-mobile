@@ -1,17 +1,22 @@
 import { supabase } from './supabaseClient';
+import { RealtimeChannel } from '@supabase/supabase-js';
 
-export interface AppNotification {
+export interface NotificationItem {
   id: string;
   user_id: string;
+  gym_id?: string;
   title: string;
-  body: string;
-  type?: string;
+  message: string;
+  type: string;
   is_read: boolean;
+  action_url?: string;
   created_at: string;
 }
 
+let activeNotificationChannel: RealtimeChannel | null = null;
+
 export const NotificationService = {
-  async fetchNotifications(userId: string): Promise<AppNotification[]> {
+  async fetchNotifications(userId: string): Promise<NotificationItem[]> {
     try {
       const { data, error } = await supabase
         .from('notifications')
@@ -20,45 +25,94 @@ export const NotificationService = {
         .order('created_at', { ascending: false });
 
       if (error) {
-        // Fallback demo notifications if table is empty
-        return [
-          {
-            id: '1',
-            user_id: userId,
-            title: 'Hoş Geldiniz! 🏋️',
-            body: 'CoachUp ailesine katıldığınız için teşekkür ederiz. Antrenman programlarınızı hemen inceleyin.',
-            is_read: false,
-            created_at: new Date().toISOString(),
-          },
-          {
-            id: '2',
-            user_id: userId,
-            title: 'Günün Programı Hazır 🔥',
-            body: 'Bugün için planlanan göğüs ve ön kol antrenmanınız sizi bekliyor.',
-            is_read: true,
-            created_at: new Date(Date.now() - 86400000).toISOString(),
-          },
-        ];
+        console.error('Error fetching notifications:', error);
+        return [];
       }
-
       return data || [];
     } catch (e) {
-      console.error('Error fetching notifications:', e);
+      console.error('Error in fetchNotifications:', e);
       return [];
     }
   },
 
-  async markAllAsRead(userId: string) {
-    await supabase
-      .from('notifications')
-      .update({ is_read: true })
-      .eq('user_id', userId);
+  async markAsRead(notificationId: string): Promise<void> {
+    try {
+      const { error } = await supabase
+        .from('notifications')
+        .update({ is_read: true })
+        .eq('id', notificationId);
+
+      if (error) throw error;
+    } catch (e) {
+      console.error('Error in markAsRead:', e);
+      throw e;
+    }
   },
 
-  async clearAllNotifications(userId: string) {
-    await supabase
-      .from('notifications')
-      .delete()
-      .eq('user_id', userId);
+  async markAllAsRead(userId: string): Promise<void> {
+    try {
+      const { error } = await supabase
+        .from('notifications')
+        .update({ is_read: true })
+        .eq('user_id', userId)
+        .eq('is_read', false);
+
+      if (error) throw error;
+    } catch (e) {
+      console.error('Error in markAllAsRead:', e);
+      throw e;
+    }
+  },
+
+  async deleteNotification(notificationId: string): Promise<void> {
+    try {
+      const { error } = await supabase
+        .from('notifications')
+        .delete()
+        .eq('id', notificationId);
+
+      if (error) throw error;
+    } catch (e) {
+      console.error('Error in deleteNotification:', e);
+      throw e;
+    }
+  },
+
+  /**
+   * Subscribes to realtime postgres changes on the notifications table for this user.
+   */
+  subscribeToNotifications(userId: string, onPayload: (payload: any) => void): () => void {
+    if (activeNotificationChannel) {
+      supabase.removeChannel(activeNotificationChannel);
+      activeNotificationChannel = null;
+    }
+
+    const channelName = `notifications:user:${userId}`;
+    const channel = supabase
+      .channel(channelName)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'notifications',
+          filter: `user_id=eq.${userId}`,
+        },
+        (payload) => {
+          onPayload(payload);
+        }
+      )
+      .subscribe();
+
+    activeNotificationChannel = channel;
+
+    return () => {
+      if (channel) {
+        supabase.removeChannel(channel);
+      }
+      if (activeNotificationChannel === channel) {
+        activeNotificationChannel = null;
+      }
+    };
   },
 };

@@ -206,7 +206,7 @@ export default function GroupClassesScreen({ navigation }: any) {
       const user = await AuthService.getCurrentUser();
       if (user?.id) {
         if (newStatus !== 'none') {
-          await GroupClassService.bookClass(user.id, item.id, selectedDateStr, newStatus).catch(() => {});
+          await GroupClassService.bookClass(user.id, item.id, selectedDateStr).catch(() => {});
         }
       }
 
