@@ -1,4 +1,5 @@
 import { supabase } from './supabaseClient';
+import { formatLocalDate } from '../utils/dateUtils';
 
 export interface GroupClass {
   id: string;
@@ -116,7 +117,7 @@ export const GroupClassService = {
   },
 
   async bookClass(userId: string, classId: string, bookingDate?: string) {
-    const targetDate = bookingDate || new Date().toISOString().split('T')[0];
+    const targetDate = bookingDate || formatLocalDate(new Date());
     
     // 1. Try atomic RPC first
     try {

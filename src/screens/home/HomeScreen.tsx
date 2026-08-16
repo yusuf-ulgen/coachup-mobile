@@ -36,6 +36,7 @@ import { supabase } from '../../services/supabaseClient';
 import { HomeTabState } from '../../navigation/HomeTabState';
 import { InlinePermissionsModal } from '../../components/InlinePermissionsModal';
 import { PermissionPreferenceService } from '../../services/permissionPreferenceService';
+import { formatLocalDate } from '../../utils/dateUtils';
 
 interface HomeScreenProps {
   navigation: any;
@@ -51,13 +52,13 @@ interface WeekDay {
 const buildWeekDays = (): WeekDay[] => {
   const days: WeekDay[] = [];
   const today = new Date();
-  const todayStr = today.toISOString().split('T')[0];
+  const todayStr = formatLocalDate(today);
   const dayNames = ['Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cts', 'Paz'];
 
   for (let i = -30; i < 30; i++) {
     const d = new Date();
     d.setDate(today.getDate() + i);
-    const dateStr = d.toISOString().split('T')[0];
+    const dateStr = formatLocalDate(d);
     const nameIndex = (d.getDay() + 6) % 7;
     days.push({
       name: dayNames[nameIndex],
@@ -76,7 +77,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
   const [menuVisible, setMenuVisible] = useState(false);
   const [userProfile, setUserProfile] = useState<any>(null);
   const [selectedDate, setSelectedDateState] = useState<string>(
-    HomeTabState.selectedDate || new Date().toISOString().split('T')[0]
+    HomeTabState.selectedDate || formatLocalDate(new Date())
   );
   // Okunmamış bildirim sayısı
   const [unreadNotifCount, setUnreadNotifCount] = useState(0);

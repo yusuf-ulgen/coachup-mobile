@@ -1,6 +1,8 @@
+import { formatLocalDate } from '../utils/dateUtils';
+
 export const HomeTabState = {
   selectedTabName: 'HOME',
-  selectedDate: new Date().toISOString().split('T')[0],
+  selectedDate: formatLocalDate(new Date()),
   hasUserSelectedTab: false,
   hasAppliedDefaultTab: false,
 };
