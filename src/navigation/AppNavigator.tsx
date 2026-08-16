@@ -329,10 +329,8 @@ export const AppNavigator: React.FC = () => {
   }, [session]);
 
   useEffect(() => {
-    if (!loading) {
-      SplashScreen.hideAsync().catch(() => {});
-    }
-  }, [loading]);
+    SplashScreen.hideAsync().catch(() => {});
+  }, []);
 
   if (loading || showSplash || (session && !guardianChecked)) {
     return <SplashView onAnimationFinish={() => setShowSplash(false)} />;
