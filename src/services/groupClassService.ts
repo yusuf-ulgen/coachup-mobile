@@ -82,10 +82,33 @@ export const GroupClassService = {
         .order('start_time', { ascending: true });
 
       if (error) throw error;
-      if (!data) return [];
+      if (!data || data.length === 0) return [];
 
       const targetDay = new Date(dateStr).getDay();
-      return data.filter((c: any) => c.day_of_week === undefined || c.day_of_week === null || c.day_of_week === targetDay);
+      const filtered = data.filter((c: any) => c.day_of_week === undefined || c.day_of_week === null || c.day_of_week === targetDay);
+
+      if (filtered.length === 0) return [];
+
+      // Calculate dynamic participant counts from class_bookings
+      const classIds = filtered.map((c: any) => c.id);
+      const { data: bookingsData } = await supabase
+        .from('class_bookings')
+        .select('class_id, status, booking_date')
+        .in('class_id', classIds)
+        .in('status', ['booked', 'confirmed']);
+
+      const countMap: Record<string, number> = {};
+      (bookingsData || []).forEach((b: any) => {
+        if (!b.booking_date || b.booking_date === dateStr) {
+          countMap[b.class_id] = (countMap[b.class_id] || 0) + 1;
+        }
+      });
+
+      return filtered.map((c: any) => ({
+        ...c,
+        enrolled_count: countMap[c.id] || 0,
+        current_participants: countMap[c.id] || 0,
+      }));
     } catch (e) {
       console.error('Error fetching classes for date:', e);
       return [];
@@ -125,24 +148,6 @@ export const GroupClassService = {
     }
 
     // 2. Direct fallback booking logic
-    // Check if user already booked
-    const { data: existing } = await supabase
-      .from('class_bookings')
-      .select('id, status')
-      .eq('class_id', classId)
-      .eq('user_id', userId)
-      .neq('status', 'cancelled')
-      .maybeSingle();
-
-    if (existing) {
-      return {
-        success: true,
-        booking_id: existing.id,
-        status: existing.status,
-        is_waiting: existing.status === 'waiting' || existing.status === 'waitlist',
-      };
-    }
-
     // Check capacity
     const { data: cls } = await supabase
       .from('group_classes')
@@ -152,36 +157,112 @@ export const GroupClassService = {
 
     const capacity = cls?.capacity || 20;
 
-    // Count active participants
+    // Count active participants (excluding cancelled)
     const { count } = await supabase
       .from('class_bookings')
       .select('*', { count: 'exact', head: true })
       .eq('class_id', classId)
-      .in('status', ['booked', 'confirmed']);
+      .in('status', ['booked', 'confirmed'])
+      .or(`booking_date.eq.${targetDate},booking_date.is.null`);
 
     const activeCount = count || 0;
     const isWaiting = activeCount >= capacity;
-    const status = isWaiting ? 'waitlist' : 'confirmed';
+    const targetStatus = isWaiting ? 'waitlist' : 'confirmed';
 
+    // Check if any booking row exists for this user and class (active or cancelled)
+    const { data: existingBooking } = await supabase
+      .from('class_bookings')
+      .select('id, status, booking_date')
+      .eq('class_id', classId)
+      .eq('user_id', userId)
+      .or(`booking_date.eq.${targetDate},booking_date.is.null`)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (existingBooking) {
+      const currentStatus = (existingBooking.status || '').toLowerCase();
+      // If already active in class or waiting list
+      if (['booked', 'confirmed', 'waiting', 'waitlist'].includes(currentStatus)) {
+        return {
+          success: true,
+          booking_id: existingBooking.id,
+          status: currentStatus,
+          is_waiting: currentStatus === 'waiting' || currentStatus === 'waitlist',
+        };
+      }
+
+      // If previously cancelled, re-activate the existing row (prevents unique constraint error)
+      const { data: reactivated, error: updateError } = await supabase
+        .from('class_bookings')
+        .update({
+          status: targetStatus,
+          booking_date: targetDate,
+          created_at: new Date().toISOString(),
+        })
+        .eq('id', existingBooking.id)
+        .select()
+        .single();
+
+      if (updateError) {
+        throw new Error(updateError.message || 'Ders rezervasyonu gerçekleştirilemedi.');
+      }
+
+      return {
+        success: true,
+        booking_id: reactivated.id,
+        status: targetStatus,
+        is_waiting: isWaiting,
+      };
+    }
+
+    // Insert new booking with conflict handling
     const { data: inserted, error: insertError } = await supabase
       .from('class_bookings')
       .insert({
         class_id: classId,
         user_id: userId,
-        status: status,
+        status: targetStatus,
         booking_date: targetDate,
       })
       .select()
       .single();
 
     if (insertError) {
+      // If unique constraint violation occurs, update the existing row
+      if (
+        insertError.code === '23505' ||
+        insertError.message?.includes('unique constraint') ||
+        insertError.message?.includes('duplicate key')
+      ) {
+        const { data: updatedOnConflict, error: conflictUpdateErr } = await supabase
+          .from('class_bookings')
+          .update({
+            status: targetStatus,
+            booking_date: targetDate,
+            created_at: new Date().toISOString(),
+          })
+          .eq('class_id', classId)
+          .eq('user_id', userId)
+          .select()
+          .single();
+
+        if (!conflictUpdateErr && updatedOnConflict) {
+          return {
+            success: true,
+            booking_id: updatedOnConflict.id,
+            status: targetStatus,
+            is_waiting: isWaiting,
+          };
+        }
+      }
       throw new Error(insertError.message || 'Ders rezervasyonu gerçekleştirilemedi.');
     }
 
     return {
       success: true,
       booking_id: inserted.id,
-      status: status,
+      status: targetStatus,
       is_waiting: isWaiting,
     };
   },
