@@ -27,7 +27,7 @@ import { AuthService } from '../../services/authService';
 import { SideMenu } from '../../components/SideMenu';
 import { ScheduleService, ScheduledProgram } from '../../services/scheduleService';
 import { TrainingService, TrainingSession } from '../../services/trainingService';
-import { GroupClassService, ClassBooking } from '../../services/groupClassService';
+import { GroupClassService, BookedClassItem } from '../../services/groupClassService';
 import { GoalService, UserGoal } from '../../services/goalService';
 import { UserService } from '../../services/userService';
 import { NotificationService } from '../../services/notificationService';
@@ -91,7 +91,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
   // Live Supabase Data State
   const [scheduledPrograms, setScheduledPrograms] = useState<ScheduledProgram[]>([]);
   const [completedSessions, setCompletedSessions] = useState<TrainingSession[]>([]);
-  const [groupBookings, setGroupBookings] = useState<ClassBooking[]>([]);
+  const [bookedGroupClasses, setBookedGroupClasses] = useState<BookedClassItem[]>([]);
   const [userGoals, setUserGoals] = useState<UserGoal[]>([]);
 
   const [availableMemberships, setAvailableMemberships] = useState<any[]>([]);
@@ -202,13 +202,13 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
         TrainingService.fetchCompletedSessionsForDate(userId, selectedDate),
         isIndividualUser
           ? Promise.resolve([])
-          : GroupClassService.fetchBookingsForDate(userId, selectedDate),
+          : GroupClassService.fetchBookedClassesForDate(userId, selectedDate),
         GoalService.fetchGoalsForDate(userId, selectedDate),
       ]);
 
       setScheduledPrograms(programs);
       setCompletedSessions(sessions);
-      setGroupBookings(bookings);
+      setBookedGroupClasses(bookings);
       setUserGoals(goals);
     } catch (e) {
       console.error('Error loading Supabase live data:', e);
@@ -225,7 +225,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
   const hasContent =
     scheduledPrograms.length > 0 ||
     completedSessions.length > 0 ||
-    groupBookings.length > 0 ||
+    bookedGroupClasses.length > 0 ||
     userGoals.length > 0;
 
   return (
@@ -508,36 +508,40 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
                 );
               })}
 
-              {/* Grup Dersi Kartları (GroupClassProgramCard) */}
-              {groupBookings.map((booking: ClassBooking) => {
-                const groupClass = booking.group_class || (booking as any).class;
-                const statusStr = booking.status?.toLowerCase() || '';
-                const isWaitlist = statusStr === 'waitlist' || statusStr === 'waiting';
-                const isConfirmed = statusStr === 'confirmed' || statusStr === 'booked';
+              {/* Katıldığım Grup Dersleri — Takvim ile senkron durum badge'leri */}
+              {bookedGroupClasses.map((item) => (
+                <View
+                  key={item.bookingId}
+                  style={[
+                    styles.groupClassCard,
+                    item.isPast && { opacity: 0.75 },
+                  ]}
+                >
+                  {/* Geçmiş etkinlik bannerı */}
+                  {item.isPast && (
+                    <View style={styles.pastBanner}>
+                      <Text style={styles.pastBannerText}>⏰ Etkinlik Sona Erdi  ·  {item.startTime}{item.endTime ? ` - ${item.endTime}` : ''}</Text>
+                    </View>
+                  )}
 
-                const startTimeStr = groupClass?.start_time ? groupClass.start_time.substring(0, 5) : null;
-                const endTimeStr = groupClass?.end_time ? groupClass.end_time.substring(0, 5) : null;
-                const timeDisplay = startTimeStr ? (endTimeStr ? `${startTimeStr} - ${endTimeStr}` : startTimeStr) : null;
-
-                return (
-                  <View key={booking.id} style={styles.groupClassCard}>
+                  {/* Kart içeriği */}
+                  <View style={styles.groupClassCardRow}>
                     <View style={styles.groupClassIconBox}>
                       <Users size={20} color="#9C27B0" />
                     </View>
                     <View style={{ flex: 1 }}>
-                      <Text style={styles.cardTitle}>
-                        {groupClass?.name || 'Grup Dersi'}
-                      </Text>
+                      <Text style={styles.cardTitle}>{item.name}</Text>
                       <Text style={styles.cardSubtitle}>
-                        {groupClass?.instructor_name
-                          ? `Eğitmen: ${groupClass.instructor_name}`
+                        {item.instructorName
+                          ? `Eğitmen: ${item.instructorName}`
                           : 'Grup Eğitimi'}
                       </Text>
-                      {timeDisplay && (
+                      {!item.isPast && (item.startTime || item.endTime) && (
                         <View style={styles.statusRow}>
                           <Clock size={12} color={Colors.textSecondaryDark} />
                           <Text style={[styles.cardSubtitle, { marginTop: 0, marginLeft: 4 }]}>
-                            {timeDisplay}
+                            {item.startTime}
+                            {item.endTime ? ` - ${item.endTime}` : ''}
                           </Text>
                         </View>
                       )}
@@ -545,20 +549,23 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
                     <View
                       style={[
                         styles.bookingStatusBadge,
-                        isWaitlist && styles.bookingStatusWaitlist,
+                        item.isPast && styles.bookingStatusPast,
+                        item.isWaitlist && styles.bookingStatusWaitlist,
                       ]}
                     >
-                      <Text style={styles.bookingStatusText}>
-                        {isConfirmed
-                          ? 'Katılıyorum'
-                          : isWaitlist
-                          ? 'Yedekte'
-                          : booking.status || 'Katılıyorum'}
+                      <Text
+                        style={[
+                          styles.bookingStatusText,
+                          item.isPast && { color: Colors.textSecondaryDark },
+                          item.isWaitlist && { color: '#FF9800' },
+                        ]}
+                      >
+                        {item.isPast ? 'Geçmiş' : item.isWaitlist ? 'Yedekte' : 'Katılıyorum'}
                       </Text>
                     </View>
                   </View>
-                );
-              })}
+                </View>
+              ))}
             </View>
           )}
         </View>
@@ -894,14 +901,18 @@ const styles = StyleSheet.create({
   },
   // Grup Dersi Kartı Stilleri
   groupClassCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: 'column',
     backgroundColor: Colors.cardDark,
     borderRadius: 16,
-    padding: 14,
-    gap: 12,
+    overflow: 'hidden',
     borderLeftWidth: 3,
     borderLeftColor: '#9C27B0',
+  },
+  groupClassCardRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 14,
+    gap: 12,
   },
   groupClassIconBox: {
     width: 44,
@@ -920,10 +931,25 @@ const styles = StyleSheet.create({
   bookingStatusWaitlist: {
     backgroundColor: 'rgba(255, 152, 0, 0.15)',
   },
+  bookingStatusPast: {
+    backgroundColor: 'rgba(255,255,255,0.06)',
+  },
   bookingStatusText: {
     fontSize: 11,
     fontWeight: '600',
     color: '#4CAF50',
+  },
+  pastBanner: {
+    backgroundColor: 'rgba(156, 39, 176, 0.10)',
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(156, 39, 176, 0.18)',
+  },
+  pastBannerText: {
+    fontSize: 11,
+    color: Colors.textSecondaryDark,
+    fontWeight: '500',
   },
   // Bildirim Badge Stilleri
   notifBadge: {

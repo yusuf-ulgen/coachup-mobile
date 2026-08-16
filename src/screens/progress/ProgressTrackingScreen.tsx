@@ -143,7 +143,7 @@ export const ProgressTrackingScreen = ({ navigation }: any) => {
         const userId = session?.user?.id;
         if (!userId || !img.base64) return;
 
-        let actualBucket = 'body-photos';
+        let actualBucket = 'progress-photos';
         let actualPath = `${userId}/${Date.now()}_${photoType}.jpg`;
 
         const { error: uploadErr } = await supabase.storage
@@ -154,9 +154,9 @@ export const ProgressTrackingScreen = ({ navigation }: any) => {
           });
 
         if (uploadErr) {
-          // If body-photos fails, try avatars bucket
+          // If progress-photos fails, try avatars bucket (always exists)
           actualBucket = 'avatars';
-          actualPath = `progress_${userId}_${Date.now()}_${photoType}.jpg`;
+          actualPath = `${userId}/progress_${Date.now()}_${photoType}.jpg`;
           const { error: retryErr } = await supabase.storage
             .from(actualBucket)
             .upload(actualPath, decode(img.base64), { contentType: 'image/jpeg', upsert: true });

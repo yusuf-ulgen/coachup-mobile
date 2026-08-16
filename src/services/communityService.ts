@@ -260,16 +260,14 @@ export const CommunityService = {
   async uploadImage(uri: string, userId: string): Promise<string> {
     const filename = `${userId}/${Date.now()}.jpg`;
 
-    const formData = new FormData();
-    formData.append('file', {
-      uri,
-      type: 'image/jpeg',
-      name: filename,
-    } as any);
+    // Supabase JS client does NOT support FormData for storage uploads.
+    // We must upload as ArrayBuffer. Fetch the local file URI and convert directly.
+    const response = await fetch(uri);
+    const arrayBuffer = await response.arrayBuffer();
 
     const { data, error } = await supabase.storage
       .from('community-images')
-      .upload(filename, formData as any, {
+      .upload(filename, arrayBuffer, {
         contentType: 'image/jpeg',
         upsert: true,
       });

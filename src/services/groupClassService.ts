@@ -23,6 +23,19 @@ export interface ClassBooking {
   group_class?: GroupClass;
 }
 
+// Enriched item for HomeScreen - user's booked class with status info
+export interface BookedClassItem {
+  bookingId: string;
+  classId: string;
+  name: string;
+  instructorName?: string;
+  startTime?: string;
+  endTime?: string;
+  status: string;
+  isPast: boolean;
+  isWaitlist: boolean;
+}
+
 export const GroupClassService = {
   async fetchBookingsForDate(userId: string, _dateStr: string): Promise<ClassBooking[]> {
     try {
@@ -116,4 +129,64 @@ export const GroupClassService = {
 
     return data;
   },
+
+  // Fetch only the classes the user has booked for a specific date,
+  // enriched with isPast and isWaitlist status — mirrors CalendarScreen logic.
+  async fetchBookedClassesForDate(userId: string, dateStr: string): Promise<BookedClassItem[]> {
+    try {
+      const { data, error } = await supabase
+        .from('class_bookings')
+        .select('*, group_class:group_classes(*)')
+        .eq('user_id', userId)
+        .neq('status', 'cancelled');
+
+      if (error) throw error;
+      if (!data) return [];
+
+      const now = new Date();
+      const targetDayOfWeek = new Date(dateStr).getDay();
+
+      // Filter by date: prefer date_str match, fallback to day_of_week
+      const filtered = data.filter((b: any) => {
+        const gc = b.group_class;
+        if (!gc) return false;
+        if (gc.date_str) return gc.date_str === dateStr;
+        return (
+          gc.day_of_week === undefined ||
+          gc.day_of_week === null ||
+          gc.day_of_week === targetDayOfWeek
+        );
+      });
+
+      return filtered.map((b: any) => {
+        const gc = b.group_class;
+        const statusStr = (b.status || '').toLowerCase();
+        const isWaitlist = statusStr === 'waitlist' || statusStr === 'waiting';
+
+        // Calculate whether the class end time has passed
+        const endTimeStr = gc?.end_time || gc?.start_time || '23:59';
+        const [endH, endM] = endTimeStr.split(':');
+        const classEndTime = new Date(
+          `${dateStr}T${String(endH).padStart(2, '0')}:${String(endM).padStart(2, '0')}:00`
+        );
+        const isPast = classEndTime < now;
+
+        return {
+          bookingId: b.id,
+          classId: b.class_id,
+          name: gc?.name || 'Grup Dersi',
+          instructorName: gc?.instructor_name,
+          startTime: gc?.start_time ? gc.start_time.substring(0, 5) : undefined,
+          endTime: gc?.end_time ? gc.end_time.substring(0, 5) : undefined,
+          status: b.status || 'confirmed',
+          isPast,
+          isWaitlist,
+        };
+      });
+    } catch (e) {
+      console.error('Error fetching booked classes for date:', e);
+      return [];
+    }
+  },
 };
+
