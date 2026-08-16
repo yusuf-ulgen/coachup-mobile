@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -78,6 +78,7 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({ navigation }) =>
   const [loading, setLoading] = useState(false);
 
   // Add Event Modal State
+  const modalScrollViewRef = useRef<ScrollView>(null);
   const [showAddEventModal, setShowAddEventModal] = useState(false);
   const [newEventTitle, setNewEventTitle] = useState('');
   const [newEventStartTime, setNewEventStartTime] = useState('09:00');
@@ -788,9 +789,10 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({ navigation }) =>
             ]}
           >
             <ScrollView
+              ref={modalScrollViewRef}
               showsVerticalScrollIndicator={true}
               keyboardShouldPersistTaps="handled"
-              contentContainerStyle={{ paddingBottom: 16 }}
+              contentContainerStyle={{ paddingBottom: 32 }}
             >
                   <View style={styles.modalHeaderRow}>
                     <Text style={styles.modalTitle}>
@@ -872,51 +874,52 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({ navigation }) =>
                     placeholderTextColor={Colors.textSecondaryDark}
                     value={newEventNotes}
                     onChangeText={setNewEventNotes}
+                    onFocus={() => {
+                      setTimeout(() => {
+                        modalScrollViewRef.current?.scrollToEnd({ animated: true });
+                      }, 150);
+                    }}
                     multiline
                   />
 
                   <View style={styles.timeInputsRow}>
                     {/* Start Time Box */}
                     <View style={{ flex: 1 }}>
-                      <Text style={styles.timeInputLabel}>Başlangıç</Text>
+                      <Text style={styles.timeInputLabel}>Başlangıç Saati</Text>
                       <TouchableOpacity
                         style={styles.timeInputContainer}
-                        activeOpacity={0.8}
+                        activeOpacity={0.7}
                         onPress={() => {
+                          Keyboard.dismiss();
                           setTimePickerTarget('start');
                           setShowTimePickerModal(true);
                         }}
                       >
                         <Clock size={18} color={Colors.primary} />
-                        <TextInput
-                          style={styles.timeInputText}
-                          placeholder="09:00"
-                          placeholderTextColor={Colors.textSecondaryDark}
-                          value={newEventStartTime}
-                          onChangeText={setNewEventStartTime}
-                        />
+                        <Text style={styles.timeInputText}>
+                          {newEventStartTime || '09:00'}
+                        </Text>
+                        <Edit3 size={14} color={Colors.textSecondaryDark} />
                       </TouchableOpacity>
                     </View>
 
                     {/* End Time Box */}
                     <View style={{ flex: 1 }}>
-                      <Text style={styles.timeInputLabel}>Bitiş</Text>
+                      <Text style={styles.timeInputLabel}>Bitiş Saati</Text>
                       <TouchableOpacity
                         style={styles.timeInputContainer}
-                        activeOpacity={0.8}
+                        activeOpacity={0.7}
                         onPress={() => {
+                          Keyboard.dismiss();
                           setTimePickerTarget('end');
                           setShowTimePickerModal(true);
                         }}
                       >
                         <Clock size={18} color={Colors.primary} />
-                        <TextInput
-                          style={styles.timeInputText}
-                          placeholder="10:00"
-                          placeholderTextColor={Colors.textSecondaryDark}
-                          value={newEventEndTime}
-                          onChangeText={setNewEventEndTime}
-                        />
+                        <Text style={styles.timeInputText}>
+                          {newEventEndTime || '10:00'}
+                        </Text>
+                        <Edit3 size={14} color={Colors.textSecondaryDark} />
                       </TouchableOpacity>
                     </View>
                   </View>
@@ -1020,6 +1023,30 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({ navigation }) =>
               </View>
               <TouchableOpacity onPress={() => setShowTimePickerModal(false)} style={styles.modalCloseBtn}>
                 <X size={20} color={Colors.textDark} />
+              </TouchableOpacity>
+            </View>
+
+            {/* Custom Manual Time Input */}
+            <View style={styles.customTimeInputRow}>
+              <Text style={styles.customTimeInputLabel}>Özel Saat:</Text>
+              <TextInput
+                style={styles.customTimeInput}
+                placeholder="Örn: 09:15"
+                placeholderTextColor={Colors.textSecondaryDark}
+                value={timePickerTarget === 'start' ? newEventStartTime : newEventEndTime}
+                onChangeText={(text) => {
+                  if (timePickerTarget === 'start') {
+                    setNewEventStartTime(text);
+                  } else {
+                    setNewEventEndTime(text);
+                  }
+                }}
+              />
+              <TouchableOpacity
+                style={styles.customTimeConfirmBtn}
+                onPress={() => setShowTimePickerModal(false)}
+              >
+                <Check size={16} color={Colors.allWhite} />
               </TouchableOpacity>
             </View>
 
@@ -1434,6 +1461,37 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
     color: Colors.textDark,
+  },
+  customTimeInputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.backgroundDark,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderWidth: 1,
+    borderColor: Colors.borderDark,
+    marginBottom: 14,
+    gap: 8,
+  },
+  customTimeInputLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: Colors.textSecondaryDark,
+  },
+  customTimeInput: {
+    flex: 1,
+    color: Colors.textDark,
+    fontSize: 14,
+    fontWeight: '600',
+    padding: 0,
+  },
+  customTimeConfirmBtn: {
+    backgroundColor: Colors.primary,
+    borderRadius: 8,
+    padding: 6,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   timeSlotsGrid: {
     flexDirection: 'row',
