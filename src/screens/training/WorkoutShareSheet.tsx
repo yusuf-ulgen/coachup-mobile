@@ -217,13 +217,24 @@ export const WorkoutShareSheet: React.FC<{
   const [showRouteLine, setShowRouteLine] = useState<boolean>(true);
   const [isSharing, setIsSharing] = useState<boolean>(false);
   const cardViewRef = useRef<any>(null);
-
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
-  // Reserved height: Top bar (~56px) + Footer (~150px) + Pagination/Title/Desc (~80px) + Safe padding (~74px) = 360px
-  const maxCardHeight = Math.max(windowHeight - 380, 240);
+  const hasRouteOption = Boolean(activeRoutePoints && activeRoutePoints.length >= 2);
+  
+  // Dynamically calculate maximum card dimensions to guarantee full visibility of card frame
+  const reservedHeight =
+    Math.max(16, insets.top + 6) +
+    Math.max(16, insets.bottom + 8) +
+    44 /* header */ +
+    106 /* footer buttons */ +
+    64 /* pagination + template info */ +
+    (hasRouteOption ? 34 : 0) +
+    16 /* safety padding */;
+
+  const availableHeight = Math.max(windowHeight - reservedHeight, 200);
+  const maxCardHeight = Math.min(availableHeight, windowHeight * 0.44);
   const cardWidthFromHeight = maxCardHeight * (9 / 16);
-  const cardWidthFromWidth = windowWidth * 0.72;
-  const cardWidth = Math.min(cardWidthFromWidth, cardWidthFromHeight, 280);
+  const cardWidthFromWidth = windowWidth * 0.62;
+  const cardWidth = Math.min(cardWidthFromWidth, cardWidthFromHeight, 240);
   const cardHeight = cardWidth * (16 / 9);
 
   const title = (training?.title || 'Fitness').toUpperCase();
@@ -669,7 +680,7 @@ const styles = StyleSheet.create({
   },
   cardPaddingContainer: {
     flex: 1,
-    padding: 20,
+    padding: 14,
     justifyContent: 'space-between',
   },
   topLogoRow: {
@@ -678,36 +689,36 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
   },
   logoImage: {
-    width: 80,
-    height: 24,
+    width: 72,
+    height: 22,
     tintColor: undefined,
   },
   logoImageSmall: {
-    width: 72,
-    height: 20,
+    width: 64,
+    height: 18,
   },
   bottomStatsContainer: {
-    gap: 8,
+    gap: 6,
   },
   categoryTitleText: {
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: '700',
     color: Colors.primary,
     letterSpacing: 1.5,
   },
   categoryTitleTextDetailed: {
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: '700',
     color: 'rgba(255,255,255,0.7)',
     letterSpacing: 1.2,
   },
   subtitleText: {
-    fontSize: 12,
+    fontSize: 11,
     color: 'rgba(255,255,255,0.55)',
     marginTop: 2,
   },
   heroDistanceText: {
-    fontSize: 38,
+    fontSize: 30,
     fontWeight: '900',
     color: Colors.allWhite,
   },
@@ -730,74 +741,74 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
   },
   statValSmall: {
-    fontSize: 13.5,
+    fontSize: 12,
     fontWeight: '700',
     color: Colors.allWhite,
     paddingHorizontal: 1,
   },
   statLblSmall: {
-    fontSize: 10,
+    fontSize: 9,
     color: 'rgba(255,255,255,0.6)',
   },
   chipsRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 8,
+    gap: 6,
     marginTop: 4,
   },
   metricChip: {
     flex: 1,
     minWidth: '40%',
     backgroundColor: 'rgba(255,255,255,0.12)',
-    borderRadius: 10,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
   },
   metricChipVal: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '700',
     color: Colors.allWhite,
   },
   metricChipLbl: {
-    fontSize: 9,
+    fontSize: 8.5,
     color: 'rgba(255,255,255,0.6)',
     letterSpacing: 0.5,
-    marginTop: 2,
+    marginTop: 1,
   },
   simpleLabel: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '600',
     color: Colors.primary,
     letterSpacing: 1,
   },
   simpleHeroVal: {
-    fontSize: 50,
+    fontSize: 38,
     fontWeight: '900',
     color: Colors.allWhite,
-    marginTop: 4,
+    marginTop: 2,
   },
   simpleFooterText: {
-    fontSize: 12,
+    fontSize: 11,
     color: 'rgba(255,255,255,0.45)',
   },
   storyCardOuterContainer: {
     flex: 1,
-    padding: 16,
+    padding: 12,
     justifyContent: 'center',
     alignItems: 'center',
   },
   storyCardBox: {
     width: '100%',
     backgroundColor: 'rgba(0, 0, 0, 0.75)',
-    borderRadius: 16,
+    borderRadius: 14,
     borderWidth: 1,
     borderColor: 'rgba(255, 96, 71, 0.4)',
-    padding: 20,
+    padding: 14,
     alignItems: 'center',
-    gap: 10,
+    gap: 6,
   },
   storyCardCategory: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '700',
     color: 'rgba(255,255,255,0.7)',
     letterSpacing: 1.5,
@@ -806,15 +817,15 @@ const styles = StyleSheet.create({
     width: '100%',
     height: 1,
     backgroundColor: 'rgba(255,255,255,0.1)',
-    marginVertical: 4,
+    marginVertical: 2,
   },
   storyCardDistanceLbl: {
-    fontSize: 10,
+    fontSize: 9,
     fontWeight: '700',
     color: Colors.primary,
   },
   storyCardDistanceVal: {
-    fontSize: 34,
+    fontSize: 28,
     fontWeight: '900',
     color: Colors.allWhite,
   },
@@ -845,7 +856,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    marginVertical: 14,
+    marginVertical: 6,
   },
   dot: {
     width: 6,
@@ -861,102 +872,102 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.primary,
   },
   templateTitle: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: 'bold',
     color: Colors.allWhite,
-    marginBottom: 4,
+    marginBottom: 2,
   },
   templateDesc: {
-    fontSize: 12,
+    fontSize: 11,
+    lineHeight: 14,
     color: 'rgba(255,255,255,0.5)',
     textAlign: 'center',
-    paddingHorizontal: 32,
+    paddingHorizontal: 24,
   },
   routeToggleRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 20,
+    marginTop: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 16,
     backgroundColor: 'rgba(255, 255, 255, 0.08)',
   },
   checkboxSquare: {
-    width: 18,
-    height: 18,
+    width: 16,
+    height: 16,
     borderRadius: 4,
     borderWidth: 1.5,
     borderColor: 'rgba(255, 255, 255, 0.4)',
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 8,
+    marginRight: 6,
   },
   checkboxSquareActive: {
     backgroundColor: Colors.primary,
     borderColor: Colors.primary,
   },
   routeToggleText: {
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '600',
     color: Colors.allWhite,
   },
   footer: {
     paddingHorizontal: 20,
-    paddingBottom: 32,
-    paddingTop: 16,
+    paddingTop: 8,
   },
   secondaryButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    height: 48,
-    borderRadius: 14,
+    height: 44,
+    borderRadius: 12,
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.15)',
     backgroundColor: 'rgba(255,255,255,0.06)',
-    marginBottom: 10,
+    marginBottom: 8,
   },
   secondaryButtonText: {
     color: Colors.allWhite,
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '500',
-    marginLeft: 8,
+    marginLeft: 6,
   },
   twoButtonRow: {
     flexDirection: 'row',
-    gap: 10,
-    marginBottom: 10,
+    gap: 8,
+    marginBottom: 8,
   },
   removePhotoButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    height: 48,
-    borderRadius: 14,
+    height: 44,
+    borderRadius: 12,
     borderWidth: 1,
     borderColor: 'rgba(255, 69, 58, 0.35)',
     backgroundColor: 'rgba(255, 69, 58, 0.12)',
-    paddingHorizontal: 14,
+    paddingHorizontal: 12,
   },
   removePhotoButtonText: {
     color: '#FF453A',
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '600',
-    marginLeft: 6,
+    marginLeft: 4,
   },
   primaryButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    height: 52,
-    borderRadius: 14,
+    height: 48,
+    borderRadius: 12,
     backgroundColor: Colors.primary,
   },
   primaryButtonText: {
     color: Colors.allWhite,
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: 'bold',
-    marginLeft: 8,
+    marginLeft: 6,
   },
 });
