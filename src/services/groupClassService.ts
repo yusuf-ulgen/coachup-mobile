@@ -1,5 +1,29 @@
 import { supabase } from './supabaseClient';
 import { formatLocalDate } from '../utils/dateUtils';
+import { UserService } from './userService';
+
+export type CanonicalClassBookingStatus = 'booked' | 'waiting' | 'cancelled';
+
+export function normalizeClassBookingStatus(status?: string | null): CanonicalClassBookingStatus {
+  if (!status) return 'booked';
+  const s = status.toLowerCase().trim();
+  if (s === 'booked' || s === 'confirmed') return 'booked';
+  if (s === 'waiting' || s === 'waitlist') return 'waiting';
+  if (s === 'cancelled' || s === 'canceled') return 'cancelled';
+  return 'booked';
+}
+
+export function getDayOfWeekFromDateStr(dateStr: string): number {
+  const parts = dateStr.split('-');
+  if (parts.length === 3) {
+    const year = parseInt(parts[0], 10);
+    const month = parseInt(parts[1], 10) - 1;
+    const day = parseInt(parts[2], 10);
+    const d = new Date(year, month, day);
+    return d.getDay();
+  }
+  return new Date(dateStr).getDay();
+}
 
 export interface GroupClass {
   id: string;
@@ -12,6 +36,8 @@ export interface GroupClass {
   capacity?: number;
   date_str?: string;
   day_of_week?: number;
+  enrolled_count?: number;
+  current_participants?: number;
 }
 
 export interface ClassBooking {
@@ -20,6 +46,7 @@ export interface ClassBooking {
   user_id: string;
   created_at?: string;
   status?: string;
+  booking_date?: string;
   is_waitlist?: boolean;
   group_class?: GroupClass;
 }
@@ -38,18 +65,27 @@ export interface BookedClassItem {
 }
 
 export const GroupClassService = {
-  async fetchBookingsForDate(userId: string, _dateStr: string): Promise<ClassBooking[]> {
+  async fetchBookingsForDate(userId: string, dateStr: string): Promise<ClassBooking[]> {
     try {
       const { data, error } = await supabase
         .from('class_bookings')
         .select('*, group_class:group_classes(*)')
         .eq('user_id', userId)
+        .eq('booking_date', dateStr)
         .neq('status', 'cancelled');
 
-      if (error) throw error;
-      return data || [];
+      if (error) {
+        console.error('[GroupClassService] fetchBookingsForDate error:', error);
+        throw error;
+      }
+
+      return (data || []).map((b: any) => ({
+        ...b,
+        status: normalizeClassBookingStatus(b.status),
+        is_waitlist: normalizeClassBookingStatus(b.status) === 'waiting',
+      }));
     } catch (e) {
-      console.error('Error fetching class bookings:', e);
+      console.error('[GroupClassService] Error fetching class bookings:', e);
       return [];
     }
   },
@@ -60,49 +96,69 @@ export const GroupClassService = {
         .from('group_classes')
         .select('*')
         .eq('gym_id', gymId)
+        .eq('is_active', true)
         .order('start_time', { ascending: true });
 
       if (error) throw error;
       return data || [];
     } catch (e) {
-      console.error('Error fetching group classes:', e);
+      console.error('[GroupClassService] Error fetching available group classes:', e);
       return [];
     }
   },
 
   async fetchClassesForDate(userId: string, dateStr: string): Promise<GroupClass[]> {
     try {
-      const { data: userProfile } = await supabase.from('users').select('gym_id').eq('id', userId).single();
-      if (!userProfile?.gym_id) return [];
-      
+      const { data: userProfile } = await supabase
+        .from('users')
+        .select('*')
+        .eq('id', userId)
+        .single();
+
+      if (!userProfile) return [];
+
+      const activeGymId = await UserService.resolveActiveGymIdForContent(userProfile);
+      if (!activeGymId || activeGymId === 'staff') return [];
+
       const { data, error } = await supabase
         .from('group_classes')
         .select('*')
-        .eq('gym_id', userProfile.gym_id)
+        .eq('gym_id', activeGymId)
         .eq('is_active', true)
         .order('start_time', { ascending: true });
 
-      if (error) throw error;
+      if (error) {
+        console.error('[GroupClassService] fetchClassesForDate error:', error);
+        throw error;
+      }
       if (!data || data.length === 0) return [];
 
-      const targetDay = new Date(dateStr).getDay();
-      const filtered = data.filter((c: any) => c.day_of_week === undefined || c.day_of_week === null || c.day_of_week === targetDay);
+      const targetDay = getDayOfWeekFromDateStr(dateStr);
+      const filtered = data.filter((c: any) => {
+        if (c.date_str) {
+          return c.date_str === dateStr;
+        }
+        return c.day_of_week === undefined || c.day_of_week === null || c.day_of_week === targetDay;
+      });
 
       if (filtered.length === 0) return [];
 
-      // Calculate dynamic participant counts from class_bookings
+      // Calculate dynamic participant counts per occurrence date
       const classIds = filtered.map((c: any) => c.id);
-      const { data: bookingsData } = await supabase
+      const { data: bookingsData, error: bErr } = await supabase
         .from('class_bookings')
         .select('class_id, status, booking_date')
         .in('class_id', classIds)
-        .in('status', ['booked', 'confirmed']);
+        .in('status', ['booked', 'confirmed'])
+        .eq('booking_date', dateStr);
+
+      if (bErr) {
+        console.warn('[GroupClassService] fetchClassesForDate bookings count warning:', bErr);
+      }
 
       const countMap: Record<string, number> = {};
       (bookingsData || []).forEach((b: any) => {
-        if (!b.booking_date || b.booking_date === dateStr) {
-          countMap[b.class_id] = (countMap[b.class_id] || 0) + 1;
-        }
+        countMap[b.class_id] = (countMap[b.class_id] || 0) + 1;
       });
 
       return filtered.map((c: any) => ({
@@ -111,221 +167,91 @@ export const GroupClassService = {
         current_participants: countMap[c.id] || 0,
       }));
     } catch (e) {
-      console.error('Error fetching classes for date:', e);
+      console.error('[GroupClassService] Error fetching classes for date:', e);
       return [];
     }
   },
 
   async bookClass(userId: string, classId: string, bookingDate?: string) {
     const targetDate = bookingDate || formatLocalDate(new Date());
-    
-    // 1. Try atomic RPC first
+
     try {
-      const { data, error } = await supabase.rpc('atomic_book_group_class', {
+      const { data, error } = await supabase.rpc('atomic_book_group_class_v2', {
         p_user_id: userId,
         p_class_id: classId,
         p_booking_date: targetDate,
       });
 
-      if (!error && data) {
-        if (data.success === false) {
-          throw new Error(data.error || 'Ders rezervasyonu gerçekleştirilemedi.');
-        }
-        return data;
+      if (error) {
+        console.error('[GroupClassService] atomic_book_group_class_v2 RPC error:', error);
+        throw new Error(error.message || 'Ders rezervasyonu gerçekleştirilemedi.');
       }
 
-      if (error && !error.message?.includes('Could not find the function') && !error.message?.includes('schema cache')) {
-        console.warn('RPC atomic_book_group_class error, attempting direct fallback:', error);
-      }
-    } catch (rpcErr: any) {
-      if (
-        rpcErr.message &&
-        !rpcErr.message.includes('Could not find the function') &&
-        !rpcErr.message.includes('schema cache')
-      ) {
-        throw rpcErr;
-      }
-      console.warn('RPC atomic_book_group_class exception, attempting direct fallback:', rpcErr);
-    }
-
-    // 2. Direct fallback booking logic
-    // Check capacity
-    const { data: cls } = await supabase
-      .from('group_classes')
-      .select('capacity')
-      .eq('id', classId)
-      .single();
-
-    const capacity = cls?.capacity || 20;
-
-    // Count active participants (excluding cancelled)
-    const { count } = await supabase
-      .from('class_bookings')
-      .select('*', { count: 'exact', head: true })
-      .eq('class_id', classId)
-      .in('status', ['booked', 'confirmed'])
-      .or(`booking_date.eq.${targetDate},booking_date.is.null`);
-
-    const activeCount = count || 0;
-    const isWaiting = activeCount >= capacity;
-    const targetStatus = isWaiting ? 'waitlist' : 'confirmed';
-
-    // Check if any booking row exists for this user and class (active or cancelled)
-    const { data: existingBooking } = await supabase
-      .from('class_bookings')
-      .select('id, status, booking_date')
-      .eq('class_id', classId)
-      .eq('user_id', userId)
-      .or(`booking_date.eq.${targetDate},booking_date.is.null`)
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .maybeSingle();
-
-    if (existingBooking) {
-      const currentStatus = (existingBooking.status || '').toLowerCase();
-      // If already active in class or waiting list
-      if (['booked', 'confirmed', 'waiting', 'waitlist'].includes(currentStatus)) {
-        return {
-          success: true,
-          booking_id: existingBooking.id,
-          status: currentStatus,
-          is_waiting: currentStatus === 'waiting' || currentStatus === 'waitlist',
-        };
+      if (data && data.success === false) {
+        throw new Error(data.error || 'Ders rezervasyonu gerçekleştirilemedi.');
       }
 
-      // If previously cancelled, re-activate the existing row (prevents unique constraint error)
-      const { data: reactivated, error: updateError } = await supabase
-        .from('class_bookings')
-        .update({
-          status: targetStatus,
-          booking_date: targetDate,
-          created_at: new Date().toISOString(),
-        })
-        .eq('id', existingBooking.id)
-        .select()
-        .single();
-
-      if (updateError) {
-        throw new Error(updateError.message || 'Ders rezervasyonu gerçekleştirilemedi.');
-      }
-
+      const normalizedStatus = normalizeClassBookingStatus(data?.status);
       return {
-        success: true,
-        booking_id: reactivated.id,
-        status: targetStatus,
-        is_waiting: isWaiting,
+        ...data,
+        status: normalizedStatus,
+        is_waiting: normalizedStatus === 'waiting',
       };
+    } catch (err: any) {
+      console.error('[GroupClassService] bookClass failed:', err);
+      throw err;
     }
-
-    // Insert new booking with conflict handling
-    const { data: inserted, error: insertError } = await supabase
-      .from('class_bookings')
-      .insert({
-        class_id: classId,
-        user_id: userId,
-        status: targetStatus,
-        booking_date: targetDate,
-      })
-      .select()
-      .single();
-
-    if (insertError) {
-      // If unique constraint violation occurs, update the existing row
-      if (
-        insertError.code === '23505' ||
-        insertError.message?.includes('unique constraint') ||
-        insertError.message?.includes('duplicate key')
-      ) {
-        const { data: updatedOnConflict, error: conflictUpdateErr } = await supabase
-          .from('class_bookings')
-          .update({
-            status: targetStatus,
-            booking_date: targetDate,
-            created_at: new Date().toISOString(),
-          })
-          .eq('class_id', classId)
-          .eq('user_id', userId)
-          .select()
-          .single();
-
-        if (!conflictUpdateErr && updatedOnConflict) {
-          return {
-            success: true,
-            booking_id: updatedOnConflict.id,
-            status: targetStatus,
-            is_waiting: isWaiting,
-          };
-        }
-      }
-      throw new Error(insertError.message || 'Ders rezervasyonu gerçekleştirilemedi.');
-    }
-
-    return {
-      success: true,
-      booking_id: inserted.id,
-      status: targetStatus,
-      is_waiting: isWaiting,
-    };
   },
 
   async cancelBooking(bookingId: string, userId?: string) {
     const currentUserId = userId || (await supabase.auth.getUser()).data.user?.id;
-    
-    // 1. Try atomic RPC first
+    if (!currentUserId) {
+      throw new Error('Kullanıcı oturumu bulunamadı.');
+    }
+
     try {
-      const { data, error } = await supabase.rpc('atomic_cancel_group_class', {
+      const { data, error } = await supabase.rpc('atomic_cancel_group_class_v2', {
         p_user_id: currentUserId,
         p_booking_id: bookingId,
       });
 
-      if (!error && data?.success !== false) {
-        return data;
+      if (error) {
+        console.error('[GroupClassService] atomic_cancel_group_class_v2 RPC error:', error);
+        throw new Error(error.message || 'Rezervasyon iptal edilemedi.');
       }
 
       if (data && data.success === false) {
         throw new Error(data.error || 'Rezervasyon iptal edilemedi.');
       }
 
-      if (error) {
-        console.warn('RPC atomic_cancel_group_class error, attempting direct fallback:', error);
-      }
-    } catch (rpcErr: any) {
-      console.warn('RPC atomic_cancel_group_class exception, attempting direct fallback:', rpcErr);
+      return data;
+    } catch (err: any) {
+      console.error('[GroupClassService] cancelBooking failed:', err);
+      throw err;
     }
-
-    // 2. Direct fallback update
-    const { data: updateData, error: updateError } = await supabase
-      .from('class_bookings')
-      .update({ status: 'cancelled' })
-      .eq('id', bookingId)
-      .select()
-      .single();
-
-    if (updateError) {
-      throw new Error(updateError.message || 'Rezervasyon iptal edilemedi.');
-    }
-
-    return { success: true, booking: updateData };
   },
 
   // Fetch only the classes the user has booked for a specific date,
-  // enriched with isPast and isWaitlist status — mirrors CalendarScreen logic and deduplicates per class.
+  // enriched with isPast and isWaitlist status.
   async fetchBookedClassesForDate(userId: string, dateStr: string): Promise<BookedClassItem[]> {
     try {
       const { data, error } = await supabase
         .from('class_bookings')
         .select('*, group_class:group_classes(*)')
         .eq('user_id', userId)
+        .eq('booking_date', dateStr)
         .neq('status', 'cancelled')
         .order('created_at', { ascending: false });
 
-      if (error) throw error;
+      if (error) {
+        console.error('[GroupClassService] fetchBookedClassesForDate error:', error);
+        throw error;
+      }
       if (!data) return [];
 
       const now = new Date();
-      const targetDayOfWeek = new Date(dateStr).getDay();
+      const targetDayOfWeek = getDayOfWeekFromDateStr(dateStr);
 
-      // Filter by date: prefer b.booking_date, then gc.date_str, fallback to day_of_week
       const filtered = data.filter((b: any) => {
         const gc = b.group_class;
         if (!gc) return false;
@@ -344,17 +270,16 @@ export const GroupClassService = {
       for (const b of filtered) {
         const gc = b.group_class;
         const classId = b.class_id || gc?.id;
-        const dedupKey = classId || `${gc?.name}_${gc?.start_time}_${gc?.end_time}`;
-        
+        const dedupKey = `${classId}_${dateStr}`;
+
         if (seenKeys.has(dedupKey)) {
           continue;
         }
         seenKeys.add(dedupKey);
 
-        const statusStr = (b.status || '').toLowerCase();
-        const isWaitlist = statusStr === 'waitlist' || statusStr === 'waiting';
+        const canonicalStatus = normalizeClassBookingStatus(b.status);
+        const isWaitlist = canonicalStatus === 'waiting';
 
-        // Calculate whether the class end time has passed
         const endTimeStr = gc?.end_time || gc?.start_time || '23:59';
         const [endH, endM] = endTimeStr.split(':');
         const classEndTime = new Date(
@@ -369,7 +294,7 @@ export const GroupClassService = {
           instructorName: gc?.instructor_name,
           startTime: gc?.start_time ? gc.start_time.substring(0, 5) : undefined,
           endTime: gc?.end_time ? gc.end_time.substring(0, 5) : undefined,
-          status: b.status || 'confirmed',
+          status: canonicalStatus,
           isPast,
           isWaitlist,
         });
@@ -377,7 +302,7 @@ export const GroupClassService = {
 
       return result;
     } catch (e) {
-      console.error('Error fetching booked classes for date:', e);
+      console.error('[GroupClassService] Error fetching booked classes for date:', e);
       return [];
     }
   },

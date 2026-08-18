@@ -46,6 +46,7 @@ import { TrainingService, TrainingSession } from '../../services/trainingService
 import { GroupClassService, ClassBooking } from '../../services/groupClassService';
 import { GoalService, UserGoal } from '../../services/goalService';
 import { GymEventService, GymEvent, EventParticipant } from '../../services/gymEventService';
+import { UserService } from '../../services/userService';
 import { CustomAlert } from '../../components/CustomAlertModal';
 import { supabase } from '../../services/supabaseClient';
 
@@ -133,6 +134,7 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({ navigation }) =>
     if (!userProfile?.id && !userProfile?.user_id) return;
     const userId = userProfile?.id || userProfile?.user_id;
     try {
+      const activeGymId = await UserService.resolveActiveGymIdForContent(userProfile);
       const [eventsRes, programsRes, goalsRes, classesRes, gymEventsRes] = await Promise.all([
         supabase
           .from('user_events')
@@ -150,11 +152,12 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({ navigation }) =>
           .from('user_goals')
           .select('target_date, created_at')
           .eq('user_id', userId),
-        userProfile?.gym_id
+        activeGymId && activeGymId !== 'staff'
           ? supabase
               .from('group_classes')
               .select('date_str')
-              .eq('gym_id', userProfile.gym_id)
+              .eq('gym_id', activeGymId)
+              .eq('is_active', true)
               .gte('date_str', `${yearMonthPrefix}-01`)
               .lte('date_str', `${yearMonthPrefix}-31`)
           : Promise.resolve({ data: [] }),
@@ -450,8 +453,11 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({ navigation }) =>
 
               {/* Open Classes */}
               {openClasses.map((cls) => {
-                const booking = groupBookings.find(b => b.class_id === cls.id);
-                const isWaitlist = booking?.status === 'waitlist';
+                const booking = groupBookings.find(
+                  b => b.class_id === cls.id && (b.booking_date === selectedDateStr || (!b.booking_date && (!cls.date_str || cls.date_str === selectedDateStr)))
+                );
+                const status = (booking?.status || '').toLowerCase();
+                const isWaitlist = status === 'waiting' || status === 'waitlist' || booking?.is_waitlist === true;
                 const currentCount = cls.enrolled_count || cls.current_participants || 0;
                 const isFull = cls.capacity && currentCount >= cls.capacity;
 
@@ -522,7 +528,7 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({ navigation }) =>
                             });
                           } else {
                             const result = await GroupClassService.bookClass(uid, cls.id, selectedDateStr);
-                            const isWait = result?.is_waiting || result?.status === 'waitlist' || result?.status === 'waiting' || isFull;
+                            const isWait = result?.is_waiting || result?.status === 'waiting' || result?.status === 'waitlist' || isFull;
                             CustomAlert.show({
                               title: 'Başarılı 🎉',
                               message: isWait

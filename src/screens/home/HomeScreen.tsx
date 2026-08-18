@@ -196,14 +196,16 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
   const fetchLiveData = useCallback(async () => {
     if (!userProfile?.id && !userProfile?.user_id) return;
     const userId = userProfile?.id || userProfile?.user_id;
-    const isIndividualUser = !userProfile?.gym_id;
 
     setLoading(true);
     try {
+      const activeGymId = await UserService.resolveActiveGymIdForContent(userProfile);
+      const hasActiveGym = Boolean(activeGymId && activeGymId !== 'staff');
+
       const [programs, sessions, bookings, goals, streakData] = await Promise.all([
         ScheduleService.fetchScheduledPrograms(userId, selectedDate),
         TrainingService.fetchCompletedSessionsForDate(userId, selectedDate),
-        isIndividualUser
+        !hasActiveGym
           ? Promise.resolve([])
           : GroupClassService.fetchBookedClassesForDate(userId, selectedDate),
         GoalService.fetchGoalsForDate(userId, selectedDate),

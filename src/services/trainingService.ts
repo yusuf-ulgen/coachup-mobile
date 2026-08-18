@@ -277,10 +277,10 @@ export const TrainingService = {
       updatePayload.notes = metrics.notes;
     }
 
-    // FIX 6 & FIX 7: Fetch workout_sets for session totals and strictly check errors
+    // FIX 6 & FIX 7 & Phase 7 A2: Fetch workout_sets for session totals with legacy reps_count read fallback
     const { data: sessionSets, error: setFetchErr } = await supabase
       .from('workout_sets')
-      .select('reps, weight, is_completed')
+      .select('reps, reps_count, weight, is_completed')
       .eq('session_id', sessionId);
 
     if (setFetchErr) {
@@ -288,10 +288,12 @@ export const TrainingService = {
       throw setFetchErr;
     }
 
+    const getReps = (s: any) => (s.reps !== null && s.reps !== undefined) ? Number(s.reps) : Number(s.reps_count || 0);
+
     const completed = (sessionSets || []).filter((s: any) => s.is_completed);
     const totalSets = completed.length;
-    const totalReps = completed.reduce((sum: number, s: any) => sum + (Number(s.reps) || 0), 0);
-    const totalWeight = completed.reduce((sum: number, s: any) => sum + ((Number(s.weight) || 0) * (Number(s.reps) || 0)), 0);
+    const totalReps = completed.reduce((sum: number, s: any) => sum + getReps(s), 0);
+    const totalWeight = completed.reduce((sum: number, s: any) => sum + ((Number(s.weight) || 0) * getReps(s)), 0);
 
     // FIX 7: Always store computed aggregates even if 0
     updatePayload.total_sets = totalSets;
@@ -592,14 +594,19 @@ export const TrainingService = {
 
       const targetSetNumber = data.setNumber || 1;
 
-      // FIX 11: Idempotency check - if row exists for (sessionId, exerciseId, setNumber), update it
-      const { data: existingRow } = await supabase
+      // FIX 11 & Phase 7 A1: Idempotency check with strict error handling
+      const { data: existingRow, error: lookupError } = await supabase
         .from('workout_sets')
         .select('id, weight, rest_seconds, notes')
         .eq('session_id', data.sessionId)
         .eq('exercise_id', data.exerciseId)
         .eq('set_number', targetSetNumber)
         .maybeSingle();
+
+      if (lookupError) {
+        console.error('[TrainingService] completeSet lookup error:', lookupError.message, lookupError.code);
+        throw lookupError;
+      }
 
       if (existingRow?.id) {
         const updatePayload: any = {

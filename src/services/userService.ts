@@ -193,9 +193,19 @@ export const UserService = {
       // 1. Primary Source of Truth: Active user_memberships
       const memberships = await this.fetchAvailableMemberships(userId);
       const activeMemberships = memberships.filter((m: any) => {
-        const isNotDisabled = m.is_active !== false;
-        const notExpired = !m.end_date || new Date(m.end_date) >= new Date();
-        return isNotDisabled && notExpired;
+        const status = (m.status || '').toLowerCase().trim();
+        const isNotExplicitlyInactive =
+          status !== 'cancelled' &&
+          status !== 'expired' &&
+          status !== 'frozen' &&
+          status !== 'pending' &&
+          status !== 'inactive' &&
+          m.is_active !== false;
+
+        const isStatusActive = status ? status === 'active' : isNotExplicitlyInactive;
+        const notExpired = !m.end_date || new Date(m.end_date).setHours(23, 59, 59, 999) >= Date.now();
+
+        return isStatusActive && isNotExplicitlyInactive && notExpired;
       });
 
       const gymIds = Array.from(
@@ -214,11 +224,6 @@ export const UserService = {
       }
     } catch (e) {
       console.error('Error resolving active gym ID:', e);
-    }
-
-    // If profile has an active gym_id and not strictly flagged individual
-    if (profile.gym_id && profile.role !== 'individual' && !profile.is_individual) {
-      return profile.gym_id;
     }
 
     return null;
