@@ -191,6 +191,104 @@ export const TrainingScreen: React.FC<TrainingScreenProps> = ({ navigation }) =>
     }
   };
 
+  const handleStartBuiltinActivity = async (
+    activity: { id: string; title: string; emoji: string },
+    goal?: WorkoutGoal
+  ) => {
+    const uid = userProfile?.id || userProfile?.user_id;
+    if (!uid) {
+      feedback.error({
+        title: 'Hata',
+        message: 'Lütfen önce giriş yapınız.',
+      });
+      return;
+    }
+
+    try {
+      const isActOutdoor = isOutdoorWorkout(activity.id, activity.title);
+      const managerState = ActiveWorkoutManager.getState();
+
+      // Check if this session is already running in manager
+      if (managerState.sessionId && (managerState.isActive || managerState.hasStarted)) {
+        navigation?.navigate('ActiveWorkout', {
+          sessionId: managerState.sessionId,
+          programId: managerState.programId,
+          title: managerState.title,
+          workoutTitle: managerState.workoutTitle,
+          category: managerState.category,
+          emoji: managerState.emoji,
+          selectedDay: managerState.selectedDay,
+        });
+        return;
+      }
+
+      // Check active in_progress session in DB
+      const { data: activeData } = await supabase
+        .from('training_sessions')
+        .select('*')
+        .eq('user_id', uid)
+        .eq('status', 'in_progress')
+        .maybeSingle();
+
+      if (activeData) {
+        CustomAlert.show({
+          title: 'Aktif Antrenman Mevcut',
+          message: 'Zaten devam eden bir antrenmanınız var. Lütfen önce mevcut antrenmanı bitirin veya antrenmana dönün.',
+          type: 'warning',
+          buttons: [
+            { text: 'Vazgeç', style: 'cancel' },
+            {
+              text: 'Antrenmana Dön',
+              onPress: () =>
+                navigation?.navigate('ActiveWorkout', {
+                  sessionId: activeData.id,
+                  programId: activeData.program_id,
+                  title: activity.title,
+                  category: activity.id,
+                  emoji: activity.emoji,
+                }),
+            },
+          ],
+        });
+        return;
+      }
+
+      // Start real DB session
+      const session = await TrainingService.startSession(uid, undefined, userProfile?.gym_id, {
+        category: activity.id,
+        title: activity.title,
+        notes: `builtin:${activity.id}`,
+      });
+
+      ActiveWorkoutManager.startWorkout(session.id, activity.title, undefined, 0, {
+        workoutTitle: activity.title,
+        category: activity.id,
+        emoji: activity.emoji,
+        isOutdoor: isActOutdoor,
+        hasStarted: !isActOutdoor,
+      });
+
+      navigation?.navigate('ActiveWorkout', {
+        sessionId: session.id,
+        title: activity.title,
+        workoutTitle: activity.title,
+        category: activity.id,
+        emoji: activity.emoji,
+        goalLabel: goal?.label,
+        goalType: goal?.type,
+        distanceKm: goal?.distanceKm,
+        durationSeconds: goal?.durationSeconds,
+      });
+    } catch (e: any) {
+      console.error('Start builtin activity error:', e);
+      feedback.error({
+        title: 'Hata',
+        message: e,
+        fallbackMessage: 'Antrenman başlatılamadı.',
+      });
+    }
+  };
+
   const renderProgramCard = (prog: TrainingProgram) => {
     const isExpanded = expandedProgramId === prog.id;
     const isStarting = startingProgramId === prog.id;
@@ -531,26 +629,7 @@ export const TrainingScreen: React.FC<TrainingScreenProps> = ({ navigation }) =>
         onClose={() => setShowGoalSheet(false)}
         onSelectGoal={(goal: WorkoutGoal) => {
           if (selectedActivity) {
-            const isActOutdoor = isOutdoorWorkout(selectedActivity.id, selectedActivity.title);
-            const sessionId = `free_${Date.now()}`;
-            ActiveWorkoutManager.startWorkout(sessionId, selectedActivity.title, undefined, 0, {
-              workoutTitle: selectedActivity.title,
-              category: selectedActivity.id,
-              emoji: selectedActivity.emoji,
-              isOutdoor: isActOutdoor,
-              hasStarted: !isActOutdoor,
-            });
-            navigation?.navigate('ActiveWorkout', {
-              sessionId,
-              title: selectedActivity.title,
-              workoutTitle: selectedActivity.title,
-              category: selectedActivity.id,
-              emoji: selectedActivity.emoji,
-              goalLabel: goal.label,
-              goalType: goal.type,
-              distanceKm: goal.distanceKm,
-              durationSeconds: goal.durationSeconds,
-            });
+            handleStartBuiltinActivity(selectedActivity, goal);
           }
         }}
       />
@@ -564,22 +643,7 @@ export const TrainingScreen: React.FC<TrainingScreenProps> = ({ navigation }) =>
         onStart={() => {
           setShowPreWorkoutModal(false);
           if (selectedActivity) {
-            const isActOutdoor = isOutdoorWorkout(selectedActivity.id, selectedActivity.title);
-            const sessionId = `free_${Date.now()}`;
-            ActiveWorkoutManager.startWorkout(sessionId, selectedActivity.title, undefined, 0, {
-              workoutTitle: selectedActivity.title,
-              category: selectedActivity.id,
-              emoji: selectedActivity.emoji,
-              isOutdoor: isActOutdoor,
-              hasStarted: !isActOutdoor,
-            });
-            navigation?.navigate('ActiveWorkout', {
-              sessionId,
-              title: selectedActivity.title,
-              workoutTitle: selectedActivity.title,
-              category: selectedActivity.id,
-              emoji: selectedActivity.emoji,
-            });
+            handleStartBuiltinActivity(selectedActivity);
           }
         }}
       />

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   View,
   Text,
@@ -9,6 +9,7 @@ import {
   FlatList,
   Modal,
 } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import {
   ArrowLeft,
   Flame,
@@ -51,6 +52,17 @@ const MONTH_NAMES = [
   'Aralık',
 ];
 
+const BUILTIN_CATEGORY_TITLES: Record<string, string> = {
+  running: 'Koşu',
+  walking: 'Yürüyüş',
+  cycling: 'Bisiklet',
+  fitness: 'Fitness',
+  swimming: 'Yüzme',
+  yoga: 'Yoga',
+  pilates: 'Pilates',
+  custom: 'Özel Aktivite',
+};
+
 export const PersonalRecordsScreen: React.FC<PersonalRecordsScreenProps> = ({ navigation }) => {
   const insets = useSafeAreaInsets();
   const [loading, setLoading] = useState(true);
@@ -73,9 +85,11 @@ export const PersonalRecordsScreen: React.FC<PersonalRecordsScreenProps> = ({ na
   // Expanded items
   const [expandedRecordIds, setExpandedRecordIds] = useState<Set<string>>(new Set());
 
-  useEffect(() => {
-    loadAllData();
-  }, []);
+  useFocusEffect(
+    useCallback(() => {
+      loadAllData();
+    }, [])
+  );
 
   const loadAllData = async () => {
     setLoading(true);
@@ -404,22 +418,37 @@ export const PersonalRecordsScreen: React.FC<PersonalRecordsScreenProps> = ({ na
               {filteredWorkouts.length === 0 ? (
                 <Text style={styles.emptyText}>Bu dönemde tamamlanan antrenman yok.</Text>
               ) : (
-                filteredWorkouts.map((item) => (
-                  <View key={item.id} style={styles.activityCard}>
-                    <View style={styles.activityIconCircle}>
-                      <Dumbbell size={20} color={Colors.primary} />
+                filteredWorkouts.map((item) => {
+                  let activityTitle = item.program?.name || item.title;
+                  if (!activityTitle && item.notes?.startsWith('builtin:')) {
+                    const catKey = item.notes.replace('builtin:', '').toLowerCase();
+                    activityTitle = BUILTIN_CATEGORY_TITLES[catKey] || catKey.charAt(0).toUpperCase() + catKey.slice(1);
+                  }
+                  if (!activityTitle) activityTitle = item.notes || 'Antrenman Oturumu';
+
+                  const dateStr = item.completed_at ? item.completed_at.slice(0, 10) : 'Tamamlandı';
+                  const durationStr = item.duration_seconds
+                    ? `${Math.max(1, Math.round(item.duration_seconds / 60))} dk`
+                    : null;
+                  const distanceStr = item.distance_km ? `${item.distance_km} km` : null;
+                  const caloriesStr = item.calories ? `${item.calories} kcal` : null;
+                  const metaDetails = [dateStr, durationStr, distanceStr, caloriesStr]
+                    .filter(Boolean)
+                    .join(' · ');
+
+                  return (
+                    <View key={item.id} style={styles.activityCard}>
+                      <View style={styles.activityIconCircle}>
+                        <Dumbbell size={20} color={Colors.primary} />
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={styles.activityCardTitle}>{activityTitle}</Text>
+                        <Text style={styles.activityCardSub}>{metaDetails}</Text>
+                      </View>
+                      <CheckCircle2 size={20} color={Colors.success} />
                     </View>
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.activityCardTitle}>
-                        {item.program?.name || item.title || 'Antrenman'}
-                      </Text>
-                      <Text style={styles.activityCardSub}>
-                        {item.completed_at ? item.completed_at.slice(0, 10) : 'Tamamlandı'}
-                      </Text>
-                    </View>
-                    <CheckCircle2 size={20} color={Colors.success} />
-                  </View>
-                ))
+                  );
+                })
               )}
             </View>
           )}

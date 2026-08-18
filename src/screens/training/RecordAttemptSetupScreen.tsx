@@ -21,6 +21,8 @@ import {
 import { Colors } from '../../theme/colors';
 import { useAuth } from '../../context/AuthContext';
 import { supabase } from '../../services/supabaseClient';
+import { RecordAttemptService } from '../../services/recordAttemptService';
+import { feedback } from '../../services/feedbackService';
 import {
   RECORD_ATTEMPT_CATEGORIES,
   RecordCategory,
@@ -72,68 +74,33 @@ export const RecordAttemptSetupScreen: React.FC<RecordAttemptSetupScreenProps> =
     if (!userId) return;
     setHistoryLoading(true);
     try {
-      // 1. Resolve exercise_id from exercises table
-      let resolvedExerciseId: string | null = null;
-      const { data: dbExercises } = await supabase
-        .from('exercises')
-        .select('id, name')
-        .ilike('name', catalogEx.name)
-        .limit(1);
+      // 1. Resolve exercise in DB
+      const dbEx = await RecordAttemptService.resolveOrCreateExercise(
+        catalogEx,
+        selectedCategory?.id
+      );
 
-      if (dbExercises && dbExercises.length > 0) {
-        resolvedExerciseId = dbExercises[0].id;
-      } else {
-        // Fallback search by id/slug
-        const { data: slugExercises } = await supabase
-          .from('exercises')
-          .select('id, name')
-          .eq('id', catalogEx.id)
-          .limit(1);
-        if (slugExercises && slugExercises.length > 0) {
-          resolvedExerciseId = slugExercises[0].id;
-        }
-      }
-
-      if (resolvedExerciseId) {
+      if (dbEx?.id) {
         // 2. Fetch Personal Record
-        const { data: prData } = await supabase
-          .from('personal_records')
-          .select('*')
-          .eq('user_id', userId)
-          .eq('exercise_id', resolvedExerciseId)
-          .order('record_date', { ascending: false })
-          .limit(1)
-          .maybeSingle();
-
-        setPastPR(prData || null);
+        const prList = await RecordAttemptService.fetchPersonalRecordsForExercise(
+          userId,
+          dbEx.id,
+          1
+        );
+        setPastPR(prList[0] || null);
 
         // 3. Fetch past completed attempts
-        const { data: attemptsData } = await supabase
-          .from('record_attempts')
-          .select('*')
-          .eq('user_id', userId)
-          .eq('exercise_id', resolvedExerciseId)
-          .neq('status', 'in_progress')
-          .order('completed_at', { ascending: false })
-          .limit(10);
-
-        const attempts = attemptsData || [];
+        const attempts = await RecordAttemptService.fetchAttemptsForExercise(
+          userId,
+          dbEx.id,
+          10
+        );
         setPastAttempts(attempts);
 
         // 4. Fetch sets for attempts
         if (attempts.length > 0) {
           const attemptIds = attempts.map((a: any) => a.id);
-          const { data: setsData } = await supabase
-            .from('record_attempt_sets')
-            .select('*')
-            .in('attempt_id', attemptIds)
-            .eq('set_type', 'main')
-            .eq('is_completed', true);
-
-          const setsMap: Record<string, any> = {};
-          (setsData || []).forEach((s: any) => {
-            setsMap[s.attempt_id] = s;
-          });
+          const setsMap = await RecordAttemptService.fetchMainSetsForAttempts(attemptIds);
           setSetsByAttempt(setsMap);
         } else {
           setSetsByAttempt({});
@@ -144,14 +111,14 @@ export const RecordAttemptSetupScreen: React.FC<RecordAttemptSetupScreenProps> =
         setSetsByAttempt({});
       }
     } catch (e) {
-      console.error('History load error:', e);
+      console.error('[RecordAttemptSetupScreen] History load error:', e);
       setPastPR(null);
       setPastAttempts([]);
       setSetsByAttempt({});
     } finally {
       setHistoryLoading(false);
     }
-  }, [userId]);
+  }, [userId, selectedCategory]);
 
   useFocusEffect(
     useCallback(() => {
@@ -201,32 +168,93 @@ export const RecordAttemptSetupScreen: React.FC<RecordAttemptSetupScreenProps> =
   const calculatePlan = () => {
     if (!selectedExercise) return [];
     if (selectedExercise.measureType !== RecordMeasureType.WEIGHT) {
-      return [{ weight: targetValue, reps: targetReps, type: 'main' }];
+      return [{ weight: targetValue, reps: targetReps, type: 'main' as const }];
     }
     if (includeWarmup) {
       return [
-        { weight: Math.round(targetValue * 0.4), reps: 10, type: 'warmup' },
-        { weight: Math.round(targetValue * 0.6), reps: 5, type: 'warmup' },
-        { weight: Math.round(targetValue * 0.8), reps: 3, type: 'warmup' },
-        { weight: Math.round(targetValue * 0.9), reps: 1, type: 'warmup' },
-        { weight: targetValue, reps: targetReps, type: 'main' },
+        { weight: Math.round(targetValue * 0.4), reps: 10, type: 'warmup' as const },
+        { weight: Math.round(targetValue * 0.6), reps: 5, type: 'warmup' as const },
+        { weight: Math.round(targetValue * 0.8), reps: 3, type: 'warmup' as const },
+        { weight: Math.round(targetValue * 0.9), reps: 1, type: 'warmup' as const },
+        { weight: targetValue, reps: targetReps, type: 'main' as const },
       ];
     }
-    return [{ weight: targetValue, reps: targetReps, type: 'main' }];
+    return [{ weight: targetValue, reps: targetReps, type: 'main' as const }];
   };
 
-  const handleStartAttempt = () => {
-    if (!selectedExercise || isStarting) return;
+  const handleStartAttempt = async () => {
+    if (!selectedExercise || !userId || isStarting) return;
     setIsStarting(true);
-    const plan = calculatePlan();
-    navigation?.navigate('RecordAttemptSession', {
-      exercise: selectedExercise,
-      recordType: selectedExercise.measureType,
-      targetValue,
-      targetReps,
-      plan,
-    });
-    setIsStarting(false);
+
+    try {
+      // 1. Resolve or create exercise in DB
+      const dbEx = await RecordAttemptService.resolveOrCreateExercise(
+        selectedExercise,
+        selectedCategory?.id
+      );
+
+      const isWeight = selectedExercise.measureType === RecordMeasureType.WEIGHT;
+
+      if (isWeight) {
+        // Weight mode: Warmups + Main set
+        const plan = calculatePlan();
+        const attempt = await RecordAttemptService.startAttempt(
+          userId,
+          dbEx.id,
+          targetValue,
+          targetReps
+        );
+        const plannedSets = await RecordAttemptService.insertPlannedSets(
+          attempt.id,
+          userId,
+          plan
+        );
+
+        navigation?.navigate('RecordAttemptSession', {
+          attempt,
+          exercise: dbEx,
+          catalogExercise: selectedExercise,
+          recordType: selectedExercise.measureType,
+          targetValue,
+          targetReps,
+          plan: plannedSets,
+        });
+      } else {
+        // Timed / Bodyweight / Benchmark / Running / Cardio modes
+        const attempt = await RecordAttemptService.startAttempt(
+          userId,
+          dbEx.id,
+          targetValue,
+          targetReps
+        );
+        const plannedSets = await RecordAttemptService.insertPlannedSets(
+          attempt.id,
+          userId,
+          [{ weight: targetValue, reps: targetReps, type: 'main' }]
+        );
+
+        navigation?.navigate('RecordAttemptTimedModes', {
+          attempt,
+          exercise: dbEx,
+          catalogExercise: selectedExercise,
+          measureType: selectedExercise.measureType,
+          catalogId: selectedExercise.id,
+          categoryId: selectedCategory?.id,
+          targetValue,
+          targetReps,
+          plannedSet: plannedSets[0],
+        });
+      }
+    } catch (e: any) {
+      console.error('[RecordAttemptSetupScreen] Failed to start attempt:', e);
+      feedback.error({
+        title: 'Başlatılamadı',
+        message: e,
+        fallbackMessage: 'Rekor denemesi başlatılamadı. Lütfen tekrar deneyin.',
+      });
+    } finally {
+      setIsStarting(false);
+    }
   };
 
   const formatHistoryAttemptValue = (attempt: any, measureType: RecordMeasureType) => {
@@ -521,13 +549,19 @@ export const RecordAttemptSetupScreen: React.FC<RecordAttemptSetupScreenProps> =
 
             {/* Start Button */}
             <TouchableOpacity
-              style={styles.startBtn}
+              style={[styles.startBtn, isStarting && { opacity: 0.7 }]}
               onPress={handleStartAttempt}
               activeOpacity={0.8}
               disabled={isStarting}
             >
-              <Flame size={20} color={Colors.allWhite} />
-              <Text style={styles.startBtnText}>Rekor Denemesine Başla</Text>
+              {isStarting ? (
+                <ActivityIndicator size="small" color={Colors.allWhite} />
+              ) : (
+                <>
+                  <Flame size={20} color={Colors.allWhite} />
+                  <Text style={styles.startBtnText}>Rekor Denemesine Başla</Text>
+                </>
+              )}
             </TouchableOpacity>
           </View>
         )}

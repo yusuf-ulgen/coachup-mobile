@@ -218,6 +218,10 @@ export const WorkoutShareSheet: React.FC<{
   const [isSharing, setIsSharing] = useState<boolean>(false);
   const cardViewRef = useRef<any>(null);
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
+  const activeRoutePoints =
+    routePoints && routePoints.length > 1
+      ? routePoints
+      : training?.route_points || training?.routePoints || [];
   const hasRouteOption = Boolean(activeRoutePoints && activeRoutePoints.length >= 2);
   
   // Dynamically calculate maximum card dimensions to guarantee full visibility of card frame
@@ -242,10 +246,6 @@ export const WorkoutShareSheet: React.FC<{
   const distanceStr = formatShareDistance(distanceKm);
   const speedStr = formatShareSpeed(avgPaceMinPerKm, avgSpeedKmh);
   const showDistance = distanceKm > 0.01;
-  const activeRoutePoints =
-    routePoints && routePoints.length > 1
-      ? routePoints
-      : training?.route_points || training?.routePoints || [];
 
   const handlePickImage = async () => {
     try {

@@ -12,10 +12,11 @@ import { ArrowLeft, X, Play, Square, Flag, Timer } from 'lucide-react-native';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import { Colors } from '../../theme/colors';
 import { feedback } from '../../services/feedbackService';
+import { useAuth } from '../../context/AuthContext';
+import { RecordAttemptService } from '../../services/recordAttemptService';
 
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-// Mocks for types that would normally come from services/models
 enum TimedPhase { IDLE, COUNTDOWN, RUNNING, ENTER_REPS, ENTER_ROUNDS }
 
 const formatStopwatch = (ms: number) => {
@@ -30,13 +31,19 @@ export const RecordAttemptTimedModesScreen: React.FC = () => {
   const insets = useSafeAreaInsets();
   const navigation = useNavigation<any>();
   const route = useRoute<any>();
+  const { session } = useAuth();
+  const userId = session?.user?.id;
   
   const {
     attempt = {},
     exercise = { name: 'Timed Exercise' },
+    catalogExercise,
     measureType = 'TIME',
     catalogId,
     categoryId,
+    targetValue,
+    targetReps,
+    plannedSet,
   } = route.params || {};
 
   const isRunningMode = categoryId === 'running' || catalogId?.startsWith('run_');
@@ -44,9 +51,9 @@ export const RecordAttemptTimedModesScreen: React.FC = () => {
   const isBenchmark = categoryId === 'benchmark';
   const isCindyAmrap = exercise.name?.toLowerCase() === 'cindy' || catalogId?.includes('amrap');
   
-  const amrapCapSeconds = 20 * 60; // 20 minutes default
+  const amrapCapSeconds = RecordAttemptService.amrapCapSeconds(catalogId);
   const amrapCapMs = amrapCapSeconds * 1000;
-  const targetKm = 5.0; // Mock
+  const targetKm = RecordAttemptService.runningTargetKm(catalogId || exercise?.id || '');
 
   const [phase, setPhase] = useState<TimedPhase>(TimedPhase.IDLE);
   const [countdown, setCountdown] = useState(3);
@@ -71,6 +78,9 @@ export const RecordAttemptTimedModesScreen: React.FC = () => {
     });
 
     if (confirmed) {
+      if (attempt?.id) {
+        await RecordAttemptService.abandonAttempt(attempt.id);
+      }
       navigation.goBack();
     }
   };
@@ -129,14 +139,85 @@ export const RecordAttemptTimedModesScreen: React.FC = () => {
     }
   };
 
-  const finishAttempt = () => {
+  const finishAttempt = async (enteredValue?: number) => {
+    if (isFinishing) return;
     setIsFinishing(true);
-    setTimeout(() => {
+
+    const elapsedSec = Math.max(1, Math.floor(elapsedMs / 1000));
+    let targetDisplayVal = elapsedSec;
+    let repsVal = 1;
+    let notesStr = `Süre: ${elapsedSec} sn`;
+
+    if (isBodyweight) {
+      repsVal = enteredValue !== undefined ? enteredValue : (parseInt(repsInput, 10) || targetReps || 10);
+      targetDisplayVal = repsVal;
+      notesStr = `${repsVal} tekrar (${elapsedSec} sn)`;
+    } else if (isCindyAmrap) {
+      repsVal = enteredValue !== undefined ? enteredValue : (parseInt(roundsInput, 10) || 20);
+      targetDisplayVal = repsVal;
+      notesStr = `AMRAP: ${repsVal} tur (${elapsedSec} sn)`;
+    } else if (isRunningMode) {
+      targetDisplayVal = targetKm;
+      notesStr = `${targetKm} km - ${elapsedSec} sn`;
+    } else if (categoryId === 'cardio') {
+      targetDisplayVal = targetValue || 50;
+      notesStr = `${targetDisplayVal} cal (${elapsedSec} sn)`;
+    }
+
+    try {
+      // 1. Update plannedSet if available
+      if (plannedSet?.id) {
+        await RecordAttemptService.saveSet(
+          plannedSet.id,
+          isRunningMode ? targetKm : (isBodyweight || isCindyAmrap ? 0 : targetDisplayVal),
+          repsVal,
+          9,
+          0,
+          notesStr
+        );
+      }
+
+      // 2. Finalize canonical attempt
+      if (attempt?.id && userId) {
+        await RecordAttemptService.completeAttempt(
+          attempt.id,
+          true,
+          notesStr,
+          userId
+        );
+
+        // 3. Save to personal records
+        if (exercise?.id) {
+          await RecordAttemptService.savePersonalRecord(
+            userId,
+            exercise.id,
+            isRunningMode ? elapsedSec : (isBodyweight || isCindyAmrap ? 0 : targetDisplayVal),
+            repsVal,
+            notesStr
+          );
+        }
+      }
+
       navigation.navigate('RecordAttemptSummary', {
         attempt,
-        elapsedSeconds: Math.floor(elapsedMs / 1000),
+        exercise,
+        recordType: measureType?.toLowerCase() || (isBodyweight ? 'reps' : isRunningMode ? 'distance' : 'time'),
+        targetValue: targetDisplayVal,
+        targetReps: repsVal,
+        success: true,
+        elapsedSeconds: elapsedSec,
+        rpe: 9,
       });
-    }, 1000);
+    } catch (e: any) {
+      console.error('[RecordAttemptTimedModesScreen] Failed to finalize attempt:', e);
+      feedback.error({
+        title: 'Kayıt Hatası',
+        message: e,
+        fallbackMessage: 'Zamanlı rekor denemesi kaydedilemedi. Lütfen tekrar deneyin.',
+      });
+    } finally {
+      setIsFinishing(false);
+    }
   };
 
   const renderIdle = () => (
@@ -206,8 +287,10 @@ export const RecordAttemptTimedModesScreen: React.FC = () => {
       <SmoothModal
         visible={showRepsDialog || showRoundsDialog}
         onClose={() => {
-          setShowRepsDialog(false);
-          setShowRoundsDialog(false);
+          if (!isFinishing) {
+            setShowRepsDialog(false);
+            setShowRoundsDialog(false);
+          }
         }}
         variant="modal"
       >
@@ -220,24 +303,35 @@ export const RecordAttemptTimedModesScreen: React.FC = () => {
             keyboardType="number-pad"
             placeholder={showRepsDialog ? 'Tekrar' : 'Tur'}
             placeholderTextColor={Colors.textSecondaryDark}
+            editable={!isFinishing}
           />
           <View style={styles.modalActions}>
-            <TouchableOpacity style={styles.modalButton} onPress={() => {
-              setShowRepsDialog(false);
-              setShowRoundsDialog(false);
-              setPhase(TimedPhase.RUNNING);
-            }}>
-              <Text style={styles.modalButtonText}>Geri</Text>
-            </TouchableOpacity>
             <TouchableOpacity 
               style={styles.modalButton} 
               onPress={() => {
                 setShowRepsDialog(false);
                 setShowRoundsDialog(false);
-                finishAttempt();
+                setPhase(TimedPhase.RUNNING);
               }}
+              disabled={isFinishing}
             >
-              <Text style={[styles.modalButtonText, { color: Colors.primary }]}>Kaydet</Text>
+              <Text style={styles.modalButtonText}>Geri</Text>
+            </TouchableOpacity>
+            <TouchableOpacity 
+              style={styles.modalButton} 
+              onPress={() => {
+                const val = showRepsDialog ? parseInt(repsInput, 10) : parseInt(roundsInput, 10);
+                setShowRepsDialog(false);
+                setShowRoundsDialog(false);
+                finishAttempt(isNaN(val) ? undefined : val);
+              }}
+              disabled={isFinishing}
+            >
+              {isFinishing ? (
+                <ActivityIndicator size="small" color={Colors.primary} />
+              ) : (
+                <Text style={[styles.modalButtonText, { color: Colors.primary }]}>Kaydet</Text>
+              )}
             </TouchableOpacity>
           </View>
         </View>

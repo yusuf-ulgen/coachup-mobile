@@ -30,6 +30,7 @@ import { HealthConnectService } from '../../services/healthConnectService';
 import { LocationService, LocationStats, isOutdoorWorkout } from '../../services/locationService';
 import { ActiveWorkoutManager } from '../../services/activeWorkoutManager';
 import { TrainingService } from '../../services/trainingService';
+import { AuthService } from '../../services/authService';
 import { feedback } from '../../services/feedbackService';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -243,27 +244,60 @@ export const ActiveWorkoutScreen = ({ route, navigation }: any) => {
     }, [])
   );
 
-  useEffect(() => {
-    const managerState = ActiveWorkoutManager.getState();
+  const [isSubmittingFinish, setIsSubmittingFinish] = useState(false);
 
-    if (!managerState.sessionId || !managerState.isActive) {
-      ActiveWorkoutManager.startWorkout(
-        sessionId || `free_${Date.now()}`,
-        activityName,
-        route.params?.programId,
-        0,
-        {
-          workoutTitle: activityName,
-          category,
-          emoji: activityEmoji,
-          isOutdoor,
-          hasStarted: !isOutdoor,
-        }
+  useEffect(() => {
+    const initOrSyncSession = async () => {
+      const managerState = ActiveWorkoutManager.getState();
+      const hasValidManagerSession = Boolean(
+        managerState.sessionId &&
+        (managerState.isActive || managerState.hasStarted)
       );
-    } else {
-      ActiveWorkoutManager.setScreenFocus(true);
-    }
-  }, [sessionId, activityName, category, activityEmoji, isOutdoor]);
+
+      if (!hasValidManagerSession) {
+        let activeSessionId = sessionId;
+        const isUUID = Boolean(
+          activeSessionId &&
+          /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(activeSessionId)
+        );
+
+        if (!isUUID) {
+          try {
+            const user = await AuthService.getCurrentUser();
+            if (user) {
+              const session = await TrainingService.startSession(user.id, programId || undefined, undefined, {
+                category,
+                title: activityName,
+                notes: category ? `builtin:${category}` : (activityName || undefined),
+              });
+              activeSessionId = session.id;
+            }
+          } catch (err) {
+            console.warn('[ActiveWorkoutScreen] Fallback session creation warning:', err);
+          }
+        }
+
+        ActiveWorkoutManager.startWorkout(
+          activeSessionId || `free_${Date.now()}`,
+          activityName,
+          programId,
+          0,
+          {
+            workoutTitle: activityName,
+            category,
+            emoji: activityEmoji,
+            isOutdoor,
+            hasStarted: !isOutdoor,
+            selectedDay,
+          }
+        );
+      } else {
+        ActiveWorkoutManager.setScreenFocus(true);
+      }
+    };
+
+    initOrSyncSession();
+  }, [sessionId, programId, selectedDay, activityName, category, activityEmoji, isOutdoor]);
 
   const handleBackPress = () => {
     ActiveWorkoutManager.setScreenFocus(false);
@@ -364,32 +398,80 @@ export const ActiveWorkoutScreen = ({ route, navigation }: any) => {
   };
 
   const handleEffortSelect = async (effortObj: typeof EFFORT_OPTIONS[0]) => {
-    setShowEffortModal(false);
+    if (isSubmittingFinish) return;
+    setIsSubmittingFinish(true);
 
-    const finalStats = LocationService.getStats();
-    const finalDistance = isOutdoor ? (finalStats.distanceKm || locationStats?.distanceKm || 0) : 0;
-    const finalPace = isOutdoor ? (finalStats.paceMinPerKm || locationStats?.paceMinPerKm || 0) : 0;
-    const finalSpeed = isOutdoor ? (finalStats.avgSpeed || locationStats?.avgSpeed || (finalPace > 0 ? 60 / finalPace : 0)) : 0;
-    const finalRoute = isOutdoor ? (finalStats.route.length > 0 ? finalStats.route : (locationStats?.route || [])) : [];
+    try {
+      const finalStats = LocationService.getStats();
+      const finalDistance = isOutdoor ? (finalStats.distanceKm || locationStats?.distanceKm || 0) : 0;
+      const finalPace = isOutdoor ? (finalStats.paceMinPerKm || locationStats?.paceMinPerKm || 0) : 0;
+      const finalSpeed = isOutdoor ? (finalStats.avgSpeed || locationStats?.avgSpeed || (finalPace > 0 ? 60 / finalPace : 0)) : 0;
+      const finalElevation = isOutdoor ? (finalStats.altitude || locationStats?.altitude || 0) : 0;
+      const finalRoute = isOutdoor ? (finalStats.route.length > 0 ? finalStats.route : (locationStats?.route || [])) : [];
 
-    ActiveWorkoutManager.finishWorkout();
-    if (isOutdoor) {
-      await LocationService.resetSession();
+      const currentMgr = ActiveWorkoutManager.getState();
+      const effectiveSessionId = sessionId || currentMgr.sessionId;
+      const isUUID = Boolean(
+        effectiveSessionId &&
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(effectiveSessionId)
+      );
+
+      const metricsPayload = {
+        durationSeconds: seconds,
+        distanceKm: finalDistance > 0.001 ? Number(finalDistance.toFixed(3)) : null,
+        avgPace: finalPace > 0 ? Number(finalPace.toFixed(2)) : null,
+        avgSpeed: finalSpeed > 0 ? Number(finalSpeed.toFixed(2)) : null,
+        altitudeGain: finalElevation > 0 ? Number(finalElevation.toFixed(1)) : null,
+        avgHeartRate: heartRate > 0 ? Math.round(heartRate) : null,
+        maxHeartRate: heartRate > 0 ? Math.round(heartRate + 10) : null,
+        calories: activeCalories > 0 ? Math.round(activeCalories) : null,
+        perceivedEffort: effortObj.label,
+        notes: category ? `builtin:${category}` : (workoutTitle || title || null),
+      };
+
+      if (isUUID && effectiveSessionId) {
+        await TrainingService.completeSession(effectiveSessionId, metricsPayload);
+      } else {
+        const user = await AuthService.getCurrentUser();
+        if (user) {
+          await TrainingService.createAndCompleteSession(user.id, {
+            programId: programId || currentMgr.programId,
+            category,
+            title: activityName,
+            metrics: metricsPayload,
+          });
+        }
+      }
+
+      setShowEffortModal(false);
+      ActiveWorkoutManager.finishWorkout();
+      if (isOutdoor) {
+        await LocationService.resetSession();
+      }
+
+      navigation.navigate('WorkoutSummary', {
+        training: { title: activityName, category: { emoji: activityEmoji } },
+        durationSeconds: seconds,
+        calories: activeCalories,
+        avgHeartRate: heartRate > 0 ? heartRate : null,
+        maxHeartRate: heartRate > 0 ? heartRate + 10 : null,
+        distanceKm: finalDistance,
+        avgPaceMinPerKm: finalPace,
+        avgSpeedKmh: finalSpeed,
+        routePoints: finalRoute,
+        perceivedEffort: effortObj.label,
+        perceivedEmoji: effortObj.emoji,
+      });
+    } catch (error: any) {
+      console.error('[ActiveWorkoutScreen] Failed to complete workout session:', error);
+      feedback.error({
+        title: 'Kayıt Başarısız',
+        message: error,
+        fallbackMessage: 'Antrenman veritabanına kaydedilemedi. Lütfen tekrar deneyin.',
+      });
+    } finally {
+      setIsSubmittingFinish(false);
     }
-
-    navigation.navigate('WorkoutSummary', {
-      training: { title: activityName, category: { emoji: activityEmoji } },
-      durationSeconds: seconds,
-      calories: activeCalories,
-      avgHeartRate: heartRate > 0 ? heartRate : null,
-      maxHeartRate: heartRate > 0 ? heartRate + 10 : null,
-      distanceKm: finalDistance,
-      avgPaceMinPerKm: finalPace,
-      avgSpeedKmh: finalSpeed,
-      routePoints: finalRoute,
-      perceivedEffort: effortObj.label,
-      perceivedEmoji: effortObj.emoji,
-    });
   };
 
   const currentLat = locationStats?.lastLatitude;
@@ -825,7 +907,9 @@ export const ActiveWorkoutScreen = ({ route, navigation }: any) => {
       {/* Effort Modal */}
       <SmoothModal
         visible={showEffortModal}
-        onClose={() => setShowEffortModal(false)}
+        onClose={() => {
+          if (!isSubmittingFinish) setShowEffortModal(false);
+        }}
         variant="modal"
       >
         <View style={[styles.effortModalCard, { backgroundColor: colors.cardBg }]}>
@@ -834,26 +918,37 @@ export const ActiveWorkoutScreen = ({ route, navigation }: any) => {
             Antrenmanı nasıl tamamladın? Hissettiğin zorluk derecesini seç:
           </Text>
 
-          <View style={{ gap: 10, marginBottom: 20 }}>
-            {EFFORT_OPTIONS.map((item) => (
-              <TouchableOpacity
-                key={item.id}
-                style={[styles.effortOptionRow, { backgroundColor: colors.iconBg }]}
-                onPress={() => handleEffortSelect(item)}
-                activeOpacity={0.8}
-              >
-                <Text style={styles.effortEmojiText}>{item.emoji}</Text>
-                <Text style={[styles.effortOptionLabel, { color: colors.textPrimary }]}>{item.label}</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
+          {isSubmittingFinish ? (
+            <View style={{ alignItems: 'center', justifyContent: 'center', paddingVertical: 32 }}>
+              <ActivityIndicator size="large" color={Colors.primary} />
+              <Text style={{ color: colors.textSecondary, marginTop: 16, fontSize: 15, fontWeight: '500' }}>
+                Antrenman kaydediliyor...
+              </Text>
+            </View>
+          ) : (
+            <>
+              <View style={{ gap: 10, marginBottom: 20 }}>
+                {EFFORT_OPTIONS.map((item) => (
+                  <TouchableOpacity
+                    key={item.id}
+                    style={[styles.effortOptionRow, { backgroundColor: colors.iconBg }]}
+                    onPress={() => handleEffortSelect(item)}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={styles.effortEmojiText}>{item.emoji}</Text>
+                    <Text style={[styles.effortOptionLabel, { color: colors.textPrimary }]}>{item.label}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
 
-          <TouchableOpacity
-            style={styles.effortCancelBtn}
-            onPress={() => setShowEffortModal(false)}
-          >
-            <Text style={[styles.effortCancelBtnText, { color: colors.textSecondary }]}>İptal</Text>
-          </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.effortCancelBtn}
+                onPress={() => setShowEffortModal(false)}
+              >
+                <Text style={[styles.effortCancelBtnText, { color: colors.textSecondary }]}>İptal</Text>
+              </TouchableOpacity>
+            </>
+          )}
         </View>
       </SmoothModal>
 

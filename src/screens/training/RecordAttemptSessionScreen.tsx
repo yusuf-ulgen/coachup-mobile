@@ -6,6 +6,7 @@ import {
   StyleSheet,
   ScrollView,
   Animated,
+  ActivityIndicator,
 } from 'react-native';
 import { SmoothModal } from '../../components/motion/SmoothModal';
 import { Colors } from '../../theme/colors';
@@ -13,6 +14,7 @@ import { ArrowLeft, X, Flame, Check, AlertCircle } from 'lucide-react-native';
 import { supabase } from '../../services/supabaseClient';
 import { useAuth } from '../../context/AuthContext';
 import { feedback } from '../../services/feedbackService';
+import { RecordAttemptService } from '../../services/recordAttemptService';
 
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -21,12 +23,13 @@ export const RecordAttemptSessionScreen = ({ route, navigation }: any) => {
   const { session } = useAuth();
   const userId = session?.user?.id;
 
-  const { exercise, recordType, targetValue, targetReps, plan } = route.params || {};
+  const { attempt, exercise, catalogExercise, recordType, targetValue, targetReps, plan } = route.params || {};
 
   const [currentSetIndex, setCurrentSetIndex] = useState(0);
   const [showRpeModal, setShowRpeModal] = useState(false);
   const [selectedRpe, setSelectedRpe] = useState(8);
   const [pendingSuccess, setPendingSuccess] = useState(true);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleAbandon = async () => {
     const confirmed = await feedback.destructive({
@@ -36,16 +39,19 @@ export const RecordAttemptSessionScreen = ({ route, navigation }: any) => {
       cancelText: 'Vazgeç',
     });
     if (confirmed) {
+      if (attempt?.id) {
+        await RecordAttemptService.abandonAttempt(attempt.id);
+      }
       navigation.goBack();
     }
   };
 
   const setList = plan && plan.length > 0 ? plan : [{ weight: targetValue || 100, reps: targetReps || 1, type: 'main' }];
   const currentSet = setList[currentSetIndex] || setList[0];
-  const isMainSet = currentSet?.type === 'main';
+  const isMainSet = currentSet?.set_type === 'main' || currentSet?.type === 'main' || currentSetIndex === setList.length - 1;
 
-  const weightVal = currentSet?.weight ?? targetValue ?? 100;
-  const repsVal = currentSet?.reps ?? targetReps ?? 1;
+  const weightVal = currentSet?.prescribed_weight ?? currentSet?.weight ?? targetValue ?? 100;
+  const repsVal = currentSet?.prescribed_reps ?? currentSet?.reps ?? targetReps ?? 1;
 
   const handleYaptimClick = () => {
     setPendingSuccess(true);
@@ -58,88 +64,68 @@ export const RecordAttemptSessionScreen = ({ route, navigation }: any) => {
   };
 
   const handleConfirmRpe = async (rpeScore: number) => {
-    setShowRpeModal(false);
+    if (isSubmitting) return;
+    setIsSubmitting(true);
     const isSuccess = pendingSuccess;
 
-    // Save result if userId available
-    if (userId && exercise) {
-      try {
-        let targetExId = exercise.id;
-        const { data: dbEx } = await supabase
-          .from('exercises')
-          .select('id')
-          .ilike('name', exercise.name)
-          .limit(1);
-
-        if (dbEx && dbEx.length > 0) {
-          targetExId = dbEx[0].id;
-        } else {
-          const { data: newEx } = await supabase
-            .from('exercises')
-            .insert({
-              name: exercise.name,
-              category: 'record_attempt',
-            })
-            .select('id')
-            .single();
-          if (newEx) targetExId = newEx.id;
-        }
-
-        const { data: attemptRow } = await supabase
-          .from('record_attempts')
-          .insert({
-            user_id: userId,
-            exercise_id: targetExId,
-            target_weight: weightVal,
-            target_reps: repsVal,
-            status: 'completed',
-            success: isSuccess,
-            notes: `RPE: ${rpeScore}`,
-            completed_at: new Date().toISOString(),
-          })
-          .select('id')
-          .single();
-
-        if (attemptRow) {
-          await supabase.from('record_attempt_sets').insert({
-            attempt_id: attemptRow.id,
-            user_id: userId,
-            set_index: currentSetIndex + 1,
-            set_type: isMainSet ? 'main' : 'warmup',
-            actual_weight: weightVal,
-            actual_reps: repsVal,
-            rpe: rpeScore,
-            is_completed: true,
-            completed_at: new Date().toISOString(),
-          });
-        }
-
-        if (isSuccess) {
-          await supabase.from('personal_records').insert({
-            user_id: userId,
-            exercise_id: targetExId,
-            weight_kg: weightVal,
-            reps: repsVal,
-            record_date: new Date().toISOString(),
-            notes: `Rekor Denemesi RPE: ${rpeScore}`,
-          });
-        }
-      } catch (e) {
-        console.error('Error saving attempt:', e);
+    try {
+      // 1. Update current set row if setId is present
+      if (currentSet?.id) {
+        await RecordAttemptService.saveSet(
+          currentSet.id,
+          weightVal,
+          repsVal,
+          rpeScore,
+          90,
+          `Set ${currentSetIndex + 1} - RPE: ${rpeScore}`
+        );
       }
-    }
 
-    if (currentSetIndex < setList.length - 1) {
-      setCurrentSetIndex(currentSetIndex + 1);
-    } else {
-      navigation.navigate('RecordAttemptSummary', {
-        exercise,
-        recordType,
-        targetValue: weightVal,
-        targetReps: repsVal,
-        success: isSuccess,
-        rpe: rpeScore,
+      // 2. Check if we have more sets (warmups)
+      if (currentSetIndex < setList.length - 1) {
+        setShowRpeModal(false);
+        setCurrentSetIndex(currentSetIndex + 1);
+      } else {
+        // 3. Final Main Set: complete or fail the attempt
+        if (attempt?.id && userId) {
+          await RecordAttemptService.completeAttempt(
+            attempt.id,
+            isSuccess,
+            `RPE: ${rpeScore}`,
+            userId
+          );
+
+          if (isSuccess && exercise?.id) {
+            await RecordAttemptService.savePersonalRecord(
+              userId,
+              exercise.id,
+              weightVal,
+              repsVal,
+              `Rekor Denemesi RPE: ${rpeScore}`
+            );
+          }
+        }
+
+        setShowRpeModal(false);
+        navigation.navigate('RecordAttemptSummary', {
+          attempt,
+          exercise,
+          recordType,
+          targetValue: weightVal,
+          targetReps: repsVal,
+          success: isSuccess,
+          rpe: rpeScore,
+        });
+      }
+    } catch (e: any) {
+      console.error('[RecordAttemptSessionScreen] Error saving attempt set:', e);
+      feedback.error({
+        title: 'Kayıt Hatası',
+        message: e,
+        fallbackMessage: 'Set kaydedilemedi. Lütfen tekrar deneyin.',
       });
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -279,12 +265,19 @@ export const RecordAttemptSessionScreen = ({ route, navigation }: any) => {
 
           {/* Modal Actions */}
           <TouchableOpacity
-            style={styles.modalConfirmBtn}
+            style={[styles.modalConfirmBtn, isSubmitting && { opacity: 0.7 }]}
             onPress={() => handleConfirmRpe(selectedRpe)}
             activeOpacity={0.8}
+            disabled={isSubmitting}
           >
-            <Check size={20} color={Colors.allWhite} />
-            <Text style={styles.modalConfirmBtnText}>Kaydet ve Devam Et</Text>
+            {isSubmitting ? (
+              <ActivityIndicator size="small" color={Colors.allWhite} />
+            ) : (
+              <>
+                <Check size={20} color={Colors.allWhite} />
+                <Text style={styles.modalConfirmBtnText}>Kaydet ve Devam Et</Text>
+              </>
+            )}
           </TouchableOpacity>
         </View>
       </SmoothModal>
