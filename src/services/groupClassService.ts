@@ -67,6 +67,18 @@ export interface BookedClassItem {
 export const GroupClassService = {
   async fetchBookingsForDate(userId: string, dateStr: string): Promise<ClassBooking[]> {
     try {
+      const { data: userProfile } = await supabase
+        .from('users')
+        .select('*')
+        .eq('id', userId)
+        .single();
+
+      const activeGymId = userProfile
+        ? await UserService.resolveActiveGymIdForContent(userProfile)
+        : null;
+
+      if (!activeGymId || activeGymId === 'staff') return [];
+
       const { data, error } = await supabase
         .from('class_bookings')
         .select('*, group_class:group_classes(*)')
@@ -80,11 +92,13 @@ export const GroupClassService = {
       }
 
       const filtered = (data || []).filter((b: any) => {
+        const gc = b.group_class;
+        if (!gc) return false;
+        if (gc.gym_id && gc.gym_id !== activeGymId) return false;
         if (b.booking_date) {
           return b.booking_date === dateStr;
         }
-        const gc = b.group_class;
-        return Boolean(gc && gc.date_str && gc.date_str === dateStr);
+        return Boolean(gc.date_str && gc.date_str === dateStr);
       });
 
       return filtered.map((b: any) => {
@@ -149,7 +163,10 @@ export const GroupClassService = {
         if (c.date_str) {
           return c.date_str === dateStr;
         }
-        return c.day_of_week === undefined || c.day_of_week === null || c.day_of_week === targetDay;
+        if (c.day_of_week !== undefined && c.day_of_week !== null) {
+          return c.day_of_week === targetDay;
+        }
+        return false;
       });
 
       if (filtered.length === 0) return [];
@@ -183,14 +200,16 @@ export const GroupClassService = {
     }
   },
 
-  async bookClass(userId: string, classId: string, bookingDate?: string) {
-    const targetDate = bookingDate || formatLocalDate(new Date());
+  async bookClass(userId: string, classId: string, bookingDate: string) {
+    if (!bookingDate) {
+      throw new Error('Rezervasyon tarihi zorunludur.');
+    }
 
     try {
       const { data, error } = await supabase.rpc('atomic_book_group_class_v2', {
         p_user_id: userId,
         p_class_id: classId,
-        p_booking_date: targetDate,
+        p_booking_date: bookingDate,
       });
 
       if (error) {
@@ -246,6 +265,18 @@ export const GroupClassService = {
   // enriched with isPast and isWaitlist status.
   async fetchBookedClassesForDate(userId: string, dateStr: string): Promise<BookedClassItem[]> {
     try {
+      const { data: userProfile } = await supabase
+        .from('users')
+        .select('*')
+        .eq('id', userId)
+        .single();
+
+      const activeGymId = userProfile
+        ? await UserService.resolveActiveGymIdForContent(userProfile)
+        : null;
+
+      if (!activeGymId || activeGymId === 'staff') return [];
+
       const { data, error } = await supabase
         .from('class_bookings')
         .select('*, group_class:group_classes(*)')
@@ -265,6 +296,7 @@ export const GroupClassService = {
       const filtered = data.filter((b: any) => {
         const gc = b.group_class;
         if (!gc) return false;
+        if (gc.gym_id && gc.gym_id !== activeGymId) return false;
         if (b.booking_date) {
           return b.booking_date === dateStr;
         }
