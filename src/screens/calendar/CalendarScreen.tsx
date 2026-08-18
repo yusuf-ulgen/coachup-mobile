@@ -465,7 +465,10 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({ navigation }) =>
               {/* Open Classes */}
               {openClasses.map((cls) => {
                 const booking = groupBookings.find(
-                  b => b.class_id === cls.id && (b.booking_date === selectedDateStr || (!b.booking_date && (!cls.date_str || cls.date_str === selectedDateStr)))
+                  b =>
+                    b.class_id === cls.id &&
+                    (b.booking_date === selectedDateStr || (!b.booking_date && (!cls.date_str || cls.date_str === selectedDateStr))) &&
+                    (b.status === 'booked' || b.status === 'waiting')
                 );
                 const status = (booking?.status || '').toLowerCase();
                 const isWaitlist = status === 'waiting' || status === 'waitlist' || booking?.is_waitlist === true;

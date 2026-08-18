@@ -93,22 +93,26 @@ export const GroupClassService = {
 
       const filtered = (data || []).filter((b: any) => {
         const gc = b.group_class;
-        if (!gc) return false;
-        if (gc.gym_id && gc.gym_id !== activeGymId) return false;
+        if (!gc || gc.gym_id !== activeGymId) return false;
         if (b.booking_date) {
           return b.booking_date === dateStr;
         }
         return Boolean(gc.date_str && gc.date_str === dateStr);
       });
 
-      return filtered.map((b: any) => {
+      const activeBookings: ClassBooking[] = [];
+      for (const b of filtered) {
         const canonicalStatus = normalizeClassBookingStatus(b.status);
-        return {
-          ...b,
-          status: canonicalStatus,
-          is_waitlist: canonicalStatus === 'waiting',
-        };
-      });
+        if (canonicalStatus === 'booked' || canonicalStatus === 'waiting') {
+          activeBookings.push({
+            ...b,
+            status: canonicalStatus,
+            is_waitlist: canonicalStatus === 'waiting',
+          });
+        }
+      }
+
+      return activeBookings;
     } catch (e) {
       console.error('[GroupClassService] Error fetching class bookings:', e);
       return [];
@@ -295,8 +299,7 @@ export const GroupClassService = {
 
       const filtered = data.filter((b: any) => {
         const gc = b.group_class;
-        if (!gc) return false;
-        if (gc.gym_id && gc.gym_id !== activeGymId) return false;
+        if (!gc || gc.gym_id !== activeGymId) return false;
         if (b.booking_date) {
           return b.booking_date === dateStr;
         }
@@ -318,7 +321,7 @@ export const GroupClassService = {
         seenKeys.add(dedupKey);
 
         const canonicalStatus = normalizeClassBookingStatus(b.status);
-        // Neutral 'other' or 'cancelled' states should not be treated as active/booked
+        // Only active booking statuses drive the Home booked items
         if (canonicalStatus !== 'booked' && canonicalStatus !== 'waiting') {
           continue;
         }
