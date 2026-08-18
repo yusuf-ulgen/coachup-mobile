@@ -155,11 +155,9 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({ navigation }) =>
         activeGymId && activeGymId !== 'staff'
           ? supabase
               .from('group_classes')
-              .select('date_str')
+              .select('date_str, day_of_week')
               .eq('gym_id', activeGymId)
               .eq('is_active', true)
-              .gte('date_str', `${yearMonthPrefix}-01`)
-              .lte('date_str', `${yearMonthPrefix}-31`)
           : Promise.resolve({ data: [] }),
         supabase
           .from('gym_events')
@@ -188,10 +186,23 @@ export const CalendarScreen: React.FC<CalendarScreenProps> = ({ navigation }) =>
           if (!isNaN(d)) daysSet.add(d);
         }
       });
+
+      const [yearStr, monthStr] = yearMonthPrefix.split('-');
+      const year = parseInt(yearStr, 10);
+      const month = parseInt(monthStr, 10);
+      const daysInMonth = new Date(year, month, 0).getDate();
+
       classesRes.data?.forEach((item: any) => {
-        if (item.date_str) {
+        if (item.date_str && item.date_str.startsWith(yearMonthPrefix)) {
           const d = parseInt(item.date_str.split('-')[2], 10);
           if (!isNaN(d)) daysSet.add(d);
+        } else if (item.day_of_week !== null && item.day_of_week !== undefined) {
+          for (let day = 1; day <= daysInMonth; day++) {
+            const dt = new Date(year, month - 1, day);
+            if (dt.getDay() === item.day_of_week) {
+              daysSet.add(day);
+            }
+          }
         }
       });
       gymEventsRes.data?.forEach((item: any) => {

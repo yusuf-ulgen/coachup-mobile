@@ -1,4 +1,5 @@
 import { supabase } from './supabaseClient';
+import { formatLocalDate } from '../utils/dateUtils';
 
 export interface UserProfile {
   id: string;
@@ -191,6 +192,7 @@ export const UserService = {
       if (!userId) return null;
 
       // 1. Primary Source of Truth: Active user_memberships
+      const todayStr = formatLocalDate(new Date());
       const memberships = await this.fetchAvailableMemberships(userId);
       const activeMemberships = memberships.filter((m: any) => {
         const status = (m.status || '').toLowerCase().trim();
@@ -203,9 +205,14 @@ export const UserService = {
           m.is_active !== false;
 
         const isStatusActive = status ? status === 'active' : isNotExplicitlyInactive;
-        const notExpired = !m.end_date || new Date(m.end_date).setHours(23, 59, 59, 999) >= Date.now();
 
-        return isStatusActive && isNotExplicitlyInactive && notExpired;
+        const startDateStr = m.start_date ? String(m.start_date).slice(0, 10) : null;
+        const endDateStr = m.end_date ? String(m.end_date).slice(0, 10) : null;
+
+        const isStarted = !startDateStr || startDateStr <= todayStr;
+        const notExpired = !endDateStr || endDateStr >= todayStr;
+
+        return isStatusActive && isNotExplicitlyInactive && isStarted && notExpired;
       });
 
       const gymIds = Array.from(

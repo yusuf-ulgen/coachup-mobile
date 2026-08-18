@@ -2,15 +2,15 @@ import { supabase } from './supabaseClient';
 import { formatLocalDate } from '../utils/dateUtils';
 import { UserService } from './userService';
 
-export type CanonicalClassBookingStatus = 'booked' | 'waiting' | 'cancelled';
+export type CanonicalClassBookingStatus = 'booked' | 'waiting' | 'cancelled' | 'other';
 
 export function normalizeClassBookingStatus(status?: string | null): CanonicalClassBookingStatus {
-  if (!status) return 'booked';
+  if (!status) return 'other';
   const s = status.toLowerCase().trim();
   if (s === 'booked' || s === 'confirmed') return 'booked';
   if (s === 'waiting' || s === 'waitlist') return 'waiting';
   if (s === 'cancelled' || s === 'canceled') return 'cancelled';
-  return 'booked';
+  return 'other';
 }
 
 export function getDayOfWeekFromDateStr(dateStr: string): number {
@@ -71,7 +71,7 @@ export const GroupClassService = {
         .from('class_bookings')
         .select('*, group_class:group_classes(*)')
         .eq('user_id', userId)
-        .eq('booking_date', dateStr)
+        .or(`booking_date.eq.${dateStr},booking_date.is.null`)
         .neq('status', 'cancelled');
 
       if (error) {
@@ -79,11 +79,22 @@ export const GroupClassService = {
         throw error;
       }
 
-      return (data || []).map((b: any) => ({
-        ...b,
-        status: normalizeClassBookingStatus(b.status),
-        is_waitlist: normalizeClassBookingStatus(b.status) === 'waiting',
-      }));
+      const filtered = (data || []).filter((b: any) => {
+        if (b.booking_date) {
+          return b.booking_date === dateStr;
+        }
+        const gc = b.group_class;
+        return Boolean(gc && gc.date_str && gc.date_str === dateStr);
+      });
+
+      return filtered.map((b: any) => {
+        const canonicalStatus = normalizeClassBookingStatus(b.status);
+        return {
+          ...b,
+          status: canonicalStatus,
+          is_waitlist: canonicalStatus === 'waiting',
+        };
+      });
     } catch (e) {
       console.error('[GroupClassService] Error fetching class bookings:', e);
       return [];
@@ -239,7 +250,7 @@ export const GroupClassService = {
         .from('class_bookings')
         .select('*, group_class:group_classes(*)')
         .eq('user_id', userId)
-        .eq('booking_date', dateStr)
+        .or(`booking_date.eq.${dateStr},booking_date.is.null`)
         .neq('status', 'cancelled')
         .order('created_at', { ascending: false });
 
@@ -250,18 +261,15 @@ export const GroupClassService = {
       if (!data) return [];
 
       const now = new Date();
-      const targetDayOfWeek = getDayOfWeekFromDateStr(dateStr);
 
       const filtered = data.filter((b: any) => {
         const gc = b.group_class;
         if (!gc) return false;
-        if (b.booking_date) return b.booking_date === dateStr;
-        if (gc.date_str) return gc.date_str === dateStr;
-        return (
-          gc.day_of_week === undefined ||
-          gc.day_of_week === null ||
-          gc.day_of_week === targetDayOfWeek
-        );
+        if (b.booking_date) {
+          return b.booking_date === dateStr;
+        }
+        // Legacy undated row: only include if group_class is one-off with matching date_str
+        return Boolean(gc.date_str && gc.date_str === dateStr);
       });
 
       const seenKeys = new Set<string>();
@@ -278,6 +286,11 @@ export const GroupClassService = {
         seenKeys.add(dedupKey);
 
         const canonicalStatus = normalizeClassBookingStatus(b.status);
+        // Neutral 'other' or 'cancelled' states should not be treated as active/booked
+        if (canonicalStatus !== 'booked' && canonicalStatus !== 'waiting') {
+          continue;
+        }
+
         const isWaitlist = canonicalStatus === 'waiting';
 
         const endTimeStr = gc?.end_time || gc?.start_time || '23:59';
