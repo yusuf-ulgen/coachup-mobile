@@ -130,47 +130,45 @@ export const ResultDetailScreen = () => {
           )}
 
           {/* 90 Günlük İlerleme Çizgi Grafiği (SVG) */}
-          {isWeight && (
-            <View style={styles.section}>
-              <Text style={styles.sectionTitle}>90 Günlük İlerleme</Text>
-              <View style={styles.chartContainer}>
-                {chartPointsList.length >= 2 ? (
-                  <>
-                    <Svg height="150" width="100%" viewBox="0 0 100 120" preserveAspectRatio="none">
-                      <Polyline
-                        points={chartPointsString}
-                        fill="none"
-                        stroke={Colors.primary}
-                        strokeWidth="2"
-                      />
-                      {chartPointsList.map((pt, idx) => (
-                        <Circle key={idx} cx={pt.x} cy={pt.y} r="3" fill={Colors.primary} />
-                      ))}
-                    </Svg>
-                    <View style={styles.chartLabels}>
-                      <Text style={styles.chartLabel}>3 Ay Önce</Text>
-                      <Text style={styles.chartLabel}>Bugün</Text>
-                    </View>
-                  </>
-                ) : chartPointsList.length === 1 ? (
-                  <View style={{ paddingVertical: 24, alignItems: 'center' }}>
-                    <Text style={{ color: Colors.primary, fontWeight: '700', fontSize: 18, marginBottom: 4 }}>
-                      {getVal(chartPointsList[0].value)} {unit}
-                    </Text>
-                    <Text style={{ color: Colors.textSecondaryDark, fontSize: 12 }}>
-                      Kayıt tarihi: {chartPointsList[0].date}
-                    </Text>
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>90 Günlük İlerleme</Text>
+            <View style={styles.chartContainer}>
+              {chartPointsList.length >= 2 ? (
+                <>
+                  <Svg height="150" width="100%" viewBox="0 0 100 120" preserveAspectRatio="none">
+                    <Polyline
+                      points={chartPointsString}
+                      fill="none"
+                      stroke={Colors.primary}
+                      strokeWidth="2"
+                    />
+                    {chartPointsList.map((pt, idx) => (
+                      <Circle key={idx} cx={pt.x} cy={pt.y} r="3" fill={Colors.primary} />
+                    ))}
+                  </Svg>
+                  <View style={styles.chartLabels}>
+                    <Text style={styles.chartLabel}>3 Ay Önce</Text>
+                    <Text style={styles.chartLabel}>Bugün</Text>
                   </View>
-                ) : (
-                  <View style={{ paddingVertical: 24, alignItems: 'center' }}>
-                    <Text style={{ color: Colors.textSecondaryDark, fontSize: 13 }}>
-                      Son 90 günde kayıtlı antrenman verisi bulunmuyor.
-                    </Text>
-                  </View>
-                )}
-              </View>
+                </>
+              ) : chartPointsList.length === 1 ? (
+                <View style={{ paddingVertical: 24, alignItems: 'center' }}>
+                  <Text style={{ color: Colors.primary, fontWeight: '700', fontSize: 18, marginBottom: 4 }}>
+                    {isWeight ? `${getVal(chartPointsList[0].value)} ${unit}` : chartPointsList[0].formattedValue}
+                  </Text>
+                  <Text style={{ color: Colors.textSecondaryDark, fontSize: 12 }}>
+                    Kayıt tarihi: {chartPointsList[0].date}
+                  </Text>
+                </View>
+              ) : (
+                <View style={{ paddingVertical: 24, alignItems: 'center' }}>
+                  <Text style={{ color: Colors.textSecondaryDark, fontSize: 13 }}>
+                    Son 90 günde kayıtlı antrenman verisi bulunmuyor.
+                  </Text>
+                </View>
+              )}
             </View>
-          )}
+          </View>
 
           {/* Yıllara Göre Geçmiş */}
           <View style={styles.section}>

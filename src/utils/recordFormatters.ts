@@ -66,11 +66,17 @@ export function formatPRDisplayValue(item: any): string {
   const exerciseName = (item.exercise?.name || item.exercise_name || item.name || '').trim();
   const lowerName = exerciseName.toLowerCase();
   const notes = (item.notes || '').trim();
-  const repsVal = Number(item.reps ?? item.actual_reps ?? item.target_reps ?? 0);
+  const repsVal = Number(item.rounds ?? item.reps ?? item.actual_reps ?? item.target_reps ?? 0);
   const weightVal = Number(item.weight_kg ?? item.weight ?? item.target_weight ?? item.actual_weight ?? 0);
+  const elapsedSec =
+    item.elapsed_seconds !== undefined && item.elapsed_seconds !== null && Number(item.elapsed_seconds) > 0
+      ? Number(item.elapsed_seconds)
+      : item.time_seconds && Number(item.time_seconds) > 0
+      ? Number(item.time_seconds)
+      : null;
 
   // 1. AMRAP (Cindy etc.)
-  if (isAmrapExercise(lowerName)) {
+  if (isAmrapExercise(lowerName) || item.result_type === 'amrap') {
     if (repsVal > 0) {
       return `${repsVal} tur`;
     }
@@ -80,8 +86,12 @@ export function formatPRDisplayValue(item: any): string {
   }
 
   // 2. Non-Reps Sports (Row, Run, Swim, Bike, Ski, Murph, Fran, etc.)
-  if (isNonRepsExercise(lowerName)) {
-    // Check if notes contains time formatted like "04:32", "21:45", "Süre: 42:15", "1470 sn"
+  if (isNonRepsExercise(lowerName) || ['running', 'fixed_distance_time', 'fixed_calorie_time', 'benchmark_time'].includes(item.result_type)) {
+    if (elapsedSec !== null) {
+      const m = Math.floor(elapsedSec / 60);
+      const s = elapsedSec % 60;
+      return `${m}:${s.toString().padStart(2, '0')}`;
+    }
     const timeMatch = notes.match(/(?:Süre:\s*)?(\d{1,2}:\d{2}(?::\d{2})?)/i);
     if (timeMatch) {
       return timeMatch[1];
@@ -89,12 +99,6 @@ export function formatPRDisplayValue(item: any): string {
     const secMatch = notes.match(/(\d+)\s*sn/i);
     if (secMatch) {
       const sec = parseInt(secMatch[1], 10);
-      const m = Math.floor(sec / 60);
-      const s = sec % 60;
-      return `${m}:${s.toString().padStart(2, '0')}`;
-    }
-    if (item.time_seconds && Number(item.time_seconds) > 0) {
-      const sec = Number(item.time_seconds);
       const m = Math.floor(sec / 60);
       const s = sec % 60;
       return `${m}:${s.toString().padStart(2, '0')}`;
@@ -125,18 +129,23 @@ export function formatPRDetailText(item: any): string {
   if (!item) return 'Kişisel Rekor';
   const exerciseName = (item.exercise?.name || item.exercise_name || item.name || '').trim();
   const lowerName = exerciseName.toLowerCase();
-  const repsVal = Number(item.reps ?? item.actual_reps ?? item.target_reps ?? 0);
+  const repsVal = Number(item.rounds ?? item.reps ?? item.actual_reps ?? item.target_reps ?? 0);
   const weightVal = Number(item.weight_kg ?? item.weight ?? item.target_weight ?? item.actual_weight ?? 0);
+  const elapsedSec =
+    item.elapsed_seconds !== undefined && item.elapsed_seconds !== null && Number(item.elapsed_seconds) > 0
+      ? Number(item.elapsed_seconds)
+      : item.time_seconds && Number(item.time_seconds) > 0
+      ? Number(item.time_seconds)
+      : null;
 
-  if (isAmrapExercise(lowerName)) {
+  if (isAmrapExercise(lowerName) || item.result_type === 'amrap') {
     return `Sonuç: ${repsVal || 1} tur`;
   }
 
-  if (isNonRepsExercise(lowerName)) {
-    if (item.time_seconds && Number(item.time_seconds) > 0) {
-      const sec = Number(item.time_seconds);
-      const m = Math.floor(sec / 60);
-      const s = sec % 60;
+  if (isNonRepsExercise(lowerName) || ['running', 'fixed_distance_time', 'fixed_calorie_time', 'benchmark_time'].includes(item.result_type)) {
+    if (elapsedSec !== null) {
+      const m = Math.floor(elapsedSec / 60);
+      const s = elapsedSec % 60;
       return `Süre: ${m}:${s.toString().padStart(2, '0')} · Kardiyo / For Time Rekoru`;
     }
     const timeMatch = (item.notes || '').match(/(?:Süre:\s*)?(\d{1,2}:\d{2})/i);

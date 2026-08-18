@@ -92,30 +92,31 @@ export const RecordAttemptService = {
   },
 
   /**
-   * Resolves target distance in KM from catalog identifier without fake 1.0 fallback.
+   * Resolves target distance in KM from catalog identifier without fake fallbacks.
    */
   runningTargetKm(catalogId?: string): number | null {
-    const id = (catalogId || '').toLowerCase();
-    if (id.includes('400')) return 0.4;
-    if (id.includes('800')) return 0.8;
-    if (id.includes('1k') || id.endsWith('_1k') || id.includes('1_km')) return 1.0;
-    if (id.includes('3k') || id.includes('3_km')) return 3.0;
-    if (id.includes('5k') || id.includes('5_km')) return 5.0;
-    if (id.includes('10k') || id.includes('10_km')) return 10.0;
-    if (id.includes('half') || id.includes('21')) return 21.0975;
-    if (id.includes('full') || id.includes('42')) return 42.195;
+    const id = (catalogId || '').toLowerCase().trim();
+    if (id === 'run_full' || id.includes('42')) return 42.195;
+    if (id === 'run_half' || id.includes('21')) return 21.0975;
+    if (id === 'run_10k' || id.includes('10k') || id.includes('10_km')) return 10.0;
+    if (id === 'run_5k' || id.includes('5k') || id.includes('5_km')) return 5.0;
+    if (id === 'run_3k' || id.includes('3k') || id.includes('3_km')) return 3.0;
+    if (id === 'run_1k' || id.endsWith('_1k') || id.includes('1_km')) return 1.0;
+    if (id === 'run_800m' || id.includes('800')) return 0.8;
+    if (id === 'run_400m' || id.includes('400')) return 0.4;
     return null;
   },
 
   /**
-   * Resolves target distance in KM for fixed-distance cardio (Row, SkiErg).
+   * Resolves target distance in KM for fixed-distance cardio (Row, SkiErg) deterministically.
+   * Checks longer/specific matches first so row_5000m is never misidentified as row_500m.
    */
   cardioTargetDistanceKm(catalogId?: string): number | null {
-    const id = (catalogId || '').toLowerCase();
-    if (id.includes('500m') || id.includes('500')) return 0.5;
-    if (id.includes('1000m') || id.includes('1000') || id.includes('1k')) return 1.0;
-    if (id.includes('2000m') || id.includes('2000') || id.includes('2k')) return 2.0;
-    if (id.includes('5000m') || id.includes('5000') || id.includes('5k')) return 5.0;
+    const id = (catalogId || '').toLowerCase().trim();
+    if (id === 'row_5000m' || id.endsWith('5000m') || id.includes('5000m') || id.includes('5000')) return 5.0;
+    if (id === 'row_2000m' || id.endsWith('2000m') || id.includes('2000m') || id.includes('2000')) return 2.0;
+    if (id === 'row_1000m' || id.endsWith('1000m') || id.includes('1000m') || id.includes('1000') || id === 'ski_1000m') return 1.0;
+    if (id === 'row_500m' || id.endsWith('500m') || id.includes('500m') || id.includes('500')) return 0.5;
     return null;
   },
 
@@ -123,10 +124,10 @@ export const RecordAttemptService = {
    * Resolves target calories for fixed-calorie challenges (Assault Bike, Echo Bike).
    */
   cardioTargetCalories(catalogId?: string): number | null {
-    const id = (catalogId || '').toLowerCase();
-    if (id.includes('10cal') || id.includes('10_cal')) return 10;
-    if (id.includes('50cal') || id.includes('50_cal')) return 50;
-    if (id.includes('100cal') || id.includes('100_cal')) return 100;
+    const id = (catalogId || '').toLowerCase().trim();
+    if (id === 'echo_100cal' || id.includes('100cal') || id.includes('100_cal')) return 100;
+    if (id === 'bike_50cal' || id.includes('50cal') || id.includes('50_cal')) return 50;
+    if (id === 'bike_10cal' || id.includes('10cal') || id.includes('10_cal')) return 10;
     return null;
   },
 
@@ -134,7 +135,7 @@ export const RecordAttemptService = {
    * Resolves AMRAP time cap in seconds (default: 20 min = 1200s).
    */
   amrapCapSeconds(catalogId?: string): number {
-    const id = (catalogId || '').toLowerCase();
+    const id = (catalogId || '').toLowerCase().trim();
     if (id.includes('10')) return 10 * 60;
     if (id.includes('15')) return 15 * 60;
     if (id.includes('30')) return 30 * 60;
@@ -142,97 +143,161 @@ export const RecordAttemptService = {
   },
 
   /**
-   * Resolves canonical RecordResultType based on catalog/category metadata.
+   * Resolves canonical RecordResultType with strict priority and name/category compatibility.
    */
   getExerciseResultType(
     catalogId?: string,
     categoryId?: string,
-    exerciseName?: string
+    exerciseName?: string,
+    persistedType?: string
   ): RecordResultType {
-    const id = (catalogId || '').toLowerCase();
-    const cat = (categoryId || '').toLowerCase();
-    const name = (exerciseName || '').toLowerCase();
+    if (
+      persistedType &&
+      ['weight', 'reps', 'running', 'fixed_distance_time', 'fixed_calorie_time', 'benchmark_time', 'amrap'].includes(persistedType)
+    ) {
+      return persistedType as RecordResultType;
+    }
 
-    if (name.includes('cindy') || id.includes('cindy') || id.includes('amrap')) {
+    const id = (catalogId || '').toLowerCase().trim();
+    const cat = (categoryId || '').toLowerCase().trim();
+    const name = (exerciseName || '').toLowerCase().trim();
+
+    // 1. Explicit catalog ID matches
+    if (id.includes('cindy') || name.includes('cindy') || id.includes('amrap') || name.includes('amrap')) {
       return 'amrap';
     }
-    if (cat === 'strength') return 'weight';
-    if (cat === 'bodyweight') return 'reps';
-    if (cat === 'running' || id.startsWith('run_')) return 'running';
-    if (cat === 'benchmark') {
-      if (name.includes('cindy') || id.includes('cindy')) return 'amrap';
-      return 'benchmark_time';
+    if (id.startsWith('run_') || id.includes('koşu') || id.includes('maraton')) {
+      return 'running';
     }
-    if (
-      cat === 'cardio' ||
-      id.startsWith('row_') ||
-      id.startsWith('ski_') ||
-      id.startsWith('bike_') ||
-      id.startsWith('echo_')
-    ) {
-      if (id.includes('cal') || name.includes('cal')) return 'fixed_calorie_time';
+    if (id.startsWith('row_') || id.startsWith('ski_')) {
       return 'fixed_distance_time';
     }
+    if (id.startsWith('bike_') || id.startsWith('echo_')) {
+      return 'fixed_calorie_time';
+    }
+
+    const benchmarkIds = ['fran', 'grace', 'isabel', 'jackie', 'helen', 'dane', 'diane', 'murph', 'kalsu', 'dt', 'linda'];
+    if (benchmarkIds.some((b) => id === b || id.startsWith(`${b}_`))) {
+      return 'benchmark_time';
+    }
+
+    const bodyweightIds = ['pull_up', 'chest_to_bar', 'bar_muscle_up', 'ring_muscle_up', 'push_up', 'dips', 'hspu', 'toes_to_bar'];
+    if (bodyweightIds.some((b) => id === b)) {
+      return 'reps';
+    }
+
+    const strengthIds = ['back_squat', 'front_squat', 'deadlift', 'bench_press', 'strict_press', 'push_press', 'thruster', 'overhead_squat', 'power_clean', 'squat_clean', 'power_snatch', 'squat_snatch', 'clean_jerk'];
+    if (strengthIds.some((s) => id === s)) {
+      return 'weight';
+    }
+
+    // 2. Canonical category metadata
+    if (cat === 'running' || cat === 'koşu') return 'running';
+    if (cat === 'bodyweight' || cat === 'vücut ağırlığı') return 'reps';
+    if (cat === 'benchmark') {
+      if (name.includes('cindy')) return 'amrap';
+      return 'benchmark_time';
+    }
+    if (cat === 'cardio' || cat === 'kardiyo') {
+      if (id.includes('cal') || name.includes('cal') || name.includes('kalori')) return 'fixed_calorie_time';
+      return 'fixed_distance_time';
+    }
+    if (cat === 'strength' || cat === 'güç') return 'weight';
+
+    // 3. Known exercise name substring matches
+    if (name.includes('koşu') || name.includes('run') || name.includes('maraton')) return 'running';
+    if (name.includes('row') || name.includes('kürek') || name.includes('skierg') || name.includes('ski')) return 'fixed_distance_time';
+    if (name.includes('bike') || name.includes('bisiklet') || name.includes('cal') || name.includes('kalori')) return 'fixed_calorie_time';
+    if (benchmarkIds.some((b) => name.includes(b))) return 'benchmark_time';
+    if (name.includes('barfiks') || name.includes('pull-up') || name.includes('push-up') || name.includes('şınav') || name.includes('dips')) return 'reps';
+
+    // 4. Safe fallback
     return 'weight';
   },
 
   /**
-   * Extract normalized numeric metrics from any record/attempt/history item.
+   * Extract normalized numeric metrics from any record/attempt/history item with typed priority.
    */
   extractNormalizedMetrics(record: any, resultType: RecordResultType) {
     const notes = (record?.notes || '').trim();
-    let weightKg = Number(
-      record?.weight_kg ??
-      record?.weight ??
-      record?.target_weight ??
-      record?.actual_weight ??
-      0
-    );
+    const effectiveType = (record?.result_type as RecordResultType) || resultType;
+
+    const typedElapsed =
+      record?.elapsed_seconds !== undefined && record?.elapsed_seconds !== null
+        ? Number(record.elapsed_seconds)
+        : null;
+    const typedDistance =
+      record?.distance_km !== undefined && record?.distance_km !== null
+        ? Number(record.distance_km)
+        : null;
+    const typedCalories =
+      record?.target_calories !== undefined && record?.target_calories !== null
+        ? Number(record.target_calories)
+        : null;
+    const typedRounds =
+      record?.rounds !== undefined && record?.rounds !== null
+        ? Number(record.rounds)
+        : null;
+
+    const weightKg =
+      effectiveType === 'weight'
+        ? Number(
+            record?.weight_kg ??
+            record?.weight ??
+            record?.target_weight ??
+            record?.actual_weight ??
+            0
+          )
+        : 0;
+
     let reps = Number(
       record?.reps ??
       record?.actual_reps ??
       record?.target_reps ??
       1
     );
-    let elapsedSeconds: number | null = null;
+    if (typedRounds !== null && typedRounds > 0) {
+      reps = typedRounds;
+    }
 
-    if (record?.time_seconds && Number(record.time_seconds) > 0) {
-      elapsedSeconds = Number(record.time_seconds);
-    } else {
-      const colonTime = notes.match(/(?:Süre:\s*)?(\d{1,2}):(\d{2})/i);
-      if (colonTime) {
-        const min = parseInt(colonTime[1], 10);
-        const sec = parseInt(colonTime[2], 10);
-        elapsedSeconds = min * 60 + sec;
+    let elapsedSeconds = typedElapsed;
+
+    // Legacy fallback: check time_seconds or notes
+    if (elapsedSeconds === null || elapsedSeconds === undefined) {
+      if (record?.time_seconds && Number(record.time_seconds) > 0) {
+        elapsedSeconds = Number(record.time_seconds);
       } else {
-        const secMatch = notes.match(/(\d+)\s*sn/i);
-        if (secMatch) {
-          elapsedSeconds = parseInt(secMatch[1], 10);
+        const colonTime = notes.match(/(?:Süre:\s*)?(\d{1,2}):(\d{2})/i);
+        if (colonTime) {
+          const min = parseInt(colonTime[1], 10);
+          const sec = parseInt(colonTime[2], 10);
+          elapsedSeconds = min * 60 + sec;
+        } else {
+          const secMatch = notes.match(/(\d+)\s*sn/i);
+          if (secMatch) {
+            elapsedSeconds = parseInt(secMatch[1], 10);
+          }
         }
       }
     }
 
-    // Historical compatibility: if seconds were stored in weight_kg for non-weight exercise
-    if (resultType !== 'weight' && resultType !== 'reps') {
-      if (!elapsedSeconds && weightKg > 0) {
-        elapsedSeconds = Math.round(weightKg);
-        weightKg = 0;
-      }
-    }
-
-    if (resultType === 'amrap') {
+    if (effectiveType === 'amrap' && typedRounds === null) {
       const roundsMatch = notes.match(/(\d+)\s*tur/i);
       if (roundsMatch) {
         reps = parseInt(roundsMatch[1], 10);
       }
     }
 
-    const epley = resultType === 'weight' ? this.epley1RM(weightKg, reps) : 0;
+    const epley = effectiveType === 'weight' ? this.epley1RM(weightKg, reps) : 0;
 
     return {
+      resultType: effectiveType,
       weightKg,
       reps,
       elapsedSeconds: elapsedSeconds || 0,
+      distanceKm: typedDistance,
+      targetCalories: typedCalories,
+      rounds: typedRounds ?? (effectiveType === 'amrap' ? reps : null),
       epley1RM: epley,
     };
   },
@@ -286,6 +351,8 @@ export const RecordAttemptService = {
         weightKg: candidateMetrics.weightKg,
         reps: candidateMetrics.reps,
         elapsedSeconds: candidateMetrics.elapsedSeconds,
+        distanceKm: candidateMetrics.distanceKm ?? undefined,
+        targetCalories: candidateMetrics.targetCalories ?? undefined,
       };
       if (this.isBetterRecord(candidatePayload, best)) {
         best = candidate;
@@ -296,18 +363,20 @@ export const RecordAttemptService = {
 
   /**
    * Evaluates if attempt qualifies as a new PR, and inserts ONLY if strictly better.
+   * Scans full user PR history for this exercise so older best records are never missed.
    */
   async evaluateAndSavePersonalRecord(
     userId: string,
     exerciseId: string,
     resultPayload: RecordResultPayload
   ): Promise<PREvaluationResult> {
-    const records = await this.fetchPersonalRecordsForExercise(userId, exerciseId, 50);
+    const records = await this.fetchPersonalRecordsForExercise(userId, exerciseId);
     const bestPrevious = this.findBestHistoricalRecord(records, resultPayload.resultType);
     const isNewPR = this.isBetterRecord(resultPayload, bestPrevious);
-    const epley = resultPayload.resultType === 'weight'
-      ? this.epley1RM(resultPayload.weightKg || 0, resultPayload.reps || 1)
-      : undefined;
+    const epley =
+      resultPayload.resultType === 'weight'
+        ? this.epley1RM(resultPayload.weightKg || 0, resultPayload.reps || 1)
+        : undefined;
 
     if (isNewPR) {
       let notes = resultPayload.notes || '';
@@ -345,13 +414,16 @@ export const RecordAttemptService = {
         notes = `AMRAP 20 dk: ${resultPayload.reps || 0} tur`;
       }
 
-      const saved = await this.savePersonalRecord(
-        userId,
-        exerciseId,
-        resultPayload.resultType === 'weight' ? (resultPayload.weightKg || 0) : 0,
-        resultPayload.reps || 1,
-        notes
-      );
+      const saved = await this.savePersonalRecord(userId, exerciseId, {
+        resultType: resultPayload.resultType,
+        weightKg: resultPayload.resultType === 'weight' ? (resultPayload.weightKg || 0) : 0,
+        reps: resultPayload.reps || 1,
+        elapsedSeconds: resultPayload.elapsedSeconds ?? null,
+        distanceKm: resultPayload.distanceKm ?? null,
+        targetCalories: resultPayload.targetCalories ?? null,
+        rounds: resultPayload.resultType === 'amrap' ? (resultPayload.reps || null) : null,
+        notes,
+      });
 
       if (resultPayload.resultType === 'weight' && epley) {
         await this.upsertExerciseResult(
@@ -514,21 +586,26 @@ export const RecordAttemptService = {
 
   /**
    * Fetches past personal records for a single exercise.
+   * If limit is not specified, fetches all records for this user+exercise so best calculation is never clipped.
    */
   async fetchPersonalRecordsForExercise(
     userId: string,
     exerciseId: string,
-    limit: number = 20
+    limit?: number
   ): Promise<any[]> {
     try {
-      const { data, error } = await supabase
+      let query = supabase
         .from('personal_records')
         .select('*')
         .eq('user_id', userId)
         .eq('exercise_id', exerciseId)
-        .order('record_date', { ascending: false })
-        .limit(limit);
+        .order('record_date', { ascending: false });
 
+      if (limit && limit > 0) {
+        query = query.limit(limit);
+      }
+
+      const { data, error } = await query;
       if (error) {
         console.warn('[RecordAttemptService] fetchPersonalRecordsForExercise error:', error);
         return [];
@@ -550,8 +627,7 @@ export const RecordAttemptService = {
         .from('record_attempt_sets')
         .select('*')
         .in('attempt_id', attemptIds)
-        .eq('set_type', 'main')
-        .eq('is_completed', true);
+        .eq('set_type', 'main');
 
       if (error) {
         console.warn('[RecordAttemptService] fetchMainSetsForAttempts error:', error);
@@ -571,6 +647,7 @@ export const RecordAttemptService = {
 
   /**
    * Upserts the exercise_results row for strength 1RM progression tracking.
+   * Explicitly checks and reports errors from both select/update/insert paths.
    */
   async upsertExerciseResult(
     userId: string,
@@ -578,14 +655,18 @@ export const RecordAttemptService = {
     maxWeight: number,
     maxReps: number,
     oneRepMax: number
-  ): Promise<void> {
+  ): Promise<{ success: boolean; error?: any }> {
     try {
-      const { data: existing } = await supabase
+      const { data: existing, error: selectErr } = await supabase
         .from('exercise_results')
         .select('id, max_weight, max_reps, one_rep_max')
         .eq('user_id', userId)
         .eq('exercise_id', exerciseId)
         .limit(1);
+
+      if (selectErr) {
+        console.warn('[RecordAttemptService] upsertExerciseResult select warning:', selectErr);
+      }
 
       const now = new Date().toISOString();
       if (existing && existing.length > 0) {
@@ -593,7 +674,7 @@ export const RecordAttemptService = {
         const newWeight = Math.max(Number(row.max_weight || 0), maxWeight);
         const newReps = maxWeight >= Number(row.max_weight || 0) ? maxReps : Number(row.max_reps || 1);
         const new1RM = Math.max(Number(row.one_rep_max || 0), oneRepMax);
-        await supabase
+        const { error: updateErr } = await supabase
           .from('exercise_results')
           .update({
             max_weight: newWeight,
@@ -602,8 +683,13 @@ export const RecordAttemptService = {
             last_updated: now,
           })
           .eq('id', row.id);
+
+        if (updateErr) {
+          console.warn('[RecordAttemptService] upsertExerciseResult update error:', updateErr);
+          return { success: false, error: updateErr };
+        }
       } else {
-        await supabase
+        const { error: insertErr } = await supabase
           .from('exercise_results')
           .insert({
             user_id: userId,
@@ -613,9 +699,16 @@ export const RecordAttemptService = {
             one_rep_max: oneRepMax,
             last_updated: now,
           });
+
+        if (insertErr) {
+          console.warn('[RecordAttemptService] upsertExerciseResult insert error:', insertErr);
+          return { success: false, error: insertErr };
+        }
       }
+      return { success: true };
     } catch (e) {
-      console.warn('[RecordAttemptService] upsertExerciseResult non-blocking warning:', e);
+      console.warn('[RecordAttemptService] upsertExerciseResult exception:', e);
+      return { success: false, error: e };
     }
   },
 
@@ -694,50 +787,100 @@ export const RecordAttemptService = {
 
   /**
    * Updates an individual set in record_attempt_sets upon completion.
+   * Preserves semantic separation: actual_weight is strictly physical weight in kg.
    */
   async saveSet(
     setId: string,
-    actualWeight?: number | null,
-    actualReps?: number | null,
-    rpe?: number | null,
-    restSeconds?: number | null,
-    notes?: string | null
+    paramsOrWeight?:
+      | {
+          actualWeight?: number | null;
+          actualReps?: number | null;
+          rpe?: number | null;
+          restSeconds?: number | null;
+          isCompleted?: boolean;
+          resultType?: RecordResultType;
+          elapsedSeconds?: number | null;
+          distanceKm?: number | null;
+          targetCalories?: number | null;
+          rounds?: number | null;
+          notes?: string | null;
+        }
+      | number
+      | null,
+    legacyActualReps?: number | null,
+    legacyRpe?: number | null,
+    legacyRestSeconds?: number | null,
+    legacyNotes?: string | null
   ): Promise<RecordAttemptSet> {
     const now = new Date().toISOString();
     const payload: any = {
-      is_completed: true,
       completed_at: now,
     };
 
-    if (actualWeight !== undefined && actualWeight !== null) {
-      payload.actual_weight = actualWeight;
-    }
-    if (actualReps !== undefined && actualReps !== null) {
-      payload.actual_reps = actualReps;
-    }
-    if (rpe !== undefined && rpe !== null) {
-      payload.rpe = rpe;
-    }
-    if (restSeconds !== undefined && restSeconds !== null) {
-      payload.rest_seconds = restSeconds;
-    }
-    if (notes !== undefined && notes !== null) {
-      payload.notes = notes;
+    if (typeof paramsOrWeight === 'object' && paramsOrWeight !== null) {
+      payload.is_completed = paramsOrWeight.isCompleted ?? true;
+      if (paramsOrWeight.actualWeight !== undefined) payload.actual_weight = paramsOrWeight.actualWeight;
+      if (paramsOrWeight.actualReps !== undefined) payload.actual_reps = paramsOrWeight.actualReps;
+      if (paramsOrWeight.rpe !== undefined && paramsOrWeight.rpe !== null) payload.rpe = paramsOrWeight.rpe;
+      if (paramsOrWeight.restSeconds !== undefined && paramsOrWeight.restSeconds !== null)
+        payload.rest_seconds = paramsOrWeight.restSeconds;
+      if (paramsOrWeight.notes !== undefined && paramsOrWeight.notes !== null) payload.notes = paramsOrWeight.notes;
+      if (paramsOrWeight.resultType) payload.result_type = paramsOrWeight.resultType;
+      if (paramsOrWeight.elapsedSeconds !== undefined && paramsOrWeight.elapsedSeconds !== null)
+        payload.elapsed_seconds = paramsOrWeight.elapsedSeconds;
+      if (paramsOrWeight.distanceKm !== undefined && paramsOrWeight.distanceKm !== null)
+        payload.distance_km = paramsOrWeight.distanceKm;
+      if (paramsOrWeight.targetCalories !== undefined && paramsOrWeight.targetCalories !== null)
+        payload.target_calories = paramsOrWeight.targetCalories;
+      if (paramsOrWeight.rounds !== undefined && paramsOrWeight.rounds !== null)
+        payload.rounds = paramsOrWeight.rounds;
+    } else {
+      payload.is_completed = true;
+      if (paramsOrWeight !== undefined && paramsOrWeight !== null) payload.actual_weight = paramsOrWeight;
+      if (legacyActualReps !== undefined && legacyActualReps !== null) payload.actual_reps = legacyActualReps;
+      if (legacyRpe !== undefined && legacyRpe !== null) payload.rpe = legacyRpe;
+      if (legacyRestSeconds !== undefined && legacyRestSeconds !== null) payload.rest_seconds = legacyRestSeconds;
+      if (legacyNotes !== undefined && legacyNotes !== null) payload.notes = legacyNotes;
     }
 
-    const { data, error } = await supabase
-      .from('record_attempt_sets')
-      .update(payload)
-      .eq('id', setId)
-      .select('*')
-      .single();
+    try {
+      const { data, error } = await supabase
+        .from('record_attempt_sets')
+        .update(payload)
+        .eq('id', setId)
+        .select('*')
+        .single();
 
-    if (error) {
-      console.error('[RecordAttemptService] saveSet error:', error);
+      if (!error) return data;
+
+      // Fallback for pre-migration schema
+      if (error && error.message && (error.message.includes('column') || error.message.includes('schema'))) {
+        const basePayload: any = {
+          is_completed: payload.is_completed,
+          completed_at: now,
+        };
+        if (payload.actual_weight !== undefined) basePayload.actual_weight = payload.actual_weight;
+        if (payload.actual_reps !== undefined) basePayload.actual_reps = payload.actual_reps;
+        if (payload.rpe !== undefined) basePayload.rpe = payload.rpe;
+        if (payload.rest_seconds !== undefined) basePayload.rest_seconds = payload.rest_seconds;
+        if (payload.notes !== undefined) basePayload.notes = payload.notes;
+
+        const { data: fbData, error: fbError } = await supabase
+          .from('record_attempt_sets')
+          .update(basePayload)
+          .eq('id', setId)
+          .select('*')
+          .single();
+
+        if (fbError) throw fbError;
+        return fbData;
+      }
+
       throw error;
+    } catch (e) {
+      console.error('[RecordAttemptService] saveSet error:', e);
+      throw e;
     }
-
-    return data;
   },
 
   /**
@@ -802,37 +945,102 @@ export const RecordAttemptService = {
   },
 
   /**
-   * Inserts a record into personal_records table.
+   * Inserts a record into personal_records table with typed columns and backward-compatible fallback.
    */
   async savePersonalRecord(
     userId: string,
     exerciseId: string,
-    weightKg?: number | null,
-    reps?: number | null,
-    notes?: string | null
+    paramsOrWeight?:
+      | {
+          weightKg?: number | null;
+          reps?: number | null;
+          notes?: string | null;
+          resultType?: RecordResultType;
+          elapsedSeconds?: number | null;
+          distanceKm?: number | null;
+          targetCalories?: number | null;
+          rounds?: number | null;
+        }
+      | number
+      | null,
+    legacyReps?: number | null,
+    legacyNotes?: string | null
   ): Promise<any> {
     const now = new Date().toISOString();
-    const payload = {
-      user_id: userId,
-      exercise_id: exerciseId,
-      weight_kg: weightKg ?? 0,
-      reps: reps ?? 1,
-      record_date: now,
-      notes: notes || null,
-    };
+    let weightKg = 0;
+    let reps = 1;
+    let notes: string | null = null;
+    let resultType: RecordResultType | undefined;
+    let elapsedSeconds: number | null | undefined;
+    let distanceKm: number | null | undefined;
+    let targetCalories: number | null | undefined;
+    let rounds: number | null | undefined;
 
-    const { data, error } = await supabase
-      .from('personal_records')
-      .insert(payload)
-      .select('*')
-      .single();
-
-    if (error) {
-      console.error('[RecordAttemptService] savePersonalRecord error:', error);
-      throw error;
+    if (typeof paramsOrWeight === 'object' && paramsOrWeight !== null) {
+      weightKg = paramsOrWeight.weightKg ?? 0;
+      reps = paramsOrWeight.reps ?? 1;
+      notes = paramsOrWeight.notes || null;
+      resultType = paramsOrWeight.resultType;
+      elapsedSeconds = paramsOrWeight.elapsedSeconds;
+      distanceKm = paramsOrWeight.distanceKm;
+      targetCalories = paramsOrWeight.targetCalories;
+      rounds = paramsOrWeight.rounds;
+    } else {
+      weightKg = paramsOrWeight ?? 0;
+      reps = legacyReps ?? 1;
+      notes = legacyNotes || null;
     }
 
-    return data;
+    const fullPayload: any = {
+      user_id: userId,
+      exercise_id: exerciseId,
+      weight_kg: weightKg,
+      reps,
+      record_date: now,
+      notes,
+    };
+
+    if (resultType) fullPayload.result_type = resultType;
+    if (elapsedSeconds !== undefined && elapsedSeconds !== null) fullPayload.elapsed_seconds = elapsedSeconds;
+    if (distanceKm !== undefined && distanceKm !== null) fullPayload.distance_km = distanceKm;
+    if (targetCalories !== undefined && targetCalories !== null) fullPayload.target_calories = targetCalories;
+    if (rounds !== undefined && rounds !== null) fullPayload.rounds = rounds;
+
+    try {
+      const { data, error } = await supabase
+        .from('personal_records')
+        .insert(fullPayload)
+        .select('*')
+        .single();
+
+      if (!error) return data;
+
+      // If database does not yet have the new columns, fallback to base columns
+      if (error && error.message && (error.message.includes('column') || error.message.includes('schema'))) {
+        console.warn('[RecordAttemptService] Retrying savePersonalRecord with base schema columns');
+        const basePayload = {
+          user_id: userId,
+          exercise_id: exerciseId,
+          weight_kg: weightKg,
+          reps,
+          record_date: now,
+          notes,
+        };
+        const { data: fallbackData, error: fallbackError } = await supabase
+          .from('personal_records')
+          .insert(basePayload)
+          .select('*')
+          .single();
+
+        if (fallbackError) throw fallbackError;
+        return fallbackData;
+      }
+
+      throw error;
+    } catch (err) {
+      console.error('[RecordAttemptService] savePersonalRecord error:', err);
+      throw err;
+    }
   },
 };
 

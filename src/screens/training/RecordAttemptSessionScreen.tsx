@@ -82,18 +82,34 @@ export const RecordAttemptSessionScreen = ({ route, navigation }: any) => {
     if (isSubmitting) return;
     setIsSubmitting(true);
     const isSuccess = pendingSuccess;
+    const isMainSet = currentSetIndex === setList.length - 1;
 
     try {
-      // 1. Update current set row if setId is present
+      // 1. Update current set row with truthful completion and actual values
       if (currentSet?.id) {
-        await RecordAttemptService.saveSet(
-          currentSet.id,
-          weightVal,
-          repsVal,
-          rpeScore,
-          90,
-          `Set ${currentSetIndex + 1} - RPE: ${rpeScore}`
-        );
+        if (isMainSet && !isSuccess) {
+          // Failed main attempt: do NOT persist full target as successfully completed performance
+          await RecordAttemptService.saveSet(currentSet.id, {
+            isCompleted: false,
+            actualWeight: null,
+            actualReps: 0,
+            rpe: rpeScore,
+            restSeconds: 90,
+            resultType: 'weight',
+            notes: `Başarısız Deneme - RPE: ${rpeScore}`,
+          });
+        } else {
+          // Successful set (warmup or successful main attempt)
+          await RecordAttemptService.saveSet(currentSet.id, {
+            isCompleted: true,
+            actualWeight: weightVal,
+            actualReps: repsVal,
+            rpe: rpeScore,
+            restSeconds: 90,
+            resultType: 'weight',
+            notes: `Set ${currentSetIndex + 1} - RPE: ${rpeScore}`,
+          });
+        }
       }
 
       // 2. Check if we have more sets (warmups)

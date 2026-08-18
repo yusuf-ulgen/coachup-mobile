@@ -176,19 +176,48 @@ export const RecordAttemptTimedModesScreen: React.FC = () => {
       targetDisplayVal = repsVal;
       notesStr = `AMRAP 20 dk: ${repsVal} tur (${elapsedSec} sn)`;
     } else if (resultType === 'running') {
-      distanceVal = targetKm || 5.0;
+      const resolvedKm = targetKm ?? RecordAttemptService.runningTargetKm(catalogId);
+      if (resolvedKm === null || resolvedKm === undefined || resolvedKm <= 0) {
+        setIsFinishing(false);
+        feedback.error({
+          title: 'Geçersiz Hedef',
+          message: 'Koşu hedef mesafesi belirlenemedi.',
+        });
+        return false;
+      }
+      distanceVal = resolvedKm;
       targetDisplayVal = distanceVal;
       const m = Math.floor(elapsedSec / 60);
       const s = elapsedSec % 60;
       notesStr = `${distanceVal} km Koşu: ${m}:${s.toString().padStart(2, '0')} (${elapsedSec} sn)`;
     } else if (resultType === 'fixed_distance_time') {
-      distanceVal = RecordAttemptService.cardioTargetDistanceKm(catalogId) || 0.5;
+      const resolvedKm = RecordAttemptService.cardioTargetDistanceKm(catalogId);
+      if (resolvedKm === null || resolvedKm === undefined || resolvedKm <= 0) {
+        setIsFinishing(false);
+        feedback.error({
+          title: 'Geçersiz Hedef',
+          message: 'Kardiyo hedef mesafesi belirlenemedi.',
+        });
+        return false;
+      }
+      distanceVal = resolvedKm;
       targetDisplayVal = elapsedSec;
       const m = Math.floor(elapsedSec / 60);
       const s = elapsedSec % 60;
       notesStr = `${Math.round(distanceVal * 1000)}m: ${m}:${s.toString().padStart(2, '0')} (${elapsedSec} sn)`;
     } else if (resultType === 'fixed_calorie_time') {
-      caloriesVal = RecordAttemptService.cardioTargetCalories(catalogId) || targetValue || 50;
+      const resolvedCal =
+        RecordAttemptService.cardioTargetCalories(catalogId) ??
+        (targetValue && targetValue > 0 ? targetValue : null);
+      if (resolvedCal === null || resolvedCal === undefined || resolvedCal <= 0) {
+        setIsFinishing(false);
+        feedback.error({
+          title: 'Geçersiz Hedef',
+          message: 'Hedef kalori değeri belirlenemedi.',
+        });
+        return false;
+      }
+      caloriesVal = resolvedCal;
       targetDisplayVal = elapsedSec;
       const m = Math.floor(elapsedSec / 60);
       const s = elapsedSec % 60;
@@ -201,16 +230,21 @@ export const RecordAttemptTimedModesScreen: React.FC = () => {
     }
 
     try {
-      // 1. Update plannedSet if available
+      // 1. Update plannedSet with typed metrics (never store distance/calories in actual_weight)
       if (plannedSet?.id) {
-        await RecordAttemptService.saveSet(
-          plannedSet.id,
-          resultType === 'running' ? (distanceVal || 0) : (resultType === 'fixed_calorie_time' ? (caloriesVal || 0) : 0),
-          repsVal,
-          9,
-          0,
-          notesStr
-        );
+        await RecordAttemptService.saveSet(plannedSet.id, {
+          isCompleted: true,
+          actualWeight: null,
+          actualReps: resultType === 'reps' || resultType === 'amrap' ? repsVal : 1,
+          rpe: 9,
+          restSeconds: 0,
+          resultType,
+          elapsedSeconds: elapsedSec,
+          distanceKm: distanceVal ?? null,
+          targetCalories: caloriesVal ?? null,
+          rounds: resultType === 'amrap' ? repsVal : null,
+          notes: notesStr,
+        });
       }
 
       // 2. Finalize canonical attempt

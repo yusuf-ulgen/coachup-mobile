@@ -1,4 +1,4 @@
-﻿import { supabase } from './supabaseClient';
+import { supabase } from './supabaseClient';
 import { RecordAttemptService, RecordResultType } from './recordAttemptService';
 import { RECORD_ATTEMPT_CATEGORIES } from '../models/recordAttemptCategories';
 import { formatPRDisplayValue } from '../utils/recordFormatters';
@@ -28,6 +28,8 @@ export interface SessionHistoryItem {
   weight: number;
   valueDisplay: string;
   timestamp: number;
+  status?: string;
+  isSuccess?: boolean;
 }
 
 export interface YearGroupedHistory {
@@ -37,9 +39,10 @@ export interface YearGroupedHistory {
 
 export interface ChartDataPoint {
   x: number; // 0 to 100
-  y: number; // 0 to 120
+  y: number; // 20 to 110
   date: string;
   value: number;
+  formattedValue: string;
 }
 
 export interface ExerciseDetailData {
@@ -108,7 +111,7 @@ export const ResultsService = {
 
         const name = ex?.name || 'Egzersiz';
         const category = ex?.category || 'Genel';
-        const resultType = RecordAttemptService.getExerciseResultType(undefined, category, name);
+        const resultType = RecordAttemptService.getExerciseResultType(undefined, category, name, row.result_type);
 
         exerciseMap.set(exId, {
           id: exId,
@@ -132,7 +135,7 @@ export const ResultsService = {
 
         const name = ex?.name || 'Egzersiz';
         const category = ex?.category || 'Genel';
-        const resultType = RecordAttemptService.getExerciseResultType(undefined, category, name);
+        const resultType = RecordAttemptService.getExerciseResultType(undefined, category, name, row.result_type);
         const metrics = RecordAttemptService.extractNormalizedMetrics(row, resultType);
 
         if (resultType === 'weight') {
@@ -241,7 +244,9 @@ export const ResultsService = {
   },
 
   /**
-   * Fetches full history and computes 90-day chart data for a specific exercise.
+   * Fetches full history, truthful performance metrics and computes 90-day progression for ANY exercise type.
+   * STRICT SEPARATION: Failed/abandoned attempts appear in attempt history only and NEVER contribute
+   * to maxWeight, maxReps, 1RM, bestValueDisplay, or chart progression points.
    */
   async fetchExerciseDetail(
     userId: string,
@@ -269,21 +274,246 @@ export const ResultsService = {
       const resultType = RecordAttemptService.getExerciseResultType(undefined, exCategory, exName);
       const isWeight = resultType === 'weight';
 
-      // 2. Fetch all completed attempts with sets
-      const attempts = isUUID ? await RecordAttemptService.fetchAttemptsForExercise(userId, exerciseId, 50) : [];
+      // 2. Fetch all attempts and sets
+      const attempts = isUUID ? await RecordAttemptService.fetchAttemptsForExercise(userId, exerciseId, 100) : [];
       const attemptIds = attempts.map((a: any) => a.id);
       const setsMap = await RecordAttemptService.fetchMainSetsForAttempts(attemptIds);
 
-      // 3. Fetch personal records
-      const prList = isUUID ? await RecordAttemptService.fetchPersonalRecordsForExercise(userId, exerciseId, 50) : [];
+      // 3. Fetch full PR history without row clipping
+      const prList = isUUID ? await RecordAttemptService.fetchPersonalRecordsForExercise(userId, exerciseId) : [];
       const bestPR = RecordAttemptService.findBestHistoricalRecord(prList, resultType);
 
-      // 4. Build session history items
+      // 4. Build Valid Performance List (ONLY successful completed performances)
+      interface ValidPerformance {
+        timestamp: number;
+        date: string;
+        weightKg: number;
+        reps: number;
+        epley1RM: number;
+        elapsedSeconds: number;
+        metricValue: number; // The primary numeric metric for chart progression
+        formattedValue: string;
+      }
+
+      const validPerformances: ValidPerformance[] = [];
+
+      // Add valid PR records
+      prList.forEach((pr) => {
+        const dateStr = (pr.record_date || '').slice(0, 10);
+        const timestamp = new Date(pr.record_date || 0).getTime();
+        const m = RecordAttemptService.extractNormalizedMetrics(pr, resultType);
+
+        let metricVal = m.epley1RM || m.weightKg;
+        let formatted = `${m.weightKg} kg`;
+
+        if (resultType === 'reps') {
+          metricVal = m.reps;
+          formatted = `${m.reps} tekrar`;
+        } else if (resultType === 'amrap') {
+          metricVal = m.reps;
+          formatted = `${m.reps} tur`;
+        } else if (
+          resultType === 'running' ||
+          resultType === 'fixed_distance_time' ||
+          resultType === 'fixed_calorie_time' ||
+          resultType === 'benchmark_time'
+        ) {
+          metricVal = m.elapsedSeconds;
+          const min = Math.floor(m.elapsedSeconds / 60);
+          const s = m.elapsedSeconds % 60;
+          formatted = `${min}:${s.toString().padStart(2, '0')}`;
+        }
+
+        if (metricVal > 0) {
+          validPerformances.push({
+            timestamp,
+            date: dateStr,
+            weightKg: m.weightKg,
+            reps: m.reps,
+            epley1RM: m.epley1RM,
+            elapsedSeconds: m.elapsedSeconds,
+            metricValue: metricVal,
+            formattedValue: formatted,
+          });
+        }
+      });
+
+      // Add successful completed attempts (strictly excluding failed/abandoned)
+      attempts
+        .filter((att) => att.status === 'completed' && att.success === true)
+        .forEach((att) => {
+          const dateStr = (att.completed_at || att.created_at || '').slice(0, 10);
+          const timestamp = new Date(att.completed_at || att.created_at || 0).getTime();
+          const mainSet = setsMap[att.id];
+          const m = RecordAttemptService.extractNormalizedMetrics(
+            {
+              ...att,
+              actual_weight: mainSet?.actual_weight,
+              actual_reps: mainSet?.actual_reps,
+            },
+            resultType
+          );
+
+          let metricVal = m.epley1RM || m.weightKg;
+          let formatted = `${m.weightKg} kg`;
+
+          if (resultType === 'reps') {
+            metricVal = m.reps;
+            formatted = `${m.reps} tekrar`;
+          } else if (resultType === 'amrap') {
+            metricVal = m.reps;
+            formatted = `${m.reps} tur`;
+          } else if (
+            resultType === 'running' ||
+            resultType === 'fixed_distance_time' ||
+            resultType === 'fixed_calorie_time' ||
+            resultType === 'benchmark_time'
+          ) {
+            metricVal = m.elapsedSeconds;
+            const min = Math.floor(m.elapsedSeconds / 60);
+            const s = m.elapsedSeconds % 60;
+            formatted = `${min}:${s.toString().padStart(2, '0')}`;
+          }
+
+          const alreadyPresent = validPerformances.some(
+            (p) => Math.abs(p.timestamp - timestamp) < 60000 && p.metricValue === metricVal
+          );
+
+          if (!alreadyPresent && metricVal > 0) {
+            validPerformances.push({
+              timestamp,
+              date: dateStr,
+              weightKg: m.weightKg,
+              reps: m.reps,
+              epley1RM: m.epley1RM,
+              elapsedSeconds: m.elapsedSeconds,
+              metricValue: metricVal,
+              formattedValue: formatted,
+            });
+          }
+        });
+
+      // 5. Calculate Truthful Performance Best Metrics (from validPerformances ONLY)
+      let maxWeight = 0;
+      let maxReps = 0;
+      let oneRM = 0;
+
+      if (bestPR) {
+        const m = RecordAttemptService.extractNormalizedMetrics(bestPR, resultType);
+        maxWeight = m.weightKg;
+        maxReps = m.reps;
+        oneRM = m.epley1RM;
+      }
+
+      validPerformances.forEach((p) => {
+        if (isWeight) {
+          if (p.weightKg > maxWeight) maxWeight = p.weightKg;
+          if (p.epley1RM > oneRM) oneRM = p.epley1RM;
+          if (p.reps > maxReps) maxReps = p.reps;
+        } else {
+          if (p.reps > maxReps) maxReps = p.reps;
+        }
+      });
+
+      if (isWeight && maxWeight > 0 && oneRM === 0) {
+        oneRM = RecordAttemptService.epley1RM(maxWeight, maxReps || 1);
+      }
+
+      let bestValueDisplay = '-';
+      if (bestPR) {
+        bestValueDisplay = formatPRDisplayValue({ ...bestPR, exercise: { name: exName } });
+      } else if (validPerformances.length > 0) {
+        if (isWeight) {
+          bestValueDisplay = `${maxWeight} kg`;
+        } else {
+          const sorted = [...validPerformances].sort((a, b) => {
+            if (
+              resultType === 'running' ||
+              resultType === 'fixed_distance_time' ||
+              resultType === 'fixed_calorie_time' ||
+              resultType === 'benchmark_time'
+            ) {
+              return a.metricValue - b.metricValue; // lower time is better
+            }
+            return b.metricValue - a.metricValue; // higher reps/rounds is better
+          });
+          bestValueDisplay = sorted[0].formattedValue;
+        }
+      }
+
+      const percentages = isWeight
+        ? [
+            { p: 100, val: oneRM },
+            { p: 90, val: oneRM * 0.9 },
+            { p: 80, val: oneRM * 0.8 },
+            { p: 70, val: oneRM * 0.7 },
+            { p: 60, val: oneRM * 0.6 },
+            { p: 50, val: oneRM * 0.5 },
+          ]
+        : [];
+
+      // 6. Generate Real 90-day Chart Data for ANY result type (using valid performances ONLY)
+      const now = Date.now();
+      const ninetyDaysAgo = now - 90 * 24 * 60 * 60 * 1000;
+      const recentPerformances = validPerformances
+        .filter((p) => p.timestamp >= ninetyDaysAgo && p.metricValue > 0)
+        .sort((a, b) => a.timestamp - b.timestamp);
+
+      const chartPointsList: ChartDataPoint[] = [];
+      let chartPointsString = '';
+
+      if (recentPerformances.length >= 1) {
+        const isLowerBetter =
+          resultType === 'running' ||
+          resultType === 'fixed_distance_time' ||
+          resultType === 'fixed_calorie_time' ||
+          resultType === 'benchmark_time';
+
+        const values = recentPerformances.map((p) => p.metricValue);
+        const minVal = Math.min(...values);
+        const maxVal = Math.max(...values);
+        const rangeVal = Math.max(1, maxVal - minVal);
+
+        const pts = recentPerformances.map((p, idx) => {
+          const timeProgress =
+            recentPerformances.length === 1
+              ? 0.5
+              : Math.max(0, Math.min(1, (p.timestamp - ninetyDaysAgo) / (now - ninetyDaysAgo)));
+          const x = Math.round(timeProgress * 100);
+
+          // If lower time is better: faster time (minVal) gives higher visual Y (top = 20), slower gives lower Y (bottom = 110)
+          let y = 65;
+          if (rangeVal > 0) {
+            if (isLowerBetter) {
+              y = Math.round(20 + ((p.metricValue - minVal) / rangeVal) * 90);
+            } else {
+              y = Math.round(110 - ((p.metricValue - minVal) / rangeVal) * 90);
+            }
+          }
+
+          return {
+            x,
+            y,
+            date: p.date,
+            value: p.metricValue,
+            formattedValue: p.formattedValue,
+          };
+        });
+
+        chartPointsList.push(...pts);
+        chartPointsString = pts.map((p) => `${p.x},${p.y}`).join(' ');
+      }
+
+      // 7. Build Full Session History (Truthfully shows completed, failed, abandoned attempts)
       const sessionList: SessionHistoryItem[] = [];
 
       attempts.forEach((att) => {
         const dateStr = (att.completed_at || att.created_at || '').slice(0, 10);
         const timestamp = new Date(att.completed_at || att.created_at || 0).getTime();
+        const isSuccess = att.status === 'completed' && att.success === true;
+        const isAbandoned = att.status === 'abandoned';
+        const isFailed = att.status === 'failed' || !att.success;
+
         const mainSet = setsMap[att.id];
         const w = Number(mainSet?.actual_weight ?? att.target_weight ?? 0);
         const r = Number(mainSet?.actual_reps ?? att.target_reps ?? 1);
@@ -296,16 +526,26 @@ export const ResultsService = {
           valDisplay = att.notes || 'Tamamlandı';
         }
 
+        if (isAbandoned) {
+          setsDesc = 'Deneme Bırakıldı';
+          valDisplay = 'Bırakıldı';
+        } else if (isFailed) {
+          setsDesc = 'Başarısız Deneme';
+          valDisplay = 'Başarısız';
+        }
+
         sessionList.push({
           date: dateStr,
           sets: setsDesc,
-          weight: w,
+          weight: isSuccess && isWeight ? w : 0,
           valueDisplay: valDisplay,
           timestamp,
+          status: att.status,
+          isSuccess,
         });
       });
 
-      // Also include PR rows in history if not duplicate
+      // Include PR rows if not already represented
       prList.forEach((pr) => {
         const dateStr = (pr.record_date || '').slice(0, 10);
         const timestamp = new Date(pr.record_date || 0).getTime();
@@ -313,7 +553,7 @@ export const ResultsService = {
         const r = Number(pr.reps ?? 1);
 
         const alreadyPresent = sessionList.some(
-          (s) => Math.abs(s.timestamp - timestamp) < 60000 && s.weight === w
+          (s) => Math.abs(s.timestamp - timestamp) < 60000 && (s.weight === w || !isWeight)
         );
 
         if (!alreadyPresent) {
@@ -323,6 +563,8 @@ export const ResultsService = {
             weight: w,
             valueDisplay: formatPRDisplayValue({ ...pr, exercise: { name: exName } }),
             timestamp,
+            status: 'completed',
+            isSuccess: true,
           });
         }
       });
@@ -330,10 +572,10 @@ export const ResultsService = {
       // Sort history descending by date
       sessionList.sort((a, b) => b.timestamp - a.timestamp);
 
-      // Group by year
+      // Group by year (no fake '2026' fallback)
       const yearMap = new Map<string, SessionHistoryItem[]>();
       sessionList.forEach((item) => {
-        const yr = item.date ? item.date.slice(0, 4) : '2026';
+        const yr = item.date && item.date.length >= 4 ? item.date.slice(0, 4) : 'Diğer';
         if (!yearMap.has(yr)) {
           yearMap.set(yr, []);
         }
@@ -345,61 +587,6 @@ export const ResultsService = {
         sessions,
       }));
 
-      // Calculate Best Values
-      let maxWeight = 0;
-      let maxReps = 0;
-      let oneRM = 0;
-
-      if (bestPR) {
-        const m = RecordAttemptService.extractNormalizedMetrics(bestPR, resultType);
-        maxWeight = m.weightKg;
-        maxReps = m.reps;
-        oneRM = m.epley1RM;
-      }
-
-      sessionList.forEach((s) => {
-        if (s.weight > maxWeight) maxWeight = s.weight;
-      });
-
-      if (maxWeight > 0 && oneRM === 0) {
-        oneRM = RecordAttemptService.epley1RM(maxWeight, maxReps || 1);
-      }
-
-      const percentages = [
-        { p: 100, val: oneRM },
-        { p: 90, val: oneRM * 0.9 },
-        { p: 80, val: oneRM * 0.8 },
-        { p: 70, val: oneRM * 0.7 },
-        { p: 60, val: oneRM * 0.6 },
-        { p: 50, val: oneRM * 0.5 },
-      ];
-
-      // 5. Generate 90-day chart data
-      const now = Date.now();
-      const ninetyDaysAgo = now - 90 * 24 * 60 * 60 * 1000;
-      const recentSessions = sessionList
-        .filter((s) => s.timestamp >= ninetyDaysAgo && s.weight > 0)
-        .sort((a, b) => a.timestamp - b.timestamp);
-
-      const chartPointsList: ChartDataPoint[] = [];
-      let chartPointsString = '0,100';
-
-      if (recentSessions.length > 0) {
-        const minW = Math.min(...recentSessions.map((s) => s.weight)) * 0.8;
-        const maxW = Math.max(...recentSessions.map((s) => s.weight)) * 1.1 || 100;
-        const rangeW = Math.max(1, maxW - minW);
-
-        const pts = recentSessions.map((s) => {
-          const timeProgress = Math.max(0, Math.min(1, (s.timestamp - ninetyDaysAgo) / (now - ninetyDaysAgo)));
-          const x = Math.round(timeProgress * 100);
-          const y = Math.round(110 - ((s.weight - minW) / rangeW) * 90);
-          return { x, y, date: s.date, value: s.weight };
-        });
-
-        chartPointsList.push(...pts);
-        chartPointsString = pts.map((p) => `${p.x},${p.y}`).join(' ');
-      }
-
       return {
         exerciseId,
         exerciseName: exName,
@@ -409,7 +596,7 @@ export const ResultsService = {
         maxWeight,
         maxReps: maxReps || 1,
         oneRM,
-        bestValueDisplay: bestPR ? formatPRDisplayValue({ ...bestPR, exercise: { name: exName } }) : (maxWeight > 0 ? `${maxWeight} kg` : '-'),
+        bestValueDisplay,
         percentages,
         chartPointsString,
         chartPointsList,
@@ -428,7 +615,7 @@ export const ResultsService = {
         oneRM: 0,
         bestValueDisplay: '-',
         percentages: [],
-        chartPointsString: '0,100',
+        chartPointsString: '',
         chartPointsList: [],
         history: [],
       };
