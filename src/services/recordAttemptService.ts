@@ -16,6 +16,11 @@ export interface RecordAttempt {
   started_at?: string | null;
   completed_at?: string | null;
   created_at?: string | null;
+  result_type?: string | null;
+  elapsed_seconds?: number | null;
+  distance_km?: number | null;
+  target_calories?: number | null;
+  rounds?: number | null;
   exercise?: { id: string; name: string };
 }
 
@@ -35,6 +40,11 @@ export interface RecordAttemptSet {
   completed_at?: string | null;
   notes?: string | null;
   created_at?: string | null;
+  result_type?: string | null;
+  elapsed_seconds?: number | null;
+  distance_km?: number | null;
+  target_calories?: number | null;
+  rounds?: number | null;
 }
 
 export interface PlannedSet {
@@ -884,41 +894,88 @@ export const RecordAttemptService = {
   },
 
   /**
-   * Finalizes the record attempt with 'completed' or 'failed' status and notes.
+   * Finalizes the record attempt with 'completed' or 'failed' status, notes, and typed metrics.
    */
   async completeAttempt(
     attemptId: string,
     success: boolean,
     notes?: string | null,
-    userId?: string | null
+    userId?: string | null,
+    resultMetrics?: {
+      resultType?: RecordResultType;
+      elapsedSeconds?: number | null;
+      distanceKm?: number | null;
+      targetCalories?: number | null;
+      rounds?: number | null;
+    }
   ): Promise<RecordAttempt> {
     const now = new Date().toISOString();
-    const payload = {
+    const payload: any = {
       status: success ? 'completed' : 'failed',
       success: success,
       notes: notes || null,
       completed_at: now,
     };
 
-    const { data, error } = await supabase
-      .from('record_attempts')
-      .update(payload)
-      .eq('id', attemptId)
-      .select('*, exercise:exercises(id, name)')
-      .single();
+    if (resultMetrics) {
+      if (resultMetrics.resultType) payload.result_type = resultMetrics.resultType;
+      if (resultMetrics.elapsedSeconds !== undefined && resultMetrics.elapsedSeconds !== null)
+        payload.elapsed_seconds = resultMetrics.elapsedSeconds;
+      if (resultMetrics.distanceKm !== undefined && resultMetrics.distanceKm !== null)
+        payload.distance_km = resultMetrics.distanceKm;
+      if (resultMetrics.targetCalories !== undefined && resultMetrics.targetCalories !== null)
+        payload.target_calories = resultMetrics.targetCalories;
+      if (resultMetrics.rounds !== undefined && resultMetrics.rounds !== null)
+        payload.rounds = resultMetrics.rounds;
+    }
 
-    if (error) {
-      console.error('[RecordAttemptService] completeAttempt error:', error);
+    try {
+      const { data, error } = await supabase
+        .from('record_attempts')
+        .update(payload)
+        .eq('id', attemptId)
+        .select('*, exercise:exercises(id, name)')
+        .single();
+
+      if (!error) {
+        if (success && userId) {
+          StreakService.fetchStreakData(userId).catch((err: any) => {
+            console.warn('[RecordAttemptService] Streak sync background warning:', err);
+          });
+        }
+        return data;
+      }
+
+      // If database reports column does not exist (pre-migration schema compatibility), retry with base columns
+      if (error && error.message && (error.message.includes('column') || error.message.includes('schema'))) {
+        console.warn('[RecordAttemptService] Retrying completeAttempt with base schema columns');
+        const basePayload = {
+          status: success ? 'completed' : 'failed',
+          success: success,
+          notes: notes || null,
+          completed_at: now,
+        };
+        const { data: fbData, error: fbError } = await supabase
+          .from('record_attempts')
+          .update(basePayload)
+          .eq('id', attemptId)
+          .select('*, exercise:exercises(id, name)')
+          .single();
+
+        if (fbError) throw fbError;
+        if (success && userId) {
+          StreakService.fetchStreakData(userId).catch((err: any) => {
+            console.warn('[RecordAttemptService] Streak sync background warning:', err);
+          });
+        }
+        return fbData;
+      }
+
       throw error;
+    } catch (e) {
+      console.error('[RecordAttemptService] completeAttempt error:', e);
+      throw e;
     }
-
-    if (success && userId) {
-      StreakService.fetchStreakData(userId).catch((err: any) => {
-        console.warn('[RecordAttemptService] Streak sync background warning:', err);
-      });
-    }
-
-    return data;
   },
 
   /**

@@ -247,14 +247,21 @@ export const RecordAttemptTimedModesScreen: React.FC = () => {
         });
       }
 
-      // 2. Finalize canonical attempt
+      // 2. Finalize canonical attempt with typed metrics
       let isNewPR = false;
       if (attempt?.id && userId) {
         await RecordAttemptService.completeAttempt(
           attempt.id,
           true,
           notesStr,
-          userId
+          userId,
+          {
+            resultType,
+            elapsedSeconds: elapsedSec,
+            distanceKm: distanceVal ?? null,
+            targetCalories: caloriesVal ?? null,
+            rounds: resultType === 'amrap' ? repsVal : null,
+          }
         );
 
         // 3. Evaluate and save PR if strictly better

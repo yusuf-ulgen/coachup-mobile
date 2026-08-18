@@ -1,5 +1,5 @@
 import { supabase } from './supabaseClient';
-import { RecordAttemptService, RecordResultType } from './recordAttemptService';
+import { RecordAttemptService, RecordResultType, RecordResultPayload } from './recordAttemptService';
 import { RECORD_ATTEMPT_CATEGORIES } from '../models/recordAttemptCategories';
 import { formatPRDisplayValue } from '../utils/recordFormatters';
 
@@ -159,15 +159,31 @@ export const ResultsService = {
             lastUpdated: row.record_date,
           });
         } else {
-          // Compare if this PR is better than existing mapped item
+          // Compare if this PR is better than existing mapped item across all result types
           const existing = exerciseMap.get(exId)!;
-          if (resultType === 'weight') {
-            if (metrics.epley1RM > existing.oneRepMax) {
-              existing.maxWeight = metrics.weightKg;
-              existing.maxReps = metrics.reps;
-              existing.oneRepMax = metrics.epley1RM;
-              existing.bestDisplay = displayVal;
-            }
+          const candidatePayload: RecordResultPayload = {
+            resultType,
+            exerciseId: exId,
+            weightKg: metrics.weightKg,
+            reps: metrics.reps,
+            elapsedSeconds: metrics.elapsedSeconds,
+            distanceKm: metrics.distanceKm ?? undefined,
+            targetCalories: metrics.targetCalories ?? undefined,
+          };
+          const existingRecord = {
+            result_type: existing.measureType,
+            weight_kg: existing.maxWeight,
+            reps: existing.maxReps,
+            time_seconds: metrics.elapsedSeconds,
+            notes: existing.bestDisplay,
+          };
+
+          if (RecordAttemptService.isBetterRecord(candidatePayload, existingRecord)) {
+            existing.maxWeight = metrics.weightKg;
+            existing.maxReps = metrics.reps;
+            existing.oneRepMax = metrics.epley1RM;
+            existing.bestDisplay = displayVal;
+            existing.lastUpdated = row.record_date;
           }
         }
       });
@@ -348,6 +364,11 @@ export const ResultsService = {
           const m = RecordAttemptService.extractNormalizedMetrics(
             {
               ...att,
+              result_type: att.result_type || mainSet?.result_type,
+              elapsed_seconds: att.elapsed_seconds ?? mainSet?.elapsed_seconds,
+              distance_km: att.distance_km ?? mainSet?.distance_km,
+              target_calories: att.target_calories ?? mainSet?.target_calories,
+              rounds: att.rounds ?? mainSet?.rounds,
               actual_weight: mainSet?.actual_weight,
               actual_reps: mainSet?.actual_reps,
             },

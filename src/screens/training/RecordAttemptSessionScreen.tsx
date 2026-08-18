@@ -124,7 +124,10 @@ export const RecordAttemptSessionScreen = ({ route, navigation }: any) => {
             attempt.id,
             isSuccess,
             `RPE: ${rpeScore}`,
-            userId
+            userId,
+            {
+              resultType: 'weight',
+            }
           );
 
           if (isSuccess && exercise?.id) {

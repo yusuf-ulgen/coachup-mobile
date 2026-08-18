@@ -45,7 +45,7 @@ export const ResultDetailScreen = () => {
   const getVal = (val: number) => (isKg ? val : Math.round(val * 2.20462));
   const unit = isKg ? 'kg' : 'lbs';
 
-  const isWeight = data?.isWeight ?? true;
+  const isWeight = (data?.isWeight ?? true) && ((data?.maxWeight ?? 0) > 0 || (data?.oneRM ?? 0) > 0);
   const maxWeight = data?.maxWeight ?? 0;
   const maxReps = data?.maxReps ?? 1;
   const oneRM = data?.oneRM ?? 0;

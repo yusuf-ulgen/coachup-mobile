@@ -74,6 +74,9 @@ export const ResultsScreen = () => {
       }
       return `${w} ${unit}`;
     }
+    if (ex.measureType === 'weight' && (!ex.maxWeight || ex.maxWeight <= 0)) {
+      return ex.bestDisplay && ex.bestDisplay !== '0 kg' ? ex.bestDisplay : '-';
+    }
     return ex.bestDisplay || '-';
   };
 

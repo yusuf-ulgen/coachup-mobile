@@ -17,6 +17,8 @@ import { ScreenContainer } from '../../components/ScreenContainer';
 import { ArrowLeft, Calendar, Clock, User, CheckCircle2, XCircle, AlertCircle, Plus } from 'lucide-react-native';
 import { DateTimePickerModal } from '../../components/DateTimePickerModal';
 
+import { UserService } from '../../services/userService';
+
 interface AppointmentItem {
   id: string;
   user_id: string;
@@ -44,9 +46,10 @@ const SERVICE_TYPES = [
   { label: 'Genel Danışmanlık', value: 'consultation' },
 ];
 
-export const AppointmentsScreen: React.FC<{ navigation?: any }> = ({ navigation }) => {
+export const AppointmentsScreen: React.FC<{ navigation?: any; route?: any }> = ({ navigation, route }) => {
   const [appointments, setAppointments] = useState<AppointmentItem[]>([]);
   const [coaches, setCoaches] = useState<any[]>([]);
+  const [activeGymId, setActiveGymId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
 
@@ -59,6 +62,8 @@ export const AppointmentsScreen: React.FC<{ navigation?: any }> = ({ navigation 
   const [endTime, setEndTime] = useState<string>('11:00');
   const [notes, setNotes] = useState<string>('');
   const [showDatePicker, setShowDatePicker] = useState(false);
+
+  const initialCoachHandledRef = React.useRef(false);
 
   useFocusEffect(
     useCallback(() => {
@@ -98,7 +103,13 @@ export const AppointmentsScreen: React.FC<{ navigation?: any }> = ({ navigation 
       const user = await AuthService.getCurrentUser();
       if (!user) return;
 
-      // 1. Randevuları Çek
+      // 1. Resolve member's active gym
+      const profile = await UserService.fetchProfile(user.id);
+      const resolvedGymId = await UserService.resolveActiveGymIdForContent(profile);
+      setActiveGymId(resolvedGymId);
+
+      // 2. Load Appointments with relation fallback
+      let finalAppointments: AppointmentItem[] = [];
       const { data: appData, error: appErr } = await supabase
         .from('appointments')
         .select(`
@@ -108,18 +119,52 @@ export const AppointmentsScreen: React.FC<{ navigation?: any }> = ({ navigation 
         .eq('user_id', user.id)
         .order('appointment_date', { ascending: false });
 
-      if (appErr) throw appErr;
-      setAppointments(appData || []);
+      if (appErr) {
+        console.warn('Embedded coach select warning on appointments, falling back to base query:', appErr);
+        const { data: rawData, error: rawErr } = await supabase
+          .from('appointments')
+          .select('*')
+          .eq('user_id', user.id)
+          .order('appointment_date', { ascending: false });
 
-      // 2. Koçları Çek
-      const { data: coachData, error: coachErr } = await supabase
+        if (rawErr) throw rawErr;
+        finalAppointments = rawData || [];
+      } else {
+        finalAppointments = appData || [];
+      }
+      setAppointments(finalAppointments);
+
+      // 3. Load Active Gym Scoped Coaches
+      let coachQuery = supabase
         .from('coaches')
         .select('id, name, surname, specialty, gym_id')
         .eq('is_active', true);
 
+      if (resolvedGymId && resolvedGymId !== 'staff') {
+        coachQuery = coachQuery.eq('gym_id', resolvedGymId);
+      }
+
+      const { data: coachData, error: coachErr } = await coachQuery;
+
       if (!coachErr && coachData) {
         setCoaches(coachData);
-        if (coachData.length > 0 && !selectedCoachId) {
+
+        // Check incoming route coachId
+        const routeCoachId = route?.params?.coachId;
+        if (routeCoachId && !initialCoachHandledRef.current) {
+          const matchingCoach = coachData.find((c: any) => c.id === routeCoachId);
+          if (matchingCoach) {
+            setSelectedCoachId(matchingCoach.id);
+            setShowModal(true);
+          } else {
+            feedback.toast('Seçilen koç aktif spor salonunuza ait değil.', 'warning');
+            if (coachData.length > 0) {
+              setSelectedCoachId(coachData[0].id);
+            }
+          }
+          initialCoachHandledRef.current = true;
+          navigation?.setParams({ coachId: undefined });
+        } else if (coachData.length > 0 && !selectedCoachId) {
           setSelectedCoachId(coachData[0].id);
         }
       }
@@ -132,8 +177,45 @@ export const AppointmentsScreen: React.FC<{ navigation?: any }> = ({ navigation 
   };
 
   const handleCreateAppointment = async () => {
+    if (submitting) return;
+
+    if (!activeGymId) {
+      feedback.toast('Aktif spor salonu bulunamadı. Lütfen üyeliğinizi kontrol edin.', 'warning');
+      return;
+    }
+
+    if (!selectedCoachId) {
+      feedback.toast('Lütfen bir eğitmen seçin.', 'warning');
+      return;
+    }
+
     if (!appointmentDate) {
       feedback.toast('Lütfen randevu tarihi seçin.', 'warning');
+      return;
+    }
+
+    const todayStr = new Date().toISOString().split('T')[0];
+    if (appointmentDate < todayStr) {
+      feedback.toast('Geçmiş bir tarihe randevu oluşturulamaz.', 'warning');
+      return;
+    }
+
+    const timeRegex = /^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/;
+    const cleanStart = startTime.trim();
+    const cleanEnd = endTime.trim();
+
+    if (!timeRegex.test(cleanStart) || !timeRegex.test(cleanEnd)) {
+      feedback.toast('Lütfen saat formatını HH:mm olarak girin (örn. 10:00).', 'warning');
+      return;
+    }
+
+    const [startH, startM] = cleanStart.split(':').map(Number);
+    const [endH, endM] = cleanEnd.split(':').map(Number);
+    const startMinutes = startH * 60 + startM;
+    const endMinutes = endH * 60 + endM;
+
+    if (endMinutes <= startMinutes) {
+      feedback.toast('Bitiş saati başlangıç saatinden sonra olmalıdır.', 'warning');
       return;
     }
 
@@ -143,32 +225,51 @@ export const AppointmentsScreen: React.FC<{ navigation?: any }> = ({ navigation 
       if (!user) throw new Error('Oturum açmış kullanıcı bulunamadı.');
 
       const selectedCoach = coaches.find((c) => c.id === selectedCoachId);
-      const gymId = selectedCoach?.gym_id || null;
+      const gymId = activeGymId || selectedCoach?.gym_id || null;
 
       const payload = {
         user_id: user.id,
         coach_id: selectedCoachId || null,
         gym_id: gymId,
         appointment_date: appointmentDate,
-        start_time: startTime,
-        end_time: endTime,
+        start_time: cleanStart,
+        end_time: cleanEnd,
         service_type: serviceType,
         status: 'pending',
         notes: notes.trim() || null,
       };
 
-      const { data, error } = await supabase
+      // Direct insert without requiring PostgREST embedded coach relation
+      const { data: insertedRow, error: insertError } = await supabase
         .from('appointments')
         .insert(payload)
-        .select(`
-          *,
-          coach:coaches(id, name, surname, specialty)
-        `)
+        .select('*')
         .single();
 
-      if (error) throw error;
+      if (insertError) {
+        console.error(
+          'Error inserting appointment:',
+          insertError.message,
+          insertError.code,
+          insertError.details,
+          insertError.hint
+        );
+        throw insertError;
+      }
 
-      setAppointments((prev) => [data, ...prev]);
+      const newApp: AppointmentItem = {
+        ...insertedRow,
+        coach: selectedCoach
+          ? {
+              id: selectedCoach.id,
+              name: selectedCoach.name,
+              surname: selectedCoach.surname,
+              specialty: selectedCoach.specialty,
+            }
+          : undefined,
+      };
+
+      setAppointments((prev) => [newApp, ...prev.filter((a) => a.id !== newApp.id)]);
       setShowModal(false);
       setNotes('');
       setAppointmentDate('');
