@@ -12,8 +12,16 @@ import { feedback } from '../../services/feedbackService';
 import { UserService } from '../../services/userService';
 import { CoachService } from '../../services/coachService';
 
+import { useIsFocused, useFocusEffect } from '@react-navigation/native';
+
 export const CoachChatScreen: React.FC<any> = ({ route, navigation }) => {
   const insets = useSafeAreaInsets();
+  const isFocused = useIsFocused();
+  const isFocusedRef = useRef(isFocused);
+  useEffect(() => {
+    isFocusedRef.current = isFocused;
+  }, [isFocused]);
+
   const { coachId, coachName } = route.params;
   const { session } = useAuth();
   const [messages, setMessages] = useState<any[]>([]);
@@ -37,6 +45,7 @@ export const CoachChatScreen: React.FC<any> = ({ route, navigation }) => {
   }, []);
 
   const markCoachMessagesAsRead = useCallback(async (userId: string, targetCoachId: string) => {
+    if (!isFocusedRef.current) return;
     try {
       const { error } = await supabase
         .from('coach_messages')
@@ -53,6 +62,14 @@ export const CoachChatScreen: React.FC<any> = ({ route, navigation }) => {
       console.warn('[CoachChat] markCoachMessagesAsRead exception:', e);
     }
   }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (currentUserId && coachId) {
+        markCoachMessagesAsRead(currentUserId, coachId);
+      }
+    }, [currentUserId, coachId, markCoachMessagesAsRead])
+  );
 
   useEffect(() => {
     if (!currentUserId || !coachId) return;
@@ -128,7 +145,13 @@ export const CoachChatScreen: React.FC<any> = ({ route, navigation }) => {
       const activeGymId = await UserService.resolveActiveGymIdForContent(profile);
       const coachDetail = await CoachService.fetchCoachDetail(coachId);
 
-      if (!coachDetail || coachDetail.is_active === false || (activeGymId && coachDetail.gym_id !== activeGymId)) {
+      if (!activeGymId) {
+        feedback.toast('Aktif bir spor salonu üyeliğiniz bulunmamaktadır.', 'warning');
+        setIsSending(false);
+        return;
+      }
+
+      if (!coachDetail || coachDetail.is_active === false || coachDetail.gym_id !== activeGymId) {
         feedback.toast('Bu eğitmene mesaj gönderme yetkiniz bulunmuyor veya eğitmen aktif değil.', 'warning');
         setIsSending(false);
         return;

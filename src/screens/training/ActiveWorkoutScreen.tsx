@@ -184,11 +184,82 @@ export const ActiveWorkoutScreen = ({ route, navigation }: any) => {
     }
   }, [programId, selectedDay]);
 
-  const toggleExerciseCompleted = (exId: string) => {
-    setCompletedExercises((prev) => ({
-      ...prev,
-      [exId]: !prev[exId],
-    }));
+  // Restore completed exercises from persisted workout_sets when resuming/opening
+  useEffect(() => {
+    const currentSessionId = ActiveWorkoutManager.getState().sessionId || sessionId;
+    const isUUID = Boolean(
+      currentSessionId &&
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(currentSessionId)
+    );
+
+    if (isUUID && programExercises.length > 0) {
+      TrainingService.fetchSessionSets(currentSessionId)
+        .then((sets) => {
+          if (sets && sets.length > 0) {
+            const completionMap: Record<string, boolean> = {};
+            programExercises.forEach((pEx: any) => {
+              const exId = pEx.exercise_id || pEx.exercises?.id || pEx.id;
+              const matchingSets = sets.filter((s: any) => s.exercise_id === exId);
+              if (matchingSets.length > 0 && matchingSets.every((s: any) => s.is_completed)) {
+                completionMap[exId] = true;
+              }
+            });
+            setCompletedExercises((prev) => ({ ...prev, ...completionMap }));
+          }
+        })
+        .catch((err) => {
+          console.warn('[ActiveWorkoutScreen] Could not restore persisted workout sets:', err);
+        });
+    }
+  }, [sessionId, programExercises]);
+
+  const toggleExerciseCompleted = async (exId: string) => {
+    const targetEx = programExercises.find(
+      (e) => (e.exercise_id || e.exercises?.id || e.id) === exId
+    );
+    if (!targetEx) return;
+
+    const currentlyDone = Boolean(completedExercises[exId]);
+    const nextDone = !currentlyDone;
+
+    const realExerciseId = targetEx.exercise_id || targetEx.exercises?.id || targetEx.id;
+    const currentSessionId = ActiveWorkoutManager.getState().sessionId || sessionId;
+    const isUUID = Boolean(
+      currentSessionId &&
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(currentSessionId)
+    );
+
+    if (isUUID) {
+      try {
+        const user = await AuthService.getCurrentUser();
+        if (!user) throw new Error('Oturum açmış kullanıcı bulunamadı.');
+
+        await TrainingService.persistExerciseSets({
+          sessionId: currentSessionId,
+          userId: user.id,
+          exerciseId: realExerciseId,
+          numSets: targetEx.sets || 3,
+          reps: targetEx.reps || 10,
+          weight: targetEx.weight_suggestion || null,
+          restSeconds: targetEx.rest_seconds || 60,
+          isCompleted: nextDone,
+        });
+
+        // Only after successful database write update local UI state
+        setCompletedExercises((prev) => ({
+          ...prev,
+          [exId]: nextDone,
+        }));
+      } catch (err: any) {
+        console.error('[ActiveWorkoutScreen] Error persisting workout sets:', err);
+        feedback.toast('Egzersiz durumu kaydedilemedi. Lütfen tekrar deneyin.', 'error');
+      }
+    } else {
+      setCompletedExercises((prev) => ({
+        ...prev,
+        [exId]: nextDone,
+      }));
+    }
   };
 
   // Modals & Map diagnostics
