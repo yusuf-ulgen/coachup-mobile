@@ -184,6 +184,8 @@ export const ActiveWorkoutScreen = ({ route, navigation }: any) => {
     }
   }, [programId, selectedDay]);
 
+  const persistingExercisesRef = useRef<Set<string>>(new Set());
+
   // Restore completed exercises from persisted workout_sets when resuming/opening
   useEffect(() => {
     const currentSessionId = ActiveWorkoutManager.getState().sessionId || sessionId;
@@ -195,17 +197,29 @@ export const ActiveWorkoutScreen = ({ route, navigation }: any) => {
     if (isUUID && programExercises.length > 0) {
       TrainingService.fetchSessionSets(currentSessionId)
         .then((sets) => {
-          if (sets && sets.length > 0) {
-            const completionMap: Record<string, boolean> = {};
-            programExercises.forEach((pEx: any) => {
-              const exId = pEx.exercise_id || pEx.exercises?.id || pEx.id;
-              const matchingSets = sets.filter((s: any) => s.exercise_id === exId);
-              if (matchingSets.length > 0 && matchingSets.every((s: any) => s.is_completed)) {
-                completionMap[exId] = true;
-              }
-            });
-            setCompletedExercises((prev) => ({ ...prev, ...completionMap }));
-          }
+          const setsData = sets || [];
+          const completionMap: Record<string, boolean> = {};
+
+          programExercises.forEach((pEx: any) => {
+            const exId = pEx.exercise_id || pEx.exercises?.id || pEx.id;
+            const prescribedCount = Math.max(1, pEx.sets || 1);
+            const matchingSets = setsData.filter((s: any) => s.exercise_id === exId);
+
+            // FIX 5: Reconcile based on whether all prescribed sets (1..prescribedCount) exist and are completed
+            let allPrescribedDone = false;
+            if (matchingSets.length >= prescribedCount) {
+              allPrescribedDone = Array.from({ length: prescribedCount }).every((_, idx) => {
+                const setNum = idx + 1;
+                const setRow = matchingSets.find((s: any) => s.set_number === setNum);
+                return Boolean(setRow && setRow.is_completed);
+              });
+            }
+
+            // Explicitly set true OR false to replace any stale volatile state
+            completionMap[exId] = allPrescribedDone;
+          });
+
+          setCompletedExercises(completionMap);
         })
         .catch((err) => {
           console.warn('[ActiveWorkoutScreen] Could not restore persisted workout sets:', err);
@@ -219,9 +233,6 @@ export const ActiveWorkoutScreen = ({ route, navigation }: any) => {
     );
     if (!targetEx) return;
 
-    const currentlyDone = Boolean(completedExercises[exId]);
-    const nextDone = !currentlyDone;
-
     const realExerciseId = targetEx.exercise_id || targetEx.exercises?.id || targetEx.id;
     const currentSessionId = ActiveWorkoutManager.getState().sessionId || sessionId;
     const isUUID = Boolean(
@@ -229,36 +240,47 @@ export const ActiveWorkoutScreen = ({ route, navigation }: any) => {
       /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(currentSessionId)
     );
 
-    if (isUUID) {
-      try {
-        const user = await AuthService.getCurrentUser();
-        if (!user) throw new Error('Oturum açmış kullanıcı bulunamadı.');
+    // FIX 2: An exercise must NEVER become visually completed without a real persisted session
+    if (!isUUID) {
+      feedback.toast('Aktif antrenman oturumu bulunamadı. Lütfen antrenmanı tekrar başlatın.', 'error');
+      return;
+    }
 
-        await TrainingService.persistExerciseSets({
-          sessionId: currentSessionId,
-          userId: user.id,
-          exerciseId: realExerciseId,
-          numSets: targetEx.sets || 3,
-          reps: targetEx.reps || 10,
-          weight: targetEx.weight_suggestion || null,
-          restSeconds: targetEx.rest_seconds || 60,
-          isCompleted: nextDone,
-        });
+    // FIX 3: Rapid-tap in-flight lock per session + exercise
+    const lockKey = `${currentSessionId}_${realExerciseId}`;
+    if (persistingExercisesRef.current.has(lockKey)) {
+      return;
+    }
+    persistingExercisesRef.current.add(lockKey);
 
-        // Only after successful database write update local UI state
-        setCompletedExercises((prev) => ({
-          ...prev,
-          [exId]: nextDone,
-        }));
-      } catch (err: any) {
-        console.error('[ActiveWorkoutScreen] Error persisting workout sets:', err);
-        feedback.toast('Egzersiz durumu kaydedilemedi. Lütfen tekrar deneyin.', 'error');
-      }
-    } else {
+    const currentlyDone = Boolean(completedExercises[exId]);
+    const nextDone = !currentlyDone;
+
+    try {
+      const user = await AuthService.getCurrentUser();
+      if (!user) throw new Error('Oturum açmış kullanıcı bulunamadı.');
+
+      await TrainingService.persistExerciseSets({
+        sessionId: currentSessionId,
+        userId: user.id,
+        exerciseId: realExerciseId,
+        numSets: targetEx.sets || 3,
+        reps: targetEx.reps || 10,
+        weight: targetEx.weight_suggestion || null,
+        restSeconds: targetEx.rest_seconds || 60,
+        isCompleted: nextDone,
+      });
+
+      // Only after successful database write update local UI state
       setCompletedExercises((prev) => ({
         ...prev,
         [exId]: nextDone,
       }));
+    } catch (err: any) {
+      console.error('[ActiveWorkoutScreen] Error persisting workout sets:', err);
+      feedback.toast('Egzersiz durumu kaydedilemedi. Lütfen tekrar deneyin.', 'error');
+    } finally {
+      persistingExercisesRef.current.delete(lockKey);
     }
   };
 
