@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { 
   View, Text, StyleSheet, TextInput, TouchableOpacity, 
   FlatList, KeyboardAvoidingView, Platform, ActivityIndicator
@@ -8,6 +8,9 @@ import { Colors } from '../../theme/colors';
 import { supabase } from '../../services/supabaseClient';
 import { useAuth } from '../../context/AuthContext';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { feedback } from '../../services/feedbackService';
+import { UserService } from '../../services/userService';
+import { CoachService } from '../../services/coachService';
 
 export const CoachChatScreen: React.FC<any> = ({ route, navigation }) => {
   const insets = useSafeAreaInsets();
@@ -16,41 +19,79 @@ export const CoachChatScreen: React.FC<any> = ({ route, navigation }) => {
   const [messages, setMessages] = useState<any[]>([]);
   const [inputText, setInputText] = useState('');
   const [loading, setLoading] = useState(true);
+  const [isSending, setIsSending] = useState(false);
+  const [fetchError, setFetchError] = useState<string | null>(null);
   const flatListRef = useRef<FlatList>(null);
 
   const currentUserId = session?.user?.id;
+
+  const mergeMessageById = useCallback((existing: any[], incoming: any) => {
+    if (!incoming || !incoming.id) return existing;
+    const idx = existing.findIndex((m) => m.id === incoming.id);
+    if (idx >= 0) {
+      const updated = [...existing];
+      updated[idx] = { ...updated[idx], ...incoming };
+      return updated;
+    }
+    return [incoming, ...existing];
+  }, []);
+
+  const markCoachMessagesAsRead = useCallback(async (userId: string, targetCoachId: string) => {
+    try {
+      const { error } = await supabase
+        .from('coach_messages')
+        .update({ is_read: true })
+        .eq('user_id', userId)
+        .eq('coach_id', targetCoachId)
+        .eq('sender_type', 'coach')
+        .eq('is_read', false);
+
+      if (error) {
+        console.warn('[CoachChat] markCoachMessagesAsRead warning:', error.message, error.code, error.details, error.hint);
+      }
+    } catch (e) {
+      console.warn('[CoachChat] markCoachMessagesAsRead exception:', e);
+    }
+  }, []);
 
   useEffect(() => {
     if (!currentUserId || !coachId) return;
 
     fetchMessages();
     
-    // Subscribe to real-time coach_messages
+    // Subscribe to real-time coach_messages (both INSERT and UPDATE for read state)
     const channel = supabase
       .channel(`coach_messages:${currentUserId}:${coachId}`)
-      .on('postgres_changes', {
-        event: 'INSERT',
-        schema: 'public',
-        table: 'coach_messages',
-        filter: `user_id=eq.${currentUserId}`,
-      }, (payload) => {
-        if (payload.new && payload.new.coach_id === coachId) {
-          setMessages(prev => {
-            if (prev.some(m => m.id === payload.new.id)) return prev;
-            return [payload.new, ...prev];
-          });
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'coach_messages',
+          filter: `user_id=eq.${currentUserId}`,
+        },
+        (payload) => {
+          if (payload.new && (payload.new as any).coach_id === coachId) {
+            const incomingMsg = payload.new as any;
+            setMessages((prev) => mergeMessageById(prev, incomingMsg));
+
+            if (incomingMsg.sender_type === 'coach' && !incomingMsg.is_read) {
+              markCoachMessagesAsRead(currentUserId, coachId);
+            }
+          }
         }
-      })
+      )
       .subscribe();
 
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [currentUserId, coachId]);
+  }, [currentUserId, coachId, mergeMessageById, markCoachMessagesAsRead]);
 
   const fetchMessages = async () => {
     if (!currentUserId || !coachId) return;
     setLoading(true);
+    setFetchError(null);
     try {
       const { data, error } = await supabase
         .from('coach_messages')
@@ -60,26 +101,39 @@ export const CoachChatScreen: React.FC<any> = ({ route, navigation }) => {
         .order('created_at', { ascending: false });
 
       if (error) {
-        console.error('Error fetching coach messages:', error);
-        setMessages([]);
+        console.error('Error fetching coach messages:', error.message, error.code, error.details, error.hint);
+        setFetchError('Mesajlar yüklenemedi.');
+        feedback.error({ title: 'Hata', message: error, fallbackMessage: 'Mesajlar yüklenemedi.' });
       } else {
         setMessages(data || []);
+        markCoachMessagesAsRead(currentUserId, coachId);
       }
-    } catch (e) {
-      console.error('Error in fetchMessages:', e);
-      setMessages([]);
+    } catch (e: any) {
+      console.error('Error in fetchMessages:', e?.message || e);
+      setFetchError('Mesajlar yüklenemedi.');
+      feedback.error({ title: 'Hata', message: e, fallbackMessage: 'Mesajlar yüklenemedi.' });
     } finally {
       setLoading(false);
     }
   };
 
   const sendMessage = async () => {
-    if (!inputText.trim() || !currentUserId || !coachId) return;
-
     const messageText = inputText.trim();
-    setInputText('');
+    if (!messageText || isSending || !currentUserId || !coachId) return;
 
+    setIsSending(true);
     try {
+      // Revalidate coach and active gym membership
+      const profile = await UserService.fetchProfile(currentUserId);
+      const activeGymId = await UserService.resolveActiveGymIdForContent(profile);
+      const coachDetail = await CoachService.fetchCoachDetail(coachId);
+
+      if (!coachDetail || coachDetail.is_active === false || (activeGymId && coachDetail.gym_id !== activeGymId)) {
+        feedback.toast('Bu eğitmene mesaj gönderme yetkiniz bulunmuyor veya eğitmen aktif değil.', 'warning');
+        setIsSending(false);
+        return;
+      }
+
       const { data, error } = await supabase
         .from('coach_messages')
         .insert({
@@ -93,11 +147,20 @@ export const CoachChatScreen: React.FC<any> = ({ route, navigation }) => {
         .select()
         .single();
 
-      if (error) throw error;
+      if (error) {
+        console.error('Error inserting coach message:', error.message, error.code, error.details, error.hint);
+        throw error;
+      }
 
-      setMessages(prev => [data, ...prev]);
+      // Success: clear input draft and merge message
+      setInputText('');
+      setMessages((prev) => mergeMessageById(prev, data));
     } catch (err: any) {
-      console.error('Error sending message:', err);
+      console.error('Error sending message:', err?.message || err, err?.code, err?.details, err?.hint);
+      feedback.error({ title: 'Hata', message: err, fallbackMessage: 'Mesaj gönderilemedi. Lütfen tekrar deneyin.' });
+      // Note: inputText is intentionally NOT cleared on error so the user can retry
+    } finally {
+      setIsSending(false);
     }
   };
 
@@ -113,13 +176,21 @@ export const CoachChatScreen: React.FC<any> = ({ route, navigation }) => {
         </TouchableOpacity>
         <View style={styles.headerInfo}>
           <Text style={styles.headerTitle}>{coachName || 'Eğitmen'}</Text>
-          <Text style={styles.onlineStatus}>Çevrimiçi</Text>
+          <Text style={styles.onlineStatus}>Koç ile Mesajlaşma</Text>
         </View>
       </View>
 
       {loading ? (
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={Colors.primary} />
+        </View>
+      ) : fetchError ? (
+        <View style={styles.emptyContainer}>
+          <Text style={styles.emptyTitle}>Bağlantı Hatası</Text>
+          <Text style={styles.emptySubtitle}>{fetchError}</Text>
+          <TouchableOpacity onPress={fetchMessages} style={{ marginTop: 12, paddingHorizontal: 16, paddingVertical: 8, backgroundColor: Colors.primary, borderRadius: 8 }}>
+            <Text style={{ color: '#FFFFFF', fontWeight: '600' }}>Tekrar Dene</Text>
+          </TouchableOpacity>
         </View>
       ) : messages.length === 0 ? (
         <View style={styles.emptyContainer}>
@@ -166,13 +237,18 @@ export const CoachChatScreen: React.FC<any> = ({ route, navigation }) => {
           value={inputText}
           onChangeText={setInputText}
           multiline
+          editable={!isSending}
         />
         <TouchableOpacity 
-          style={[styles.sendButton, !inputText.trim() && styles.sendButtonDisabled]}
+          style={[styles.sendButton, (!inputText.trim() || isSending) && styles.sendButtonDisabled]}
           onPress={sendMessage}
-          disabled={!inputText.trim()}
+          disabled={!inputText.trim() || isSending}
         >
-          <Send size={18} color={Colors.allWhite} />
+          {isSending ? (
+            <ActivityIndicator size="small" color={Colors.allWhite} />
+          ) : (
+            <Send size={18} color={Colors.allWhite} />
+          )}
         </TouchableOpacity>
       </View>
     </KeyboardAvoidingView>
@@ -207,7 +283,7 @@ const styles = StyleSheet.create({
   },
   onlineStatus: {
     fontSize: 12,
-    color: '#10B981',
+    color: '#94A3B8',
     fontWeight: '500',
   },
   loadingContainer: {

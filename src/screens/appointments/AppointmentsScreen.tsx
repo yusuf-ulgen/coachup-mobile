@@ -135,38 +135,44 @@ export const AppointmentsScreen: React.FC<{ navigation?: any; route?: any }> = (
       setAppointments(finalAppointments);
 
       // 3. Load Active Gym Scoped Coaches
-      let coachQuery = supabase
-        .from('coaches')
-        .select('id, name, surname, specialty, gym_id')
-        .eq('is_active', true);
-
       if (resolvedGymId && resolvedGymId !== 'staff') {
-        coachQuery = coachQuery.eq('gym_id', resolvedGymId);
-      }
+        const { data: coachData, error: coachErr } = await supabase
+          .from('coaches')
+          .select('id, name, surname, specialty, gym_id')
+          .eq('gym_id', resolvedGymId)
+          .eq('is_active', true);
 
-      const { data: coachData, error: coachErr } = await coachQuery;
+        if (!coachErr && coachData) {
+          setCoaches(coachData);
 
-      if (!coachErr && coachData) {
-        setCoaches(coachData);
-
-        // Check incoming route coachId
-        const routeCoachId = route?.params?.coachId;
-        if (routeCoachId && !initialCoachHandledRef.current) {
-          const matchingCoach = coachData.find((c: any) => c.id === routeCoachId);
-          if (matchingCoach) {
-            setSelectedCoachId(matchingCoach.id);
-            setShowModal(true);
-          } else {
-            feedback.toast('Seçilen koç aktif spor salonunuza ait değil.', 'warning');
-            if (coachData.length > 0) {
-              setSelectedCoachId(coachData[0].id);
+          // Check incoming route coachId
+          const routeCoachId = route?.params?.coachId;
+          if (routeCoachId && !initialCoachHandledRef.current) {
+            const matchingCoach = coachData.find((c: any) => c.id === routeCoachId);
+            if (matchingCoach) {
+              setSelectedCoachId(matchingCoach.id);
+              setShowModal(true);
+            } else {
+              feedback.toast('Seçilen koç aktif spor salonunuza ait değil.', 'warning');
+              if (coachData.length > 0) {
+                setSelectedCoachId(coachData[0].id);
+              }
             }
+            initialCoachHandledRef.current = true;
+            navigation?.setParams({ coachId: undefined });
+          } else {
+            setSelectedCoachId((prev) => {
+              if (prev && coachData.some((c: any) => c.id === prev)) {
+                return prev;
+              }
+              return coachData.length > 0 ? coachData[0].id : '';
+            });
           }
-          initialCoachHandledRef.current = true;
-          navigation?.setParams({ coachId: undefined });
-        } else if (coachData.length > 0 && !selectedCoachId) {
-          setSelectedCoachId(coachData[0].id);
         }
+      } else {
+        // Member has no valid active gym -> NEVER execute unscoped query or show cross-gym coaches
+        setCoaches([]);
+        setSelectedCoachId('');
       }
     } catch (e: any) {
       console.error('Error loading appointments:', e);
@@ -174,6 +180,14 @@ export const AppointmentsScreen: React.FC<{ navigation?: any; route?: any }> = (
     } finally {
       setLoading(false);
     }
+  };
+
+  const getLocalTodayString = () => {
+    const d = new Date();
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
   };
 
   const handleCreateAppointment = async () => {
@@ -189,12 +203,18 @@ export const AppointmentsScreen: React.FC<{ navigation?: any; route?: any }> = (
       return;
     }
 
+    const selectedCoach = coaches.find((c) => c.id === selectedCoachId);
+    if (!selectedCoach || selectedCoach.gym_id !== activeGymId) {
+      feedback.toast('Seçilen eğitmen geçerli değil veya aktif salonunuza ait değil.', 'warning');
+      return;
+    }
+
     if (!appointmentDate) {
       feedback.toast('Lütfen randevu tarihi seçin.', 'warning');
       return;
     }
 
-    const todayStr = new Date().toISOString().split('T')[0];
+    const todayStr = getLocalTodayString();
     if (appointmentDate < todayStr) {
       feedback.toast('Geçmiş bir tarihe randevu oluşturulamaz.', 'warning');
       return;
