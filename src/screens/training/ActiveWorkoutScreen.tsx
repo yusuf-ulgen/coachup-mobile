@@ -256,7 +256,7 @@ export const ActiveWorkoutScreen = ({ route, navigation }: any) => {
 
       if (!hasValidManagerSession) {
         let activeSessionId = sessionId;
-        const isUUID = Boolean(
+        let isUUID = Boolean(
           activeSessionId &&
           /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(activeSessionId)
         );
@@ -270,15 +270,28 @@ export const ActiveWorkoutScreen = ({ route, navigation }: any) => {
                 title: activityName,
                 notes: category ? `builtin:${category}` : (activityName || undefined),
               });
-              activeSessionId = session.id;
+              activeSessionId = session?.id;
+              isUUID = Boolean(
+                activeSessionId &&
+                /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(activeSessionId)
+              );
             }
-          } catch (err) {
-            console.warn('[ActiveWorkoutScreen] Fallback session creation warning:', err);
+          } catch (err: any) {
+            console.error('[ActiveWorkoutScreen] Fallback session creation error:', err);
           }
         }
 
+        if (!activeSessionId || !isUUID) {
+          feedback.error({
+            title: 'Oturum Başlatılamadı',
+            message: 'Antrenman oturumu veritabanında başlatılamadı. Lütfen tekrar deneyin.',
+          });
+          navigation.goBack();
+          return;
+        }
+
         ActiveWorkoutManager.startWorkout(
-          activeSessionId || `free_${Date.now()}`,
+          activeSessionId,
           activityName,
           programId,
           0,
@@ -433,14 +446,15 @@ export const ActiveWorkoutScreen = ({ route, navigation }: any) => {
         await TrainingService.completeSession(effectiveSessionId, metricsPayload);
       } else {
         const user = await AuthService.getCurrentUser();
-        if (user) {
-          await TrainingService.createAndCompleteSession(user.id, {
-            programId: programId || currentMgr.programId,
-            category,
-            title: activityName,
-            metrics: metricsPayload,
-          });
+        if (!user) {
+          throw new Error('Kullanıcı oturumu bulunamadı. Lütfen giriş yapıp tekrar deneyin.');
         }
+        await TrainingService.createAndCompleteSession(user.id, {
+          programId: programId || currentMgr.programId,
+          category,
+          title: activityName,
+          metrics: metricsPayload,
+        });
       }
 
       setShowEffortModal(false);

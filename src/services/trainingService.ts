@@ -353,18 +353,15 @@ export const TrainingService = {
   },
 
   async cancelSession(sessionId: string): Promise<void> {
-    try {
-      const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(sessionId);
-      if (!isUUID) return;
-      const { error } = await supabase
-        .from('training_sessions')
-        .update({ status: 'cancelled' })
-        .eq('id', sessionId);
-      if (error) {
-        console.warn('[TrainingService] cancelSession error:', error);
-      }
-    } catch (e) {
-      console.warn('[TrainingService] cancelSession exception:', e);
+    const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(sessionId);
+    if (!isUUID) return;
+    const { error } = await supabase
+      .from('training_sessions')
+      .update({ status: 'cancelled' })
+      .eq('id', sessionId);
+    if (error) {
+      console.error('[TrainingService] cancelSession error:', error);
+      throw error;
     }
   },
 

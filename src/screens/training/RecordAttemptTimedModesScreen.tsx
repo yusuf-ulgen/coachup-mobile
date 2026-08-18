@@ -70,6 +70,7 @@ export const RecordAttemptTimedModesScreen: React.FC = () => {
   const remainingMs = Math.max(0, amrapCapMs - elapsedMs);
 
   const handleAbandon = async () => {
+    if (isFinishing) return;
     const confirmed = await feedback.destructive({
       title: 'Denemeyi Bırak',
       message: 'Bu denemeyi bırakmak istediğine emin misin?',
@@ -79,9 +80,23 @@ export const RecordAttemptTimedModesScreen: React.FC = () => {
 
     if (confirmed) {
       if (attempt?.id) {
-        await RecordAttemptService.abandonAttempt(attempt.id);
+        setIsFinishing(true);
+        try {
+          await RecordAttemptService.abandonAttempt(attempt.id);
+          navigation.goBack();
+        } catch (e: any) {
+          console.error('[RecordAttemptTimedModesScreen] Failed to abandon attempt:', e);
+          feedback.error({
+            title: 'Çıkış Başarısız',
+            message: e,
+            fallbackMessage: 'Rekor denemesi sonlandırılamadı. Lütfen tekrar deneyin.',
+          });
+        } finally {
+          setIsFinishing(false);
+        }
+      } else {
+        navigation.goBack();
       }
-      navigation.goBack();
     }
   };
 
@@ -139,8 +154,8 @@ export const RecordAttemptTimedModesScreen: React.FC = () => {
     }
   };
 
-  const finishAttempt = async (enteredValue?: number) => {
-    if (isFinishing) return;
+  const finishAttempt = async (enteredValue?: number): Promise<boolean> => {
+    if (isFinishing) return false;
     setIsFinishing(true);
 
     const elapsedSec = Math.max(1, Math.floor(elapsedMs / 1000));
@@ -198,6 +213,9 @@ export const RecordAttemptTimedModesScreen: React.FC = () => {
         }
       }
 
+      setShowRepsDialog(false);
+      setShowRoundsDialog(false);
+
       navigation.navigate('RecordAttemptSummary', {
         attempt,
         exercise,
@@ -208,6 +226,7 @@ export const RecordAttemptTimedModesScreen: React.FC = () => {
         elapsedSeconds: elapsedSec,
         rpe: 9,
       });
+      return true;
     } catch (e: any) {
       console.error('[RecordAttemptTimedModesScreen] Failed to finalize attempt:', e);
       feedback.error({
@@ -215,6 +234,7 @@ export const RecordAttemptTimedModesScreen: React.FC = () => {
         message: e,
         fallbackMessage: 'Zamanlı rekor denemesi kaydedilemedi. Lütfen tekrar deneyin.',
       });
+      return false;
     } finally {
       setIsFinishing(false);
     }
@@ -319,11 +339,9 @@ export const RecordAttemptTimedModesScreen: React.FC = () => {
             </TouchableOpacity>
             <TouchableOpacity 
               style={styles.modalButton} 
-              onPress={() => {
+              onPress={async () => {
                 const val = showRepsDialog ? parseInt(repsInput, 10) : parseInt(roundsInput, 10);
-                setShowRepsDialog(false);
-                setShowRoundsDialog(false);
-                finishAttempt(isNaN(val) ? undefined : val);
+                await finishAttempt(isNaN(val) ? undefined : val);
               }}
               disabled={isFinishing}
             >

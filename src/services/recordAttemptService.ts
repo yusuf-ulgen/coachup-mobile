@@ -414,25 +414,22 @@ export const RecordAttemptService = {
    * Marks the attempt as abandoned.
    */
   async abandonAttempt(attemptId: string): Promise<void> {
-    try {
-      const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(attemptId);
-      if (!isUUID) return;
+    const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(attemptId);
+    if (!isUUID) return;
 
-      const now = new Date().toISOString();
-      const { error } = await supabase
-        .from('record_attempts')
-        .update({
-          status: 'abandoned',
-          success: false,
-          completed_at: now,
-        })
-        .eq('id', attemptId);
+    const now = new Date().toISOString();
+    const { error } = await supabase
+      .from('record_attempts')
+      .update({
+        status: 'abandoned',
+        success: false,
+        completed_at: now,
+      })
+      .eq('id', attemptId);
 
-      if (error) {
-        console.warn('[RecordAttemptService] abandonAttempt error:', error);
-      }
-    } catch (e) {
-      console.warn('[RecordAttemptService] abandonAttempt exception:', e);
+    if (error) {
+      console.error('[RecordAttemptService] abandonAttempt error:', error);
+      throw error;
     }
   },
 

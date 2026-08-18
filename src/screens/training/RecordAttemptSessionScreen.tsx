@@ -32,6 +32,7 @@ export const RecordAttemptSessionScreen = ({ route, navigation }: any) => {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleAbandon = async () => {
+    if (isSubmitting) return;
     const confirmed = await feedback.destructive({
       title: 'Rekor Denemesinden Çık?',
       message: 'Devam eden rekor denemesi sonlandırılacak. Çıkmak istediğinize emin misiniz?',
@@ -40,9 +41,23 @@ export const RecordAttemptSessionScreen = ({ route, navigation }: any) => {
     });
     if (confirmed) {
       if (attempt?.id) {
-        await RecordAttemptService.abandonAttempt(attempt.id);
+        setIsSubmitting(true);
+        try {
+          await RecordAttemptService.abandonAttempt(attempt.id);
+          navigation.goBack();
+        } catch (e: any) {
+          console.error('[RecordAttemptSessionScreen] Failed to abandon attempt:', e);
+          feedback.error({
+            title: 'Çıkış Başarısız',
+            message: e,
+            fallbackMessage: 'Rekor denemesi sonlandırılamadı. Lütfen tekrar deneyin.',
+          });
+        } finally {
+          setIsSubmitting(false);
+        }
+      } else {
+        navigation.goBack();
       }
-      navigation.goBack();
     }
   };
 

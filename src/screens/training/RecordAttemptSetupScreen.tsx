@@ -185,6 +185,7 @@ export const RecordAttemptSetupScreen: React.FC<RecordAttemptSetupScreenProps> =
   const handleStartAttempt = async () => {
     if (!selectedExercise || !userId || isStarting) return;
     setIsStarting(true);
+    let createdAttemptId: string | null = null;
 
     try {
       // 1. Resolve or create exercise in DB
@@ -204,6 +205,8 @@ export const RecordAttemptSetupScreen: React.FC<RecordAttemptSetupScreenProps> =
           targetValue,
           targetReps
         );
+        createdAttemptId = attempt.id;
+
         const plannedSets = await RecordAttemptService.insertPlannedSets(
           attempt.id,
           userId,
@@ -227,6 +230,8 @@ export const RecordAttemptSetupScreen: React.FC<RecordAttemptSetupScreenProps> =
           targetValue,
           targetReps
         );
+        createdAttemptId = attempt.id;
+
         const plannedSets = await RecordAttemptService.insertPlannedSets(
           attempt.id,
           userId,
@@ -247,6 +252,13 @@ export const RecordAttemptSetupScreen: React.FC<RecordAttemptSetupScreenProps> =
       }
     } catch (e: any) {
       console.error('[RecordAttemptSetupScreen] Failed to start attempt:', e);
+      if (createdAttemptId) {
+        try {
+          await RecordAttemptService.abandonAttempt(createdAttemptId);
+        } catch (abandonErr) {
+          console.warn('[RecordAttemptSetupScreen] Compensating abandon error:', abandonErr);
+        }
+      }
       feedback.error({
         title: 'Başlatılamadı',
         message: e,
