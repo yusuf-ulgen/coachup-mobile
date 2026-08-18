@@ -66,43 +66,53 @@ export function formatPRDisplayValue(item: any): string {
   const exerciseName = (item.exercise?.name || item.exercise_name || item.name || '').trim();
   const lowerName = exerciseName.toLowerCase();
   const notes = (item.notes || '').trim();
+  const repsVal = Number(item.reps ?? item.actual_reps ?? item.target_reps ?? 0);
+  const weightVal = Number(item.weight_kg ?? item.weight ?? item.target_weight ?? item.actual_weight ?? 0);
 
   // 1. AMRAP (Cindy etc.)
   if (isAmrapExercise(lowerName)) {
-    if (item.reps && item.reps > 0) {
-      return `${item.reps} tur`;
+    if (repsVal > 0) {
+      return `${repsVal} tur`;
     }
-    const roundsMatch = notes.match(/(\d+)\s*(tur|round)/i);
+    const roundsMatch = notes.match(/(\d+)\s*(?:tur|round)/i);
     if (roundsMatch) return `${roundsMatch[1]} tur`;
     return 'Tamamlandı';
   }
 
   // 2. Non-Reps Sports (Row, Run, Swim, Bike, Ski, Murph, Fran, etc.)
   if (isNonRepsExercise(lowerName)) {
-    // Check if notes contains time formatted like "04:32", "21:45 dk", "Süre: 42:15"
-    const timeMatch = notes.match(/(\d{1,2}:\d{2}(?::\d{2})?|\d+\s*(?:dk|sn|min|sec))/i);
+    // Check if notes contains time formatted like "04:32", "21:45", "Süre: 42:15", "1470 sn"
+    const timeMatch = notes.match(/(?:Süre:\s*)?(\d{1,2}:\d{2}(?::\d{2})?)/i);
     if (timeMatch) {
-      return timeMatch[0];
+      return timeMatch[1];
     }
-    if (item.time_seconds && item.time_seconds > 0) {
-      const m = Math.floor(item.time_seconds / 60);
-      const s = item.time_seconds % 60;
+    const secMatch = notes.match(/(\d+)\s*sn/i);
+    if (secMatch) {
+      const sec = parseInt(secMatch[1], 10);
+      const m = Math.floor(sec / 60);
+      const s = sec % 60;
+      return `${m}:${s.toString().padStart(2, '0')}`;
+    }
+    if (item.time_seconds && Number(item.time_seconds) > 0) {
+      const sec = Number(item.time_seconds);
+      const m = Math.floor(sec / 60);
+      const s = sec % 60;
       return `${m}:${s.toString().padStart(2, '0')}`;
     }
     return 'Tamamlandı';
   }
 
   // 3. Weight-based exercises (Squat, Bench, Deadlift, Clean & Jerk, Snatch, etc.)
-  if (item.weight_kg && item.weight_kg > 0) {
-    if (item.reps && item.reps > 1) {
-      return `${item.weight_kg} kg (${item.reps} tekrar)`;
+  if (weightVal > 0) {
+    if (repsVal > 1) {
+      return `${weightVal} kg (${repsVal} tekrar)`;
     }
-    return `${item.weight_kg} kg`;
+    return `${weightVal} kg`;
   }
 
   // 4. Bodyweight reps-based exercises (Pull-Up, Push-Up, Dips, Muscle-Up, etc.)
-  if (item.reps && item.reps > 0) {
-    return `${item.reps} tekrar`;
+  if (repsVal > 0) {
+    return `${repsVal} tekrar`;
   }
 
   return 'Tamamlandı';
@@ -115,26 +125,33 @@ export function formatPRDetailText(item: any): string {
   if (!item) return 'Kişisel Rekor';
   const exerciseName = (item.exercise?.name || item.exercise_name || item.name || '').trim();
   const lowerName = exerciseName.toLowerCase();
+  const repsVal = Number(item.reps ?? item.actual_reps ?? item.target_reps ?? 0);
+  const weightVal = Number(item.weight_kg ?? item.weight ?? item.target_weight ?? item.actual_weight ?? 0);
 
   if (isAmrapExercise(lowerName)) {
-    return `Sonuç: ${item.reps || 1} tur`;
+    return `Sonuç: ${repsVal || 1} tur`;
   }
 
   if (isNonRepsExercise(lowerName)) {
-    if (item.time_seconds && item.time_seconds > 0) {
-      const m = Math.floor(item.time_seconds / 60);
-      const s = item.time_seconds % 60;
+    if (item.time_seconds && Number(item.time_seconds) > 0) {
+      const sec = Number(item.time_seconds);
+      const m = Math.floor(sec / 60);
+      const s = sec % 60;
       return `Süre: ${m}:${s.toString().padStart(2, '0')} · Kardiyo / For Time Rekoru`;
+    }
+    const timeMatch = (item.notes || '').match(/(?:Süre:\s*)?(\d{1,2}:\d{2})/i);
+    if (timeMatch) {
+      return `Süre: ${timeMatch[1]} · Kardiyo / For Time Rekoru`;
     }
     return `Kategori: Kardiyo / For Time Rekoru`;
   }
 
-  if (item.weight_kg && item.weight_kg > 0) {
-    return `Ağırlık: ${item.weight_kg} kg${item.reps ? ` · Tekrar: ${item.reps}` : ''}`;
+  if (weightVal > 0) {
+    return `Ağırlık: ${weightVal} kg${repsVal > 1 ? ` · Tekrar: ${repsVal}` : ''}`;
   }
 
-  if (item.reps && item.reps > 0) {
-    return `Maksimum Tekrar: ${item.reps}`;
+  if (repsVal > 0) {
+    return `Maksimum Tekrar: ${repsVal}`;
   }
 
   return 'Kişisel Rekor';

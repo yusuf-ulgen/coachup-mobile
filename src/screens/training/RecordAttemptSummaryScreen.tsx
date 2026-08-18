@@ -1,66 +1,109 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { Colors } from '../../theme/colors';
-import { Trophy, Home, RotateCcw } from 'lucide-react-native';
+import { Trophy, Home, RotateCcw, CheckCircle2 } from 'lucide-react-native';
+import { RecordAttemptService } from '../../services/recordAttemptService';
 
 export const RecordAttemptSummaryScreen = ({ route, navigation }: any) => {
-  const { attempt, exercise, recordType, targetValue, targetReps, success, rpe, elapsedSeconds } = route.params || {};
+  const {
+    attempt,
+    exercise,
+    recordType,
+    targetValue,
+    targetReps,
+    success,
+    isNewPR,
+    rpe,
+    elapsedSeconds,
+  } = route.params || {};
 
   const typeStr = (recordType || 'weight').toLowerCase();
-  const epley1RM = success && typeStr === 'weight'
-    ? Math.round((targetValue || 100) * (1 + Math.max(1, targetReps || 1) / 30))
+  const isWeight = typeStr === 'weight';
+  const epley1RM = success && isWeight
+    ? RecordAttemptService.epley1RM(targetValue || 0, targetReps || 1)
     : targetValue;
 
   const formatSubtitle = () => {
     const name = exercise?.name || 'Rekor Denemesi';
-    if (typeStr === 'weight') {
+    if (isWeight) {
       return `${name} · ${targetValue || 0} kg × ${targetReps || 1}`;
     }
     if (typeStr === 'reps' || typeStr === 'bodyweight') {
       return `${name} · ${targetValue || 0} tekrar`;
     }
-    if (typeStr === 'time' || typeStr === 'distance' || typeStr === 'running' || typeStr === 'benchmark') {
+    if (typeStr === 'amrap') {
+      return `${name} · ${targetReps || targetValue || 0} tur`;
+    }
+    if (
+      typeStr === 'time' ||
+      typeStr === 'distance' ||
+      typeStr === 'running' ||
+      typeStr === 'fixed_distance_time' ||
+      typeStr === 'benchmark_time' ||
+      typeStr === 'benchmark'
+    ) {
       const totalSec = elapsedSeconds || targetValue || 0;
       const m = Math.floor(totalSec / 60);
       const s = totalSec % 60;
       return `${name} · ${m}:${s.toString().padStart(2, '0')}`;
     }
-    if (typeStr === 'calories' || typeStr === 'cardio') {
-      return `${name} · ${targetValue || 0} cal`;
+    if (typeStr === 'calories' || typeStr === 'cardio' || typeStr === 'fixed_calorie_time') {
+      const totalSec = elapsedSeconds || 0;
+      const m = Math.floor(totalSec / 60);
+      const s = totalSec % 60;
+      return `${name} · ${m}:${s.toString().padStart(2, '0')}`;
     }
     return `${name} · ${targetValue || ''}`;
+  };
+
+  const getTitle = () => {
+    if (isNewPR) return 'YENİ REKOR!';
+    if (success) return 'DENEME TAMAMLANDI!';
+    return 'GÜZEL DENEME!';
   };
 
   return (
     <View style={styles.container}>
       <View style={styles.content}>
-        {success ? (
+        {isNewPR ? (
           <Trophy size={100} color="#FFD700" style={styles.icon} />
+        ) : success ? (
+          <CheckCircle2 size={100} color="#4CAF50" style={styles.icon} />
         ) : (
-          <View style={[styles.icon, { width: 100, height: 100, borderRadius: 50, backgroundColor: Colors.cardDark, justifyContent: 'center', alignItems: 'center' }]}>
+          <View
+            style={[
+              styles.icon,
+              {
+                width: 100,
+                height: 100,
+                borderRadius: 50,
+                backgroundColor: Colors.cardDark,
+                justifyContent: 'center',
+                alignItems: 'center',
+              },
+            ]}
+          >
             <Text style={{ fontSize: 40 }}>💪</Text>
           </View>
         )}
-        
-        <Text style={styles.title}>
-          {success ? 'YENİ REKOR!' : 'GÜZEL DENEME!'}
-        </Text>
-        
-        <Text style={styles.subtitle}>
-          {formatSubtitle()}
-        </Text>
+
+        <Text style={styles.title}>{getTitle()}</Text>
+
+        <Text style={styles.subtitle}>{formatSubtitle()}</Text>
 
         <View style={styles.statsCard}>
-          {success && typeStr === 'weight' && (
+          {success && isWeight && (
             <View style={styles.statRow}>
               <Text style={styles.statLabel}>Tahmini 1RM (Epley):</Text>
               <Text style={styles.statValue}>{epley1RM} kg</Text>
             </View>
           )}
-          {typeStr !== 'weight' && (
+          {!isWeight && (
             <View style={styles.statRow}>
               <Text style={styles.statLabel}>Sonuç:</Text>
-              <Text style={styles.statValue}>{formatSubtitle().split('·')[1]?.trim() || 'Tamamlandı'}</Text>
+              <Text style={styles.statValue}>
+                {formatSubtitle().split('·')[1]?.trim() || 'Tamamlandı'}
+              </Text>
             </View>
           )}
           {rpe !== undefined && rpe !== null && (

@@ -1,32 +1,81 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput } from 'react-native';
-import { Search, ChevronLeft, Dumbbell } from 'lucide-react-native';
+import React, { useState, useEffect, useCallback } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, ActivityIndicator } from 'react-native';
+import { Search, ChevronLeft, Dumbbell, Trophy } from 'lucide-react-native';
 import { Colors } from '../../theme/colors';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useAuth } from '../../context/AuthContext';
+import { ResultsService, ExerciseResultItem, ResultsSummary } from '../../services/resultsService';
 
 export const ResultsScreen = () => {
   const insets = useSafeAreaInsets();
-  const navigation = useNavigation();
+  const navigation = useNavigation<any>();
+  const { session } = useAuth();
+  const userId = session?.user?.id;
+
+  const [loading, setLoading] = useState(true);
   const [isKg, setIsKg] = useState(true);
   const [activeTab, setActiveTab] = useState<'my_results' | 'all'>('my_results');
   const [searchQuery, setSearchQuery] = useState('');
 
-  const summary = {
-    totalWorkouts: 45,
-    maxWeight: 140,
-    max1RM: 155
-  };
+  const [summary, setSummary] = useState<ResultsSummary>({
+    totalWorkouts: 0,
+    maxWeight: 0,
+    max1RM: 0,
+  });
+  const [userResults, setUserResults] = useState<ExerciseResultItem[]>([]);
+  const [allExercises, setAllExercises] = useState<ExerciseResultItem[]>([]);
 
-  const exercises = [
-    { id: 1, name: 'Bench Press', category: 'Göğüs', best: 100 },
-    { id: 2, name: 'Squat', category: 'Bacak', best: 140 },
-    { id: 3, name: 'Deadlift', category: 'Sırt', best: 150 },
-  ];
+  const loadData = useCallback(async () => {
+    if (!userId) {
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
+    try {
+      const [userRes, allRes] = await Promise.all([
+        ResultsService.fetchUserResults(userId),
+        ResultsService.fetchAllExercises(),
+      ]);
+      setSummary(userRes.summary);
+      setUserResults(userRes.results);
+      setAllExercises(allRes);
+    } catch (e) {
+      console.error('[ResultsScreen] Error loading data:', e);
+    } finally {
+      setLoading(false);
+    }
+  }, [userId]);
 
-  const filteredExercises = exercises.filter(ex => ex.name.toLowerCase().includes(searchQuery.toLowerCase()));
+  useFocusEffect(
+    useCallback(() => {
+      loadData();
+    }, [loadData])
+  );
+
+  const activeList = activeTab === 'my_results' ? userResults : allExercises;
+
+  const filteredExercises = activeList.filter((ex) =>
+    ex.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    ex.category.toLowerCase().includes(searchQuery.toLowerCase())
+  );
 
   const toggleUnit = () => setIsKg(!isKg);
+
+  const formatExerciseBest = (ex: ExerciseResultItem) => {
+    if (activeTab === 'all' && (!ex.maxWeight || ex.maxWeight <= 0) && (!ex.bestDisplay || ex.bestDisplay === '-')) {
+      return '-';
+    }
+    if (ex.measureType === 'weight' && ex.maxWeight > 0) {
+      const w = isKg ? ex.maxWeight : Math.round(ex.maxWeight * 2.20462);
+      const unit = isKg ? 'kg' : 'lbs';
+      if (ex.maxReps > 1) {
+        return `${w} ${unit} (${ex.maxReps} tekrar)`;
+      }
+      return `${w} ${unit}`;
+    }
+    return ex.bestDisplay || '-';
+  };
 
   return (
     <View style={styles.container}>
@@ -88,37 +137,63 @@ export const ResultsScreen = () => {
           <Search size={20} color={Colors.textSecondaryDark} style={styles.searchIcon} />
           <TextInput
             style={styles.searchInput}
-            placeholder="Egzersiz ara..."
+            placeholder="Egzersiz veya kategori ara..."
             placeholderTextColor={Colors.textSecondaryDark}
             value={searchQuery}
             onChangeText={setSearchQuery}
           />
         </View>
 
-        {/* Egzersiz Kartları */}
-        <View style={styles.listContainer}>
-          {filteredExercises.map(ex => (
-            <TouchableOpacity 
-              key={ex.id} 
-              style={styles.exerciseCard}
-              onPress={() => (navigation as any).navigate('ResultDetail', { exerciseId: ex.id, exerciseName: ex.name, isKg })}
-            >
-              <View style={styles.exerciseIcon}>
-                <Dumbbell size={24} color={Colors.primary} />
-              </View>
-              <View style={styles.exerciseInfo}>
-                <Text style={styles.exerciseName}>{ex.name}</Text>
-                <Text style={styles.exerciseCategory}>{ex.category}</Text>
-              </View>
-              <View style={styles.exerciseBest}>
-                <Text style={styles.bestValue}>
-                  {isKg ? ex.best : Math.round(ex.best * 2.20462)} {isKg ? 'kg' : 'lbs'}
-                </Text>
-                <Text style={styles.bestLabel}>En İyi</Text>
-              </View>
-            </TouchableOpacity>
-          ))}
-        </View>
+        {/* Egzersiz Kartları & Durumlar */}
+        {loading ? (
+          <View style={{ paddingVertical: 40, alignItems: 'center' }}>
+            <ActivityIndicator size="large" color={Colors.primary} />
+          </View>
+        ) : filteredExercises.length === 0 ? (
+          <View style={styles.emptyContainer}>
+            <Trophy size={48} color={Colors.textSecondaryDark} style={{ marginBottom: 12, opacity: 0.6 }} />
+            <Text style={styles.emptyTitle}>
+              {activeTab === 'my_results'
+                ? 'Henüz kayıtlı egzersiz sonucunuz bulunmuyor.'
+                : 'Aramanıza uygun egzersiz bulunamadı.'}
+            </Text>
+            <Text style={styles.emptySubtitle}>
+              {activeTab === 'my_results'
+                ? 'Antrenman veya rekor denemesi tamamlayarak sonuçlarınızı burada görebilirsiniz.'
+                : 'Farklı bir egzersiz adı aramayı deneyin.'}
+            </Text>
+            {activeTab === 'my_results' && (
+              <TouchableOpacity
+                style={styles.emptyButton}
+                onPress={() => navigation.navigate('RecordAttemptSetup')}
+              >
+                <Text style={styles.emptyButtonText}>Rekor Denemesi Başlat</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        ) : (
+          <View style={styles.listContainer}>
+            {filteredExercises.map((ex) => (
+              <TouchableOpacity 
+                key={ex.id} 
+                style={styles.exerciseCard}
+                onPress={() => navigation.navigate('ResultDetail', { exerciseId: ex.exerciseId || ex.id, exerciseName: ex.name, isKg })}
+              >
+                <View style={styles.exerciseIcon}>
+                  <Dumbbell size={24} color={Colors.primary} />
+                </View>
+                <View style={styles.exerciseInfo}>
+                  <Text style={styles.exerciseName}>{ex.name}</Text>
+                  <Text style={styles.exerciseCategory}>{ex.category}</Text>
+                </View>
+                <View style={styles.exerciseBest}>
+                  <Text style={styles.bestValue}>{formatExerciseBest(ex)}</Text>
+                  <Text style={styles.bestLabel}>En İyi</Text>
+                </View>
+              </TouchableOpacity>
+            ))}
+          </View>
+        )}
       </ScrollView>
     </View>
   );
@@ -273,5 +348,38 @@ const styles = StyleSheet.create({
   bestLabel: {
     color: Colors.textSecondaryDark,
     fontSize: 11,
+  },
+  emptyContainer: {
+    backgroundColor: Colors.cardDark,
+    borderRadius: 16,
+    padding: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginVertical: 12,
+  },
+  emptyTitle: {
+    color: Colors.textPrimaryDark,
+    fontSize: 16,
+    fontWeight: '700',
+    textAlign: 'center',
+    marginBottom: 6,
+  },
+  emptySubtitle: {
+    color: Colors.textSecondaryDark,
+    fontSize: 13,
+    textAlign: 'center',
+    lineHeight: 18,
+    marginBottom: 20,
+  },
+  emptyButton: {
+    backgroundColor: Colors.primary,
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 10,
+  },
+  emptyButtonText: {
+    color: Colors.allWhite,
+    fontWeight: '700',
+    fontSize: 14,
   },
 });

@@ -1,45 +1,58 @@
-import React from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
-import { ChevronLeft } from 'lucide-react-native';
+import React, { useState, useEffect, useCallback } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { ChevronLeft, Trophy, Calendar } from 'lucide-react-native';
 import { Colors } from '../../theme/colors';
-import { useNavigation, useRoute } from '@react-navigation/native';
+import { useNavigation, useRoute, useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import Svg, { Path, Circle, Polyline } from 'react-native-svg';
+import { useAuth } from '../../context/AuthContext';
+import { ResultsService, ExerciseDetailData } from '../../services/resultsService';
+import Svg, { Circle, Polyline } from 'react-native-svg';
 
 export const ResultDetailScreen = () => {
   const insets = useSafeAreaInsets();
-  const navigation = useNavigation();
+  const navigation = useNavigation<any>();
   const route = useRoute<any>();
-  const { exerciseName = 'Egzersiz Detayı', isKg = true } = route.params || {};
+  const { session } = useAuth();
+  const userId = session?.user?.id;
 
-  const maxWeight = 100;
-  const maxReps = 12;
-  const oneRM = 115;
+  const { exerciseId, exerciseName = 'Egzersiz Detayı', isKg = true } = route.params || {};
 
-  const getVal = (val: number) => isKg ? val : Math.round(val * 2.20462);
+  const [loading, setLoading] = useState(true);
+  const [data, setData] = useState<ExerciseDetailData | null>(null);
+
+  const loadDetail = useCallback(async () => {
+    if (!userId || !exerciseId) {
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
+    try {
+      const res = await ResultsService.fetchExerciseDetail(userId, exerciseId, exerciseName);
+      setData(res);
+    } catch (e) {
+      console.error('[ResultDetailScreen] Error loading detail:', e);
+    } finally {
+      setLoading(false);
+    }
+  }, [userId, exerciseId, exerciseName]);
+
+  useFocusEffect(
+    useCallback(() => {
+      loadDetail();
+    }, [loadDetail])
+  );
+
+  const getVal = (val: number) => (isKg ? val : Math.round(val * 2.20462));
   const unit = isKg ? 'kg' : 'lbs';
 
-  const percentages = [
-    { p: 100, val: oneRM },
-    { p: 90, val: oneRM * 0.9 },
-    { p: 80, val: oneRM * 0.8 },
-    { p: 70, val: oneRM * 0.7 },
-    { p: 60, val: oneRM * 0.6 },
-    { p: 50, val: oneRM * 0.5 },
-  ];
-
-  // 90 günlük canvas (SVG) için örnek noktalar (X: gün, Y: ağırlık)
-  const chartPoints = "0,100 20,80 40,90 60,60 80,40 100,20";
-  
-  const history = [
-    { year: '2026', sessions: [
-      { date: '12 Ağu', sets: '3 set x 10 tekrar', weight: 90 },
-      { date: '05 Ağu', sets: '4 set x 8 tekrar', weight: 95 },
-    ]},
-    { year: '2025', sessions: [
-      { date: '20 Tem', sets: '3 set x 12 tekrar', weight: 80 },
-    ]},
-  ];
+  const isWeight = data?.isWeight ?? true;
+  const maxWeight = data?.maxWeight ?? 0;
+  const maxReps = data?.maxReps ?? 1;
+  const oneRM = data?.oneRM ?? 0;
+  const percentages = data?.percentages ?? [];
+  const chartPointsList = data?.chartPointsList ?? [];
+  const chartPointsString = data?.chartPointsString ?? '0,100';
+  const history = data?.history ?? [];
 
   return (
     <View style={styles.container}>
@@ -47,85 +60,147 @@ export const ResultDetailScreen = () => {
         <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
           <ChevronLeft color={Colors.textPrimaryDark} size={24} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>{exerciseName}</Text>
+        <Text style={styles.headerTitle}>{data?.exerciseName || exerciseName}</Text>
         <View style={{ width: 24 }} />
       </View>
 
-      <ScrollView contentContainerStyle={[styles.scrollContent, { paddingBottom: 24 + insets.bottom }]}>
-        {/* En Ağır Kaldırma Kartı */}
-        <View style={styles.maxCard}>
-          <Text style={styles.cardTitle}>En İyi Performans</Text>
-          <View style={styles.maxGrid}>
-            <View style={styles.maxItem}>
-              <Text style={styles.maxLabel}>Max Ağırlık</Text>
-              <Text style={styles.maxValue}>{getVal(maxWeight)}{unit}</Text>
-            </View>
-            <View style={styles.maxItem}>
-              <Text style={styles.maxLabel}>Max Tekrar</Text>
-              <Text style={styles.maxValue}>{maxReps}</Text>
-            </View>
-            <View style={styles.maxItem}>
-              <Text style={styles.maxLabel}>Tahmini 1RM</Text>
-              <Text style={styles.maxValue}>{getVal(oneRM)}{unit}</Text>
-            </View>
-          </View>
+      {loading ? (
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+          <ActivityIndicator size="large" color={Colors.primary} />
         </View>
-
-        {/* 1RM Yüzdelikler Grid */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>1RM Yüzdeleri</Text>
-          <View style={styles.percentagesGrid}>
-            {percentages.map((item, index) => (
-              <View key={index} style={styles.percentCard}>
-                <Text style={styles.percentText}>%{item.p}</Text>
-                <Text style={styles.percentVal}>{Math.round(getVal(item.val))}{unit}</Text>
-              </View>
-            ))}
-          </View>
-        </View>
-
-        {/* 90 Günlük İlerleme Çizgi Grafiği (SVG) */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>90 Günlük İlerleme</Text>
-          <View style={styles.chartContainer}>
-            <Svg height="150" width="100%" viewBox="0 0 100 120" preserveAspectRatio="none">
-              <Polyline
-                points={chartPoints}
-                fill="none"
-                stroke={Colors.primary}
-                strokeWidth="2"
-              />
-              <Circle cx="0" cy="100" r="3" fill={Colors.primary} />
-              <Circle cx="20" cy="80" r="3" fill={Colors.primary} />
-              <Circle cx="40" cy="90" r="3" fill={Colors.primary} />
-              <Circle cx="60" cy="60" r="3" fill={Colors.primary} />
-              <Circle cx="80" cy="40" r="3" fill={Colors.primary} />
-              <Circle cx="100" cy="20" r="3" fill={Colors.primary} />
-            </Svg>
-            <View style={styles.chartLabels}>
-              <Text style={styles.chartLabel}>3 Ay Önce</Text>
-              <Text style={styles.chartLabel}>Bugün</Text>
-            </View>
-          </View>
-        </View>
-
-        {/* Yıllara Göre Geçmiş */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Geçmiş</Text>
-          {history.map((h, i) => (
-            <View key={i} style={styles.historyGroup}>
-              <Text style={styles.historyYear}>{h.year}</Text>
-              {h.sessions.map((session, j) => (
-                <View key={j} style={styles.historyRow}>
-                  <Text style={styles.historyDate}>{session.date}</Text>
-                  <Text style={styles.historySets}>{session.sets}</Text>
-                  <Text style={styles.historyWeight}>{getVal(session.weight)}{unit}</Text>
+      ) : (
+        <ScrollView contentContainerStyle={[styles.scrollContent, { paddingBottom: 24 + insets.bottom }]}>
+          {/* En İyi Performans Kartı */}
+          <View style={styles.maxCard}>
+            <Text style={styles.cardTitle}>En İyi Performans</Text>
+            {isWeight ? (
+              <View style={styles.maxGrid}>
+                <View style={styles.maxItem}>
+                  <Text style={styles.maxLabel}>Max Ağırlık</Text>
+                  <Text style={styles.maxValue}>
+                    {maxWeight > 0 ? `${getVal(maxWeight)} ${unit}` : '-'}
+                  </Text>
                 </View>
-              ))}
+                <View style={styles.maxItem}>
+                  <Text style={styles.maxLabel}>Max Tekrar</Text>
+                  <Text style={styles.maxValue}>{maxWeight > 0 ? maxReps : '-'}</Text>
+                </View>
+                <View style={styles.maxItem}>
+                  <Text style={styles.maxLabel}>Tahmini 1RM</Text>
+                  <Text style={styles.maxValue}>
+                    {oneRM > 0 ? `${getVal(oneRM)} ${unit}` : '-'}
+                  </Text>
+                </View>
+              </View>
+            ) : (
+              <View style={styles.maxGrid}>
+                <View style={styles.maxItem}>
+                  <Text style={styles.maxLabel}>En İyi Sonuç</Text>
+                  <Text style={styles.maxValue}>{data?.bestValueDisplay || '-'}</Text>
+                </View>
+                <View style={styles.maxItem}>
+                  <Text style={styles.maxLabel}>Kategori</Text>
+                  <Text style={styles.maxValue}>{data?.category || 'Genel'}</Text>
+                </View>
+                <View style={styles.maxItem}>
+                  <Text style={styles.maxLabel}>Toplam Kayıt</Text>
+                  <Text style={styles.maxValue}>
+                    {history.reduce((acc, h) => acc + h.sessions.length, 0)}
+                  </Text>
+                </View>
+              </View>
+            )}
+          </View>
+
+          {/* 1RM Yüzdelikler Grid — ONLY for Weight exercises */}
+          {isWeight && oneRM > 0 && (
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>1RM Yüzdeleri</Text>
+              <View style={styles.percentagesGrid}>
+                {percentages.map((item, index) => (
+                  <View key={index} style={styles.percentCard}>
+                    <Text style={styles.percentText}>%{item.p}</Text>
+                    <Text style={styles.percentVal}>
+                      {Math.round(getVal(item.val))} {unit}
+                    </Text>
+                  </View>
+                ))}
+              </View>
             </View>
-          ))}
-        </View>
-      </ScrollView>
+          )}
+
+          {/* 90 Günlük İlerleme Çizgi Grafiği (SVG) */}
+          {isWeight && (
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>90 Günlük İlerleme</Text>
+              <View style={styles.chartContainer}>
+                {chartPointsList.length >= 2 ? (
+                  <>
+                    <Svg height="150" width="100%" viewBox="0 0 100 120" preserveAspectRatio="none">
+                      <Polyline
+                        points={chartPointsString}
+                        fill="none"
+                        stroke={Colors.primary}
+                        strokeWidth="2"
+                      />
+                      {chartPointsList.map((pt, idx) => (
+                        <Circle key={idx} cx={pt.x} cy={pt.y} r="3" fill={Colors.primary} />
+                      ))}
+                    </Svg>
+                    <View style={styles.chartLabels}>
+                      <Text style={styles.chartLabel}>3 Ay Önce</Text>
+                      <Text style={styles.chartLabel}>Bugün</Text>
+                    </View>
+                  </>
+                ) : chartPointsList.length === 1 ? (
+                  <View style={{ paddingVertical: 24, alignItems: 'center' }}>
+                    <Text style={{ color: Colors.primary, fontWeight: '700', fontSize: 18, marginBottom: 4 }}>
+                      {getVal(chartPointsList[0].value)} {unit}
+                    </Text>
+                    <Text style={{ color: Colors.textSecondaryDark, fontSize: 12 }}>
+                      Kayıt tarihi: {chartPointsList[0].date}
+                    </Text>
+                  </View>
+                ) : (
+                  <View style={{ paddingVertical: 24, alignItems: 'center' }}>
+                    <Text style={{ color: Colors.textSecondaryDark, fontSize: 13 }}>
+                      Son 90 günde kayıtlı antrenman verisi bulunmuyor.
+                    </Text>
+                  </View>
+                )}
+              </View>
+            </View>
+          )}
+
+          {/* Yıllara Göre Geçmiş */}
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Geçmiş</Text>
+            {history.length === 0 ? (
+              <View style={styles.emptyHistoryBox}>
+                <Calendar size={32} color={Colors.textSecondaryDark} style={{ marginBottom: 8, opacity: 0.6 }} />
+                <Text style={styles.emptyHistoryText}>Bu egzersiz için henüz geçmiş kayıt bulunmuyor.</Text>
+              </View>
+            ) : (
+              history.map((h, i) => (
+                <View key={i} style={styles.historyGroup}>
+                  <Text style={styles.historyYear}>{h.year}</Text>
+                  {h.sessions.map((session, j) => (
+                    <View key={j} style={styles.historyRow}>
+                      <Text style={styles.historyDate}>{session.date}</Text>
+                      <Text style={styles.historySets}>{session.sets}</Text>
+                      <Text style={styles.historyWeight}>
+                        {isWeight && session.weight > 0
+                          ? `${getVal(session.weight)} ${unit}`
+                          : session.valueDisplay}
+                      </Text>
+                    </View>
+                  ))}
+                </View>
+              ))
+            )}
+          </View>
+        </ScrollView>
+      )}
     </View>
   );
 };
@@ -260,5 +335,17 @@ const styles = StyleSheet.create({
   historyWeight: {
     color: Colors.textPrimaryDark,
     fontWeight: 'bold',
+  },
+  emptyHistoryBox: {
+    backgroundColor: Colors.cardDark,
+    borderRadius: 12,
+    padding: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  emptyHistoryText: {
+    color: Colors.textSecondaryDark,
+    fontSize: 13,
+    textAlign: 'center',
   },
 });

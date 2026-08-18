@@ -102,6 +102,7 @@ export const RecordAttemptSessionScreen = ({ route, navigation }: any) => {
         setCurrentSetIndex(currentSetIndex + 1);
       } else {
         // 3. Final Main Set: complete or fail the attempt
+        let isNewPR = false;
         if (attempt?.id && userId) {
           await RecordAttemptService.completeAttempt(
             attempt.id,
@@ -111,13 +112,20 @@ export const RecordAttemptSessionScreen = ({ route, navigation }: any) => {
           );
 
           if (isSuccess && exercise?.id) {
-            await RecordAttemptService.savePersonalRecord(
+            const evalResult = await RecordAttemptService.evaluateAndSavePersonalRecord(
               userId,
               exercise.id,
-              weightVal,
-              repsVal,
-              `Rekor Denemesi RPE: ${rpeScore}`
+              {
+                resultType: 'weight',
+                exerciseId: exercise.id,
+                catalogId: catalogExercise?.id,
+                weightKg: weightVal,
+                reps: repsVal,
+                rpe: rpeScore,
+                notes: `Rekor Denemesi RPE: ${rpeScore}`,
+              }
             );
+            isNewPR = evalResult.isNewPR;
           }
         }
 
@@ -125,10 +133,11 @@ export const RecordAttemptSessionScreen = ({ route, navigation }: any) => {
         navigation.navigate('RecordAttemptSummary', {
           attempt,
           exercise,
-          recordType,
+          recordType: 'weight',
           targetValue: weightVal,
           targetReps: repsVal,
           success: isSuccess,
+          isNewPR,
           rpe: rpeScore,
         });
       }

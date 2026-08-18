@@ -60,6 +60,7 @@ export const RecordAttemptSetupScreen: React.FC<RecordAttemptSetupScreenProps> =
   const [pastAttempts, setPastAttempts] = useState<any[]>([]);
   const [setsByAttempt, setSetsByAttempt] = useState<Record<string, any>>({});
   const [isStarting, setIsStarting] = useState<boolean>(false);
+  const unresolvedAttemptIdRef = React.useRef<string | null>(null);
 
   const applyDefaults = (ex: RecordExercise) => {
     setSelectedExercise(ex);
@@ -69,25 +70,32 @@ export const RecordAttemptSetupScreen: React.FC<RecordAttemptSetupScreenProps> =
     setStep('detail');
   };
 
-  // Fetch history for selected exercise from DB
+  // Fetch history for selected exercise from DB (READ-ONLY: Does NOT create exercise row)
   const loadHistoryForExercise = useCallback(async (catalogEx: RecordExercise) => {
     if (!userId) return;
     setHistoryLoading(true);
     try {
-      // 1. Resolve exercise in DB
-      const dbEx = await RecordAttemptService.resolveOrCreateExercise(
+      // 1. Read-only lookup in DB
+      const dbEx = await RecordAttemptService.findExistingExercise(
         catalogEx,
         selectedCategory?.id
       );
 
       if (dbEx?.id) {
-        // 2. Fetch Personal Record
+        const resultType = RecordAttemptService.getExerciseResultType(
+          catalogEx.id,
+          selectedCategory?.id,
+          catalogEx.name
+        );
+
+        // 2. Fetch Personal Records & find best historical PR
         const prList = await RecordAttemptService.fetchPersonalRecordsForExercise(
           userId,
           dbEx.id,
-          1
+          50
         );
-        setPastPR(prList[0] || null);
+        const best = RecordAttemptService.findBestHistoricalRecord(prList, resultType);
+        setPastPR(best);
 
         // 3. Fetch past completed attempts
         const attempts = await RecordAttemptService.fetchAttemptsForExercise(
@@ -170,12 +178,12 @@ export const RecordAttemptSetupScreen: React.FC<RecordAttemptSetupScreenProps> =
     if (selectedExercise.measureType !== RecordMeasureType.WEIGHT) {
       return [{ weight: targetValue, reps: targetReps, type: 'main' as const }];
     }
-    if (includeWarmup) {
+    if (includeWarmup && targetValue >= 20) {
       return [
-        { weight: Math.round(targetValue * 0.4), reps: 10, type: 'warmup' as const },
-        { weight: Math.round(targetValue * 0.6), reps: 5, type: 'warmup' as const },
-        { weight: Math.round(targetValue * 0.8), reps: 3, type: 'warmup' as const },
-        { weight: Math.round(targetValue * 0.9), reps: 1, type: 'warmup' as const },
+        { weight: Math.round((targetValue * 0.4) / 2.5) * 2.5, reps: 5, type: 'warmup' as const },
+        { weight: Math.round((targetValue * 0.6) / 2.5) * 2.5, reps: 3, type: 'warmup' as const },
+        { weight: Math.round((targetValue * 0.8) / 2.5) * 2.5, reps: 2, type: 'warmup' as const },
+        { weight: Math.round((targetValue * 0.9) / 2.5) * 2.5, reps: 1, type: 'warmup' as const },
         { weight: targetValue, reps: targetReps, type: 'main' as const },
       ];
     }
@@ -188,7 +196,18 @@ export const RecordAttemptSetupScreen: React.FC<RecordAttemptSetupScreenProps> =
     let createdAttemptId: string | null = null;
 
     try {
-      // 1. Resolve or create exercise in DB
+      // 0. Retry cleanup guard: if a previous attempt in this screen failed during set initialization, finalize it first
+      if (unresolvedAttemptIdRef.current) {
+        try {
+          await RecordAttemptService.abandonAttempt(unresolvedAttemptIdRef.current);
+          unresolvedAttemptIdRef.current = null;
+        } catch (cleanupErr) {
+          console.warn('[RecordAttemptSetupScreen] Unresolved attempt cleanup warning:', cleanupErr);
+          throw new Error('Önceki deneme temizlenemedi. Lütfen internet bağlantınızı kontrol edip tekrar deneyin.');
+        }
+      }
+
+      // 1. Resolve or create exercise in DB (WRITE operation: allowed on start)
       const dbEx = await RecordAttemptService.resolveOrCreateExercise(
         selectedExercise,
         selectedCategory?.id
@@ -206,12 +225,14 @@ export const RecordAttemptSetupScreen: React.FC<RecordAttemptSetupScreenProps> =
           targetReps
         );
         createdAttemptId = attempt.id;
+        unresolvedAttemptIdRef.current = attempt.id;
 
         const plannedSets = await RecordAttemptService.insertPlannedSets(
           attempt.id,
           userId,
           plan
         );
+        unresolvedAttemptIdRef.current = null;
 
         navigation?.navigate('RecordAttemptSession', {
           attempt,
@@ -231,12 +252,14 @@ export const RecordAttemptSetupScreen: React.FC<RecordAttemptSetupScreenProps> =
           targetReps
         );
         createdAttemptId = attempt.id;
+        unresolvedAttemptIdRef.current = attempt.id;
 
         const plannedSets = await RecordAttemptService.insertPlannedSets(
           attempt.id,
           userId,
           [{ weight: targetValue, reps: targetReps, type: 'main' }]
         );
+        unresolvedAttemptIdRef.current = null;
 
         navigation?.navigate('RecordAttemptTimedModes', {
           attempt,
@@ -255,8 +278,10 @@ export const RecordAttemptSetupScreen: React.FC<RecordAttemptSetupScreenProps> =
       if (createdAttemptId) {
         try {
           await RecordAttemptService.abandonAttempt(createdAttemptId);
+          unresolvedAttemptIdRef.current = null;
         } catch (abandonErr) {
           console.warn('[RecordAttemptSetupScreen] Compensating abandon error:', abandonErr);
+          unresolvedAttemptIdRef.current = createdAttemptId;
         }
       }
       feedback.error({
@@ -280,11 +305,25 @@ export const RecordAttemptSetupScreen: React.FC<RecordAttemptSetupScreenProps> =
       case RecordMeasureType.REPS:
         return `${r} tekrar`;
       case RecordMeasureType.TIME:
+      case RecordMeasureType.DISTANCE: {
+        const notes = (attempt.notes || '').trim();
+        const timeMatch = notes.match(/(\d{1,2}:\d{2})/);
+        if (timeMatch) return timeMatch[0];
+        const secMatch = notes.match(/(\d+)\s*sn/);
+        if (secMatch) {
+          const sec = parseInt(secMatch[1], 10);
+          const m = Math.floor(sec / 60);
+          const s = sec % 60;
+          return `${m}:${s.toString().padStart(2, '0')}`;
+        }
         return `${Math.round(w)} sn`;
-      case RecordMeasureType.CALORIES:
+      }
+      case RecordMeasureType.CALORIES: {
+        const notes = (attempt.notes || '').trim();
+        const timeMatch = notes.match(/(\d{1,2}:\d{2})/);
+        if (timeMatch) return `${Math.round(w)} cal (${timeMatch[0]})`;
         return `${Math.round(w)} cal`;
-      case RecordMeasureType.DISTANCE:
-        return `${w} km`;
+      }
       default:
         return `${w} × ${r}`;
     }
@@ -400,7 +439,15 @@ export const RecordAttemptSetupScreen: React.FC<RecordAttemptSetupScreenProps> =
                   )}
 
                   {pastAttempts.map((attempt) => {
-                    const isSuccess = attempt.success || attempt.status === 'completed';
+                    const isSuccess = attempt.status === 'completed' && attempt.success;
+                    const isAbandoned = attempt.status === 'abandoned';
+                    const statusText = isSuccess ? 'Başarılı' : isAbandoned ? 'Bırakıldı' : 'Başarısız';
+                    const badgeBg = isSuccess
+                      ? 'rgba(76,175,80,0.15)'
+                      : isAbandoned
+                      ? 'rgba(158,158,158,0.15)'
+                      : 'rgba(244,67,54,0.15)';
+                    const badgeColor = isSuccess ? '#4CAF50' : isAbandoned ? '#9E9E9E' : '#F44336';
                     const dateStr = (attempt.completed_at || attempt.created_at || '').slice(0, 10);
                     return (
                       <View key={attempt.id} style={styles.attemptHistoryRow}>
@@ -410,14 +457,9 @@ export const RecordAttemptSetupScreen: React.FC<RecordAttemptSetupScreenProps> =
                           </Text>
                           <Text style={styles.attemptDateText}>{dateStr}</Text>
                         </View>
-                        <View
-                          style={[
-                            styles.statusBadge,
-                            { backgroundColor: isSuccess ? 'rgba(76,175,80,0.15)' : 'rgba(244,67,54,0.15)' },
-                          ]}
-                        >
-                          <Text style={[styles.statusBadgeText, { color: isSuccess ? '#4CAF50' : '#F44336' }]}>
-                            {isSuccess ? 'Başarılı' : 'Başarısız'}
+                        <View style={[styles.statusBadge, { backgroundColor: badgeBg }]}>
+                          <Text style={[styles.statusBadgeText, { color: badgeColor }]}>
+                            {statusText}
                           </Text>
                         </View>
                       </View>

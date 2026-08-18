@@ -159,24 +159,45 @@ export const RecordAttemptTimedModesScreen: React.FC = () => {
     setIsFinishing(true);
 
     const elapsedSec = Math.max(1, Math.floor(elapsedMs / 1000));
+    const resultType = RecordAttemptService.getExerciseResultType(catalogId, categoryId, exercise?.name);
+
     let targetDisplayVal = elapsedSec;
     let repsVal = 1;
     let notesStr = `Süre: ${elapsedSec} sn`;
+    let distanceVal: number | undefined = undefined;
+    let caloriesVal: number | undefined = undefined;
 
-    if (isBodyweight) {
+    if (resultType === 'reps') {
       repsVal = enteredValue !== undefined ? enteredValue : (parseInt(repsInput, 10) || targetReps || 10);
       targetDisplayVal = repsVal;
       notesStr = `${repsVal} tekrar (${elapsedSec} sn)`;
-    } else if (isCindyAmrap) {
+    } else if (resultType === 'amrap') {
       repsVal = enteredValue !== undefined ? enteredValue : (parseInt(roundsInput, 10) || 20);
       targetDisplayVal = repsVal;
-      notesStr = `AMRAP: ${repsVal} tur (${elapsedSec} sn)`;
-    } else if (isRunningMode) {
-      targetDisplayVal = targetKm;
-      notesStr = `${targetKm} km - ${elapsedSec} sn`;
-    } else if (categoryId === 'cardio') {
-      targetDisplayVal = targetValue || 50;
-      notesStr = `${targetDisplayVal} cal (${elapsedSec} sn)`;
+      notesStr = `AMRAP 20 dk: ${repsVal} tur (${elapsedSec} sn)`;
+    } else if (resultType === 'running') {
+      distanceVal = targetKm || 5.0;
+      targetDisplayVal = distanceVal;
+      const m = Math.floor(elapsedSec / 60);
+      const s = elapsedSec % 60;
+      notesStr = `${distanceVal} km Koşu: ${m}:${s.toString().padStart(2, '0')} (${elapsedSec} sn)`;
+    } else if (resultType === 'fixed_distance_time') {
+      distanceVal = RecordAttemptService.cardioTargetDistanceKm(catalogId) || 0.5;
+      targetDisplayVal = elapsedSec;
+      const m = Math.floor(elapsedSec / 60);
+      const s = elapsedSec % 60;
+      notesStr = `${Math.round(distanceVal * 1000)}m: ${m}:${s.toString().padStart(2, '0')} (${elapsedSec} sn)`;
+    } else if (resultType === 'fixed_calorie_time') {
+      caloriesVal = RecordAttemptService.cardioTargetCalories(catalogId) || targetValue || 50;
+      targetDisplayVal = elapsedSec;
+      const m = Math.floor(elapsedSec / 60);
+      const s = elapsedSec % 60;
+      notesStr = `${caloriesVal} Cal: ${m}:${s.toString().padStart(2, '0')} (${elapsedSec} sn)`;
+    } else if (resultType === 'benchmark_time') {
+      targetDisplayVal = elapsedSec;
+      const m = Math.floor(elapsedSec / 60);
+      const s = elapsedSec % 60;
+      notesStr = `Süre: ${m}:${s.toString().padStart(2, '0')} (${elapsedSec} sn)`;
     }
 
     try {
@@ -184,7 +205,7 @@ export const RecordAttemptTimedModesScreen: React.FC = () => {
       if (plannedSet?.id) {
         await RecordAttemptService.saveSet(
           plannedSet.id,
-          isRunningMode ? targetKm : (isBodyweight || isCindyAmrap ? 0 : targetDisplayVal),
+          resultType === 'running' ? (distanceVal || 0) : (resultType === 'fixed_calorie_time' ? (caloriesVal || 0) : 0),
           repsVal,
           9,
           0,
@@ -193,6 +214,7 @@ export const RecordAttemptTimedModesScreen: React.FC = () => {
       }
 
       // 2. Finalize canonical attempt
+      let isNewPR = false;
       if (attempt?.id && userId) {
         await RecordAttemptService.completeAttempt(
           attempt.id,
@@ -201,15 +223,24 @@ export const RecordAttemptTimedModesScreen: React.FC = () => {
           userId
         );
 
-        // 3. Save to personal records
+        // 3. Evaluate and save PR if strictly better
         if (exercise?.id) {
-          await RecordAttemptService.savePersonalRecord(
+          const evalResult = await RecordAttemptService.evaluateAndSavePersonalRecord(
             userId,
             exercise.id,
-            isRunningMode ? elapsedSec : (isBodyweight || isCindyAmrap ? 0 : targetDisplayVal),
-            repsVal,
-            notesStr
+            {
+              resultType,
+              exerciseId: exercise.id,
+              catalogId,
+              weightKg: 0,
+              reps: repsVal,
+              elapsedSeconds: elapsedSec,
+              distanceKm: distanceVal,
+              targetCalories: caloriesVal,
+              notes: notesStr,
+            }
           );
+          isNewPR = evalResult.isNewPR;
         }
       }
 
@@ -219,10 +250,11 @@ export const RecordAttemptTimedModesScreen: React.FC = () => {
       navigation.navigate('RecordAttemptSummary', {
         attempt,
         exercise,
-        recordType: measureType?.toLowerCase() || (isBodyweight ? 'reps' : isRunningMode ? 'distance' : 'time'),
+        recordType: resultType,
         targetValue: targetDisplayVal,
         targetReps: repsVal,
         success: true,
+        isNewPR,
         elapsedSeconds: elapsedSec,
         rpe: 9,
       });
