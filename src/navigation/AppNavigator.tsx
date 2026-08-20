@@ -255,7 +255,8 @@ export const AppNavigator: React.FC = () => {
       if (profile.theme_mode && (profile.theme_mode === 'dark' || profile.theme_mode === 'light' || profile.theme_mode === 'system')) {
         reconcileAccountTheme(profile.theme_mode);
       }
-      if (profile.default_screen) {
+      if (profile.default_screen && profile.id) {
+        AsyncStorage.setItem(`@user_default_screen:${profile.id}`, profile.default_screen).catch(() => {});
         AsyncStorage.setItem('@user_default_screen', profile.default_screen).catch(() => {});
       }
     }
@@ -280,13 +281,14 @@ export const AppNavigator: React.FC = () => {
         const accountRoute = resolveDefaultRoute(profile?.default_screen);
         if (accountRoute) {
           setResolvedInitialTab(accountRoute);
-          await AsyncStorage.setItem('@user_default_screen', profile!.default_screen!);
+          await AsyncStorage.setItem(`@user_default_screen:${currentUserId}`, profile!.default_screen!);
+          await AsyncStorage.setItem('@user_default_screen', profile!.default_screen!).catch(() => {});
           setInitialTabResolvedForUserId(currentUserId);
           return;
         }
 
-        const cachedPref = await AsyncStorage.getItem('@user_default_screen');
-        const cachedRoute = resolveDefaultRoute(cachedPref);
+        const userScopedPref = await AsyncStorage.getItem(`@user_default_screen:${currentUserId}`);
+        const cachedRoute = resolveDefaultRoute(userScopedPref);
         if (cachedRoute) {
           setResolvedInitialTab(cachedRoute);
           setInitialTabResolvedForUserId(currentUserId);

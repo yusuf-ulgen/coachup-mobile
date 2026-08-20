@@ -69,7 +69,12 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ navigation }) =>
         const profile = await AuthService.getCurrentProfile();
         if (profile) {
           setUserProfile(profile);
-          if (profile.default_screen) setDefaultScreen(profile.default_screen);
+          if (profile.default_screen) {
+            setDefaultScreen(profile.default_screen);
+          } else if (profile.id) {
+            const scopedDefault = await AsyncStorage.getItem(`@user_default_screen:${profile.id}`);
+            if (scopedDefault) setDefaultScreen(scopedDefault);
+          }
           if (profile.weight_unit) setWeightUnit(profile.weight_unit);
           if (profile.notifications_enabled !== undefined) {
             setNotificationsEnabled(profile.notifications_enabled);
@@ -105,6 +110,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ navigation }) =>
     try {
       await AsyncStorage.setItem(`@app_setting_${key}`, JSON.stringify(value));
       if (key === 'default_screen') {
+        await AsyncStorage.setItem(`@user_default_screen:${userProfile.id}`, value);
         await AsyncStorage.setItem('@user_default_screen', value);
       }
     } catch (storageErr) {
@@ -127,6 +133,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ navigation }) =>
         try {
           await AsyncStorage.setItem(`@app_setting_${key}`, JSON.stringify(previousValue));
           if (key === 'default_screen') {
+            await AsyncStorage.setItem(`@user_default_screen:${userProfile.id}`, previousValue);
             await AsyncStorage.setItem('@user_default_screen', previousValue);
           }
         } catch {}

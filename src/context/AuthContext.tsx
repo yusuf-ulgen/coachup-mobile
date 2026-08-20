@@ -26,6 +26,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [session, setSession] = useState<Session | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
+  const hydratedUserIdRef = React.useRef<string | null>(null);
 
   const fetchProfile = async (userId: string) => {
     try {
@@ -51,6 +52,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setUser(session?.user ?? null);
         if (session?.user?.id) {
           await fetchProfile(session.user.id);
+          hydratedUserIdRef.current = session.user.id;
+        } else {
+          hydratedUserIdRef.current = null;
         }
       })
       .catch((err) => {
@@ -65,6 +69,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const nextUserId = session?.user?.id ?? null;
 
       if (event === 'SIGNED_OUT' || !nextUserId) {
+        hydratedUserIdRef.current = null;
         setSession(null);
         setUser(null);
         setProfile(null);
@@ -73,7 +78,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
 
       // If token refreshed for the already-hydrated user, update session without resetting loading state
-      if (event === 'TOKEN_REFRESHED' && user?.id === nextUserId && profile) {
+      if (event === 'TOKEN_REFRESHED' && nextUserId === hydratedUserIdRef.current) {
         setSession(session);
         setUser(session?.user ?? null);
         return;
@@ -84,12 +89,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       try {
         setSession(session);
         setUser(session?.user ?? null);
-        if (user?.id !== nextUserId) {
+        if (hydratedUserIdRef.current !== nextUserId) {
           setProfile(null);
         }
         await fetchProfile(nextUserId);
+        hydratedUserIdRef.current = nextUserId;
       } catch (err) {
         console.warn('Auth state change error:', err);
+        hydratedUserIdRef.current = nextUserId;
       } finally {
         setLoading(false);
       }
@@ -102,6 +109,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const signOut = async () => {
     setLoading(true);
+    hydratedUserIdRef.current = null;
     await supabase.auth.signOut();
     setUser(null);
     setSession(null);
