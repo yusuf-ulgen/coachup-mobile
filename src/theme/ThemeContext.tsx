@@ -1,4 +1,5 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import { useColorScheme } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export interface ThemeColors {
@@ -40,12 +41,15 @@ const lightColors: ThemeColors = {
   pausePlayIcon: '#FFFFFF',
 };
 
+export type ThemeMode = 'dark' | 'light' | 'system';
+
 interface ThemeContextType {
   isDark: boolean;
-  themeMode: 'dark' | 'light' | 'system';
+  themeMode: ThemeMode;
   colors: ThemeColors;
   toggleTheme: () => void;
-  setThemeMode: (mode: 'dark' | 'light' | 'system') => void;
+  setThemeMode: (mode: ThemeMode) => Promise<void>;
+  reconcileAccountTheme: (mode?: ThemeMode | null) => Promise<void>;
 }
 
 const ThemeContext = createContext<ThemeContextType>({
@@ -53,31 +57,40 @@ const ThemeContext = createContext<ThemeContextType>({
   themeMode: 'dark',
   colors: darkColors,
   toggleTheme: () => {},
-  setThemeMode: () => {},
+  setThemeMode: async () => {},
+  reconcileAccountTheme: async () => {},
 });
 
 export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [themeMode, setThemeModeState] = useState<'dark' | 'light' | 'system'>('dark');
+  const [themeMode, setThemeModeState] = useState<ThemeMode>('dark');
+  const systemColorScheme = useColorScheme();
 
   useEffect(() => {
     AsyncStorage.getItem('coachup_theme_mode').then((saved) => {
       if (saved === 'light' || saved === 'dark' || saved === 'system') {
-        setThemeModeState(saved as any);
+        setThemeModeState(saved as ThemeMode);
       }
     });
   }, []);
 
-  const setThemeMode = async (mode: 'dark' | 'light' | 'system') => {
+  const setThemeMode = async (mode: ThemeMode) => {
     setThemeModeState(mode);
     await AsyncStorage.setItem('coachup_theme_mode', mode);
   };
 
+  const reconcileAccountTheme = useCallback(async (mode?: ThemeMode | null) => {
+    if (mode === 'dark' || mode === 'light' || mode === 'system') {
+      setThemeModeState(mode);
+      await AsyncStorage.setItem('coachup_theme_mode', mode);
+    }
+  }, []);
+
   const toggleTheme = async () => {
-    const nextMode = themeMode === 'dark' ? 'light' : 'dark';
+    const nextMode: ThemeMode = themeMode === 'dark' ? 'light' : 'dark';
     await setThemeMode(nextMode);
   };
 
-  const isDark = themeMode === 'dark';
+  const isDark = themeMode === 'system' ? systemColorScheme !== 'light' : themeMode === 'dark';
   const colors = isDark ? darkColors : lightColors;
 
   return (
@@ -88,6 +101,7 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         colors,
         toggleTheme,
         setThemeMode,
+        reconcileAccountTheme,
       }}
     >
       {children}

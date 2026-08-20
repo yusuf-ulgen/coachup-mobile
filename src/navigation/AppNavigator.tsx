@@ -16,6 +16,7 @@ import {
 } from 'lucide-react-native';
 
 import { useAuth } from '../context/AuthContext';
+import { useTheme } from '../theme/ThemeContext';
 import { Colors } from '../theme/colors';
 import { SplashView } from '../components/SplashView';
 import { AuthService } from '../services/authService';
@@ -234,10 +235,22 @@ const AuthNavigator: React.FC = () => {
 };
 
 export const AppNavigator: React.FC = () => {
-  const { session, loading } = useAuth();
+  const { session, profile, loading } = useAuth();
+  const { reconcileAccountTheme } = useTheme();
   const [showSplash, setShowSplash] = useState(true);
   const [isGuardian, setIsGuardian] = useState(false);
   const [guardianChecked, setGuardianChecked] = useState(false);
+
+  useEffect(() => {
+    if (profile) {
+      if (profile.theme_mode && (profile.theme_mode === 'dark' || profile.theme_mode === 'light' || profile.theme_mode === 'system')) {
+        reconcileAccountTheme(profile.theme_mode);
+      }
+      if (profile.default_screen) {
+        AsyncStorage.setItem('@user_default_screen', profile.default_screen).catch(() => {});
+      }
+    }
+  }, [profile, reconcileAccountTheme]);
 
   useEffect(() => {
     if (!session) {

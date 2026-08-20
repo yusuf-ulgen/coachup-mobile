@@ -40,18 +40,28 @@ export const AppearanceSettingsScreen: React.FC<AppearanceSettingsScreenProps> =
   }, []);
 
   const handleSelectTheme = async (mode: 'dark' | 'light' | 'system') => {
-    setThemeMode(mode);
-    if (userId) {
-      try {
-        await UserService.updateUserProfile(userId, { theme_mode: mode });
-      } catch (e: any) {
-        console.warn('Could not save theme_mode to DB profile:', e);
-        feedback.error({
-          title: 'Hata',
-          message: e,
-          fallbackMessage: 'Tema ayarı kaydedilemedi.',
-        });
-      }
+    if (!userId) {
+      feedback.error({
+        title: 'Hata',
+        message: 'Kullanıcı profili bulunamadı. Lütfen oturum açın.',
+      });
+      return;
+    }
+
+    const prevMode = themeMode;
+    await setThemeMode(mode);
+
+    try {
+      await UserService.updateUserProfile(userId, { theme_mode: mode });
+      feedback.toast('Tema tercihi güncellendi.', 'success');
+    } catch (e: any) {
+      console.error('[AppearanceSettingsScreen] Could not save theme_mode to DB profile:', e);
+      await setThemeMode(prevMode);
+      feedback.error({
+        title: 'Senkronizasyon Hatası',
+        message: e,
+        fallbackMessage: 'Tema ayarı sunucuya kaydedilemedi.',
+      });
     }
   };
 

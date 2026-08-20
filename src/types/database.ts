@@ -1,5 +1,5 @@
 export type Gender = 'male' | 'female';
-export type Role = 'member' | 'coach' | 'admin' | 'guardian';
+export type Role = 'member' | 'coach' | 'admin' | 'guardian' | 'gym_manager' | 'individual';
 
 export interface UserProfile {
   id: string;
@@ -11,16 +11,36 @@ export interface UserProfile {
   gender?: string | null;
   role?: Role | string | null;
   is_individual?: boolean;
-  gym_name?: string;
+  gym_name?: string | null;
   avatar_url?: string | null;
   gym_id?: string | null;
+  height?: number | null;
+  weight?: number | null;
   height_cm?: number | null;
   weight_kg?: number | null;
   profile_image_url?: string | null;
+  is_admin?: boolean;
+  is_gym_manager?: boolean;
+  managed_gym_id?: string | null;
+  current_streak?: number;
   created_at?: string | null;
   updated_at?: string | null;
   membership_type?: string | null;
   membership_expiry?: string | null;
+  // Settings & Address Fields
+  default_screen?: string;
+  notifications_enabled?: boolean;
+  biometrics_enabled?: boolean;
+  weight_unit?: 'kg' | 'lbs';
+  address_title?: string | null;
+  city?: string | null;
+  district?: string | null;
+  neighborhood?: string | null;
+  street?: string | null;
+  building_no?: string | null;
+  door_no?: string | null;
+  postal_code?: string | null;
+  theme_mode?: 'dark' | 'light' | 'system';
 }
 
 export interface TrainingProgram {

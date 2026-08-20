@@ -85,125 +85,155 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ navigation }) =>
     loadSettings();
   }, []);
 
-  const saveSetting = async (key: string, value: any, previousValue?: any) => {
-    // Persist to local storage cache
+  const saveAccountSetting = async (key: string, value: any, previousValue?: any): Promise<boolean> => {
+    // 1. Enforce authenticated account context
+    if (!userProfile?.id) {
+      if (previousValue !== undefined) {
+        if (key === 'default_screen') setDefaultScreen(previousValue);
+        else if (key === 'notifications_enabled') setNotificationsEnabled(previousValue);
+        else if (key === 'biometrics_enabled') setBiometricsEnabled(previousValue);
+        else if (key === 'weight_unit') setWeightUnit(previousValue);
+      }
+      feedback.error({
+        title: 'Hata',
+        message: 'Kullanıcı profili bulunamadı. Lütfen oturum açın.',
+      });
+      return false;
+    }
+
+    // 2. Persist to local cache
     try {
       await AsyncStorage.setItem(`@app_setting_${key}`, JSON.stringify(value));
       if (key === 'default_screen') {
         await AsyncStorage.setItem('@user_default_screen', value);
       }
     } catch (storageErr) {
-      console.error(`[SettingsScreen] Error saving ${key} to AsyncStorage:`, storageErr);
+      console.error(`[SettingsScreen] Error caching ${key}:`, storageErr);
     }
 
-    // Sync to Supabase DB if user is authenticated
-    if (userProfile?.id) {
-      try {
-        await UserService.updateUserProfile(userProfile.id, { [key]: value });
-        setUserProfile((prev: any) => ({ ...prev, [key]: value }));
-      } catch (dbErr: any) {
-        console.error(`[SettingsScreen] DB sync failed for ${key}:`, dbErr);
-        // Rollback state if previous value was provided
-        if (previousValue !== undefined) {
-          if (key === 'default_screen') setDefaultScreen(previousValue);
-          else if (key === 'notifications_enabled') setNotificationsEnabled(previousValue);
-          else if (key === 'biometrics_enabled') setBiometricsEnabled(previousValue);
-          else if (key === 'weight_unit') setWeightUnit(previousValue);
-          try {
-            await AsyncStorage.setItem(`@app_setting_${key}`, JSON.stringify(previousValue));
-            if (key === 'default_screen') {
-              await AsyncStorage.setItem('@user_default_screen', previousValue);
-            }
-          } catch {}
-        }
-        feedback.error({
-          title: 'Hata',
-          message: dbErr,
-          fallbackMessage: 'Ayar sunucuya kaydedilemedi.',
-        });
-        throw dbErr;
+    // 3. Persist to Supabase Database
+    try {
+      await UserService.updateUserProfile(userProfile.id, { [key]: value });
+      setUserProfile((prev: any) => ({ ...prev, [key]: value }));
+      return true;
+    } catch (dbErr: any) {
+      console.error(`[SettingsScreen] DB sync failed for ${key}:`, dbErr);
+      // Rollback UI and local cache
+      if (previousValue !== undefined) {
+        if (key === 'default_screen') setDefaultScreen(previousValue);
+        else if (key === 'notifications_enabled') setNotificationsEnabled(previousValue);
+        else if (key === 'biometrics_enabled') setBiometricsEnabled(previousValue);
+        else if (key === 'weight_unit') setWeightUnit(previousValue);
+        try {
+          await AsyncStorage.setItem(`@app_setting_${key}`, JSON.stringify(previousValue));
+          if (key === 'default_screen') {
+            await AsyncStorage.setItem('@user_default_screen', previousValue);
+          }
+        } catch {}
       }
+      feedback.error({
+        title: 'Senkronizasyon Hatası',
+        message: dbErr,
+        fallbackMessage: 'Ayar sunucuya kaydedilemedi.',
+      });
+      return false;
     }
   };
 
   const handleDefaultScreenChange = async (screen: string) => {
     const prev = defaultScreen;
     setDefaultScreen(screen);
-    try {
-      await saveSetting('default_screen', screen, prev);
+    const success = await saveAccountSetting('default_screen', screen, prev);
+    if (success) {
       feedback.toast('Varsayılan başlangıç ekranı güncellendi.', 'success');
-    } catch {}
+    }
   };
 
   const handleNotificationsToggle = async (val: boolean) => {
     const prev = notificationsEnabled;
     setNotificationsEnabled(val);
-    try {
-      await saveSetting('notifications_enabled', val, prev);
+    const success = await saveAccountSetting('notifications_enabled', val, prev);
+    if (success) {
       if (val) {
         await PermissionPreferenceService.requestNotificationSystemPermission();
       }
       feedback.toast(val ? 'Bildirimler açıldı.' : 'Bildirimler kapatıldı.', 'success');
-    } catch {}
+    }
   };
 
   const handleBiometricsToggle = async (val: boolean) => {
     if (val) {
+      // Domain 1: Hardware & Enrollment Check
+      let hasHardware = false;
+      let isEnrolled = false;
       try {
-        const hasHardware = await LocalAuthentication.hasHardwareAsync();
-        const isEnrolled = await LocalAuthentication.isEnrolledAsync();
+        hasHardware = await LocalAuthentication.hasHardwareAsync();
+        isEnrolled = await LocalAuthentication.isEnrolledAsync();
+      } catch (checkErr) {
+        console.error('[SettingsScreen] Biometrics check error:', checkErr);
+      }
 
-        if (!hasHardware || !isEnrolled) {
-          setBiometricsEnabled(false);
-          await AsyncStorage.setItem('@app_setting_biometrics_enabled', JSON.stringify(false));
-          feedback.warning({
-            title: 'Biyometrik Veri Bulunamadı',
-            message: 'Telefonunuzda kayıtlı biyometrik veri (Parmak izi veya Face ID) bulunamadı. Lütfen telefon ayarlarınızdan biyometrik veri kaydedip sonra tekrar deneyin.',
-          });
-          return;
-        }
-
-        const result = await LocalAuthentication.authenticateAsync({
-          promptMessage: 'Biyometrik girişi aktifleştirmek için doğrulama yapın',
-          fallbackLabel: 'Şifre Kullan',
-        });
-
-        if (result.success) {
-          setBiometricsEnabled(true);
-          await saveSetting('biometrics_enabled', true, false);
-          feedback.toast('Biyometrik giriş başarıyla aktif edildi.', 'success');
-        } else {
-          setBiometricsEnabled(false);
-          await AsyncStorage.setItem('@app_setting_biometrics_enabled', JSON.stringify(false));
-          feedback.warning({
-            title: 'Doğrulama Başarısız',
-            message: 'Biyometrik doğrulama tamamlanamadı.',
-          });
-        }
-      } catch (e) {
+      if (!hasHardware || !isEnrolled) {
         setBiometricsEnabled(false);
         await AsyncStorage.setItem('@app_setting_biometrics_enabled', JSON.stringify(false));
         feedback.warning({
           title: 'Biyometrik Veri Bulunamadı',
-          message: 'Telefonunuzda kayıtlı biyometrik veri bulunamadı. Lütfen telefon ayarlarınızdan biyometrik veri ekleyip tekrar deneyin.',
+          message: 'Telefonunuzda kayıtlı biyometrik veri (Parmak izi veya Face ID) bulunamadı. Lütfen telefon ayarlarınızdan biyometrik veri kaydedip sonra tekrar deneyin.',
         });
+        return;
+      }
+
+      // Domain 2: Biometric Authentication
+      let authResult;
+      try {
+        authResult = await LocalAuthentication.authenticateAsync({
+          promptMessage: 'Biyometrik girişi aktifleştirmek için doğrulama yapın',
+          fallbackLabel: 'Şifre Kullan',
+        });
+      } catch (authErr) {
+        console.error('[SettingsScreen] Biometrics auth error:', authErr);
+        setBiometricsEnabled(false);
+        await AsyncStorage.setItem('@app_setting_biometrics_enabled', JSON.stringify(false));
+        feedback.error({
+          title: 'Doğrulama Hatası',
+          message: authErr,
+          fallbackMessage: 'Biyometrik doğrulama sırasında bir hata oluştu.',
+        });
+        return;
+      }
+
+      if (!authResult.success) {
+        setBiometricsEnabled(false);
+        await AsyncStorage.setItem('@app_setting_biometrics_enabled', JSON.stringify(false));
+        feedback.warning({
+          title: 'Doğrulama Başarısız',
+          message: 'Biyometrik doğrulama tamamlanamadı.',
+        });
+        return;
+      }
+
+      // Domain 3: Persistence / Account Sync
+      setBiometricsEnabled(true);
+      const success = await saveAccountSetting('biometrics_enabled', true, false);
+      if (success) {
+        feedback.toast('Biyometrik giriş başarıyla aktif edildi.', 'success');
       }
     } else {
       setBiometricsEnabled(false);
-      try {
-        await saveSetting('biometrics_enabled', false, true);
+      const success = await saveAccountSetting('biometrics_enabled', false, true);
+      if (success) {
         feedback.toast('Biyometrik giriş kapatıldı.', 'info');
-      } catch {}
+      }
     }
   };
 
   const handleWeightUnitToggle = async (unit: 'kg' | 'lbs') => {
     const prev = weightUnit;
     setWeightUnit(unit);
-    try {
-      await saveSetting('weight_unit', unit, prev);
+    const success = await saveAccountSetting('weight_unit', unit, prev);
+    if (success) {
       feedback.toast(`Ağırlık birimi ${unit.toUpperCase()} olarak güncellendi.`, 'success');
-    } catch {}
+    }
   };
 
   const handleBlePrefChange = async (pref: BluetoothPermissionPreference) => {
