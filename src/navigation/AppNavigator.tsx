@@ -244,9 +244,11 @@ export const AppNavigator: React.FC = () => {
   const { reconcileAccountTheme } = useTheme();
   const [showSplash, setShowSplash] = useState(true);
   const [isGuardian, setIsGuardian] = useState(false);
-  const [guardianChecked, setGuardianChecked] = useState(false);
-  const [initialTabReady, setInitialTabReady] = useState(false);
+  const [guardianCheckedForUserId, setGuardianCheckedForUserId] = useState<string | null>(null);
+  const [initialTabResolvedForUserId, setInitialTabResolvedForUserId] = useState<string | null>(null);
   const [resolvedInitialTab, setResolvedInitialTab] = useState<string>('HomeTab');
+
+  const currentUserId = session?.user?.id ?? null;
 
   useEffect(() => {
     if (profile) {
@@ -262,9 +264,14 @@ export const AppNavigator: React.FC = () => {
   useEffect(() => {
     if (loading) return;
 
-    if (!session) {
-      setGuardianChecked(true);
-      setInitialTabReady(true);
+    if (!currentUserId) {
+      setGuardianCheckedForUserId(null);
+      setInitialTabResolvedForUserId(null);
+      setIsGuardian(false);
+      return;
+    }
+
+    if (initialTabResolvedForUserId === currentUserId) {
       return;
     }
 
@@ -274,6 +281,7 @@ export const AppNavigator: React.FC = () => {
         if (accountRoute) {
           setResolvedInitialTab(accountRoute);
           await AsyncStorage.setItem('@user_default_screen', profile!.default_screen!);
+          setInitialTabResolvedForUserId(currentUserId);
           return;
         }
 
@@ -281,6 +289,7 @@ export const AppNavigator: React.FC = () => {
         const cachedRoute = resolveDefaultRoute(cachedPref);
         if (cachedRoute) {
           setResolvedInitialTab(cachedRoute);
+          setInitialTabResolvedForUserId(currentUserId);
           return;
         }
 
@@ -289,35 +298,40 @@ export const AppNavigator: React.FC = () => {
         console.warn('[AppNavigator] Error resolving startup route:', err);
         setResolvedInitialTab('HomeTab');
       } finally {
-        setInitialTabReady(true);
+        setInitialTabResolvedForUserId(currentUserId);
       }
     };
 
     resolveStartupTab();
-  }, [loading, session]);
+  }, [loading, currentUserId, profile?.default_screen, initialTabResolvedForUserId]);
 
   useEffect(() => {
-    if (!session) {
-      setGuardianChecked(true);
+    if (!currentUserId) {
+      setGuardianCheckedForUserId(null);
       return;
     }
+
+    if (guardianCheckedForUserId === currentUserId) {
+      return;
+    }
+
     // Guardian kontrolu yap
     const checkGuardian = async () => {
       try {
         const { data } = await supabase
           .from('guardians')
           .select('id')
-          .eq('user_id', session.user.id)
+          .eq('user_id', currentUserId)
           .single();
         setIsGuardian(Boolean(data));
       } catch (e) {
         setIsGuardian(false);
       } finally {
-        setGuardianChecked(true);
+        setGuardianCheckedForUserId(currentUserId);
       }
     };
     checkGuardian();
-  }, [session]);
+  }, [currentUserId, guardianCheckedForUserId]);
 
   useEffect(() => {
     if (!session) return;
@@ -385,11 +399,12 @@ export const AppNavigator: React.FC = () => {
     };
   }, [session]);
 
-  useEffect(() => {
-    SplashScreen.hideAsync().catch(() => {});
-  }, []);
+  const isAuthSessionReady = !session || (
+    guardianCheckedForUserId === session.user.id &&
+    initialTabResolvedForUserId === session.user.id
+  );
 
-  if (loading || showSplash || (session && (!guardianChecked || !initialTabReady))) {
+  if (loading || showSplash || !isAuthSessionReady) {
     return <SplashView onAnimationFinish={() => setShowSplash(false)} />;
   }
 

@@ -61,15 +61,33 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       });
 
     // Listen for auth state changes safely
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      const nextUserId = session?.user?.id ?? null;
+
+      if (event === 'SIGNED_OUT' || !nextUserId) {
+        setSession(null);
+        setUser(null);
+        setProfile(null);
+        setLoading(false);
+        return;
+      }
+
+      // If token refreshed for the already-hydrated user, update session without resetting loading state
+      if (event === 'TOKEN_REFRESHED' && user?.id === nextUserId && profile) {
+        setSession(session);
+        setUser(session?.user ?? null);
+        return;
+      }
+
+      // New sign-in or identity change: gate with loading=true until profile is hydrated
+      setLoading(true);
       try {
         setSession(session);
         setUser(session?.user ?? null);
-        if (session?.user?.id) {
-          await fetchProfile(session.user.id);
-        } else {
+        if (user?.id !== nextUserId) {
           setProfile(null);
         }
+        await fetchProfile(nextUserId);
       } catch (err) {
         console.warn('Auth state change error:', err);
       } finally {
