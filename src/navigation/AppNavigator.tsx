@@ -163,17 +163,42 @@ const CustomTabBar = ({ state, descriptors, navigation }: any) => {
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
+const VALID_DEFAULT_SCREEN_MAP: Record<string, string> = {
+  home: 'HomeTab',
+  calendar: 'CalendarTab',
+  training: 'TrainingTab',
+  qr: 'QRTab',
+};
+
+function resolveDefaultRoute(screenKey?: string | null): string | null {
+  if (!screenKey) return null;
+  const normalized = screenKey.toLowerCase().trim();
+  return VALID_DEFAULT_SCREEN_MAP[normalized] || null;
+}
+
 const MainTabNavigator: React.FC = () => {
-  const [initialRoute, setInitialRoute] = useState<string>('HomeTab');
+  const { profile } = useAuth();
+  const [initialRoute, setInitialRoute] = useState<string>(() => {
+    const accountRoute = resolveDefaultRoute(profile?.default_screen);
+    if (accountRoute) return accountRoute;
+    return 'HomeTab';
+  });
 
   useEffect(() => {
+    const accountRoute = resolveDefaultRoute(profile?.default_screen);
+    if (accountRoute) {
+      setInitialRoute(accountRoute);
+      AsyncStorage.setItem('@user_default_screen', profile!.default_screen!).catch(() => {});
+      return;
+    }
+
     AsyncStorage.getItem('@user_default_screen').then((pref: string | null) => {
-      if (pref === 'calendar') setInitialRoute('CalendarTab');
-      else if (pref === 'training') setInitialRoute('TrainingTab');
-      else if (pref === 'qr') setInitialRoute('QRTab');
-      else setInitialRoute('HomeTab');
+      const cachedRoute = resolveDefaultRoute(pref);
+      if (cachedRoute) {
+        setInitialRoute(cachedRoute);
+      }
     }).catch(() => {});
-  }, []);
+  }, [profile?.default_screen]);
 
   return (
     <Tab.Navigator

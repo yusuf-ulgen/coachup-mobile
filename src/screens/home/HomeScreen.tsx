@@ -149,23 +149,6 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({ navigation }) => {
           if (memberships.length > 1 && !profile.gym_id) {
             setShowMembershipPicker(true);
           }
-          if (profile.default_screen && !HomeTabState.hasAppliedDefaultTab) {
-            HomeTabState.hasAppliedDefaultTab = true;
-            const tabMap: Record<string, string> = {
-              calendar: 'CalendarTab',
-              training: 'TrainingTab',
-              community: 'CommunityTab',
-              qr: 'QRTab',
-            };
-            const targetTab = tabMap[profile.default_screen];
-            if (targetTab) {
-              setTimeout(() => {
-                try {
-                  navigation?.navigate(targetTab);
-                } catch (err) {}
-              }, 100);
-            }
-          }
         }
       } catch (e) {
         console.error('Error fetching profile:', e);

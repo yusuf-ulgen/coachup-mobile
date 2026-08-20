@@ -46,16 +46,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // Get initial session safely
     supabase.auth
       .getSession()
-      .then(({ data: { session } }) => {
+      .then(async ({ data: { session } }) => {
         setSession(session);
         setUser(session?.user ?? null);
         if (session?.user?.id) {
-          fetchProfile(session.user.id);
+          await fetchProfile(session.user.id);
         }
-        setLoading(false);
       })
       .catch((err) => {
         console.warn('Initial session error:', err);
+      })
+      .finally(() => {
         setLoading(false);
       });
 

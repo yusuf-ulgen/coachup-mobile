@@ -155,9 +155,18 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ navigation }) =>
     const success = await saveAccountSetting('notifications_enabled', val, prev);
     if (success) {
       if (val) {
-        await PermissionPreferenceService.requestNotificationSystemPermission();
+        const osGranted = await PermissionPreferenceService.requestNotificationSystemPermission();
+        if (osGranted) {
+          feedback.toast('Bildirimler açıldı.', 'success');
+        } else {
+          feedback.warning({
+            title: 'Bildirim İzni Gerekli',
+            message: 'Bildirim tercihiniz açık ancak cihaz bildirim izni verilmedi. Bildirim alabilmek için lütfen cihaz ayarlarından bildirimlere izin verin.',
+          });
+        }
+      } else {
+        feedback.toast('Bildirimler kapatıldı.', 'info');
       }
-      feedback.toast(val ? 'Bildirimler açıldı.' : 'Bildirimler kapatıldı.', 'success');
     }
   };
 
