@@ -825,6 +825,7 @@ export const RecordAttemptService = {
     const now = new Date().toISOString();
     const payload: any = {
       completed_at: now,
+      is_completed: true,
     };
 
     if (typeof paramsOrWeight === 'object' && paramsOrWeight !== null) {
@@ -835,17 +836,7 @@ export const RecordAttemptService = {
       if (paramsOrWeight.restSeconds !== undefined && paramsOrWeight.restSeconds !== null)
         payload.rest_seconds = paramsOrWeight.restSeconds;
       if (paramsOrWeight.notes !== undefined && paramsOrWeight.notes !== null) payload.notes = paramsOrWeight.notes;
-      if (paramsOrWeight.resultType) payload.result_type = paramsOrWeight.resultType;
-      if (paramsOrWeight.elapsedSeconds !== undefined && paramsOrWeight.elapsedSeconds !== null)
-        payload.elapsed_seconds = paramsOrWeight.elapsedSeconds;
-      if (paramsOrWeight.distanceKm !== undefined && paramsOrWeight.distanceKm !== null)
-        payload.distance_km = paramsOrWeight.distanceKm;
-      if (paramsOrWeight.targetCalories !== undefined && paramsOrWeight.targetCalories !== null)
-        payload.target_calories = paramsOrWeight.targetCalories;
-      if (paramsOrWeight.rounds !== undefined && paramsOrWeight.rounds !== null)
-        payload.rounds = paramsOrWeight.rounds;
     } else {
-      payload.is_completed = true;
       if (paramsOrWeight !== undefined && paramsOrWeight !== null) payload.actual_weight = paramsOrWeight;
       if (legacyActualReps !== undefined && legacyActualReps !== null) payload.actual_reps = legacyActualReps;
       if (legacyRpe !== undefined && legacyRpe !== null) payload.rpe = legacyRpe;
@@ -861,32 +852,8 @@ export const RecordAttemptService = {
         .select('*')
         .single();
 
-      if (!error) return data;
-
-      // Fallback for pre-migration schema
-      if (error && error.message && (error.message.includes('column') || error.message.includes('schema'))) {
-        const basePayload: any = {
-          is_completed: payload.is_completed,
-          completed_at: now,
-        };
-        if (payload.actual_weight !== undefined) basePayload.actual_weight = payload.actual_weight;
-        if (payload.actual_reps !== undefined) basePayload.actual_reps = payload.actual_reps;
-        if (payload.rpe !== undefined) basePayload.rpe = payload.rpe;
-        if (payload.rest_seconds !== undefined) basePayload.rest_seconds = payload.rest_seconds;
-        if (payload.notes !== undefined) basePayload.notes = payload.notes;
-
-        const { data: fbData, error: fbError } = await supabase
-          .from('record_attempt_sets')
-          .update(basePayload)
-          .eq('id', setId)
-          .select('*')
-          .single();
-
-        if (fbError) throw fbError;
-        return fbData;
-      }
-
-      throw error;
+      if (error) throw error;
+      return data;
     } catch (e) {
       console.error('[RecordAttemptService] saveSet error:', e);
       throw e;
@@ -917,61 +884,22 @@ export const RecordAttemptService = {
       completed_at: now,
     };
 
-    if (resultMetrics) {
-      if (resultMetrics.resultType) payload.result_type = resultMetrics.resultType;
-      if (resultMetrics.elapsedSeconds !== undefined && resultMetrics.elapsedSeconds !== null)
-        payload.elapsed_seconds = resultMetrics.elapsedSeconds;
-      if (resultMetrics.distanceKm !== undefined && resultMetrics.distanceKm !== null)
-        payload.distance_km = resultMetrics.distanceKm;
-      if (resultMetrics.targetCalories !== undefined && resultMetrics.targetCalories !== null)
-        payload.target_calories = resultMetrics.targetCalories;
-      if (resultMetrics.rounds !== undefined && resultMetrics.rounds !== null)
-        payload.rounds = resultMetrics.rounds;
-    }
-
     try {
       const { data, error } = await supabase
         .from('record_attempts')
         .update(payload)
         .eq('id', attemptId)
-        .select('*, exercise:exercises(id, name)')
+        .select('*')
         .single();
 
-      if (!error) {
-        if (success && userId) {
-          StreakService.fetchStreakData(userId).catch((err: any) => {
-            console.warn('[RecordAttemptService] Streak sync background warning:', err);
-          });
-        }
-        return data;
+      if (error) throw error;
+
+      if (success && userId) {
+        StreakService.fetchStreakData(userId).catch((err: any) => {
+          console.warn('[RecordAttemptService] Streak sync background warning:', err);
+        });
       }
-
-      // If database reports column does not exist (pre-migration schema compatibility), retry with base columns
-      if (error && error.message && (error.message.includes('column') || error.message.includes('schema'))) {
-        console.warn('[RecordAttemptService] Retrying completeAttempt with base schema columns');
-        const basePayload = {
-          status: success ? 'completed' : 'failed',
-          success: success,
-          notes: notes || null,
-          completed_at: now,
-        };
-        const { data: fbData, error: fbError } = await supabase
-          .from('record_attempts')
-          .update(basePayload)
-          .eq('id', attemptId)
-          .select('*, exercise:exercises(id, name)')
-          .single();
-
-        if (fbError) throw fbError;
-        if (success && userId) {
-          StreakService.fetchStreakData(userId).catch((err: any) => {
-            console.warn('[RecordAttemptService] Streak sync background warning:', err);
-          });
-        }
-        return fbData;
-      }
-
-      throw error;
+      return data;
     } catch (e) {
       console.error('[RecordAttemptService] completeAttempt error:', e);
       throw e;
@@ -1002,7 +930,7 @@ export const RecordAttemptService = {
   },
 
   /**
-   * Inserts a record into personal_records table with typed columns and backward-compatible fallback.
+   * Inserts a record into personal_records table with canonical columns.
    */
   async savePersonalRecord(
     userId: string,
@@ -1010,6 +938,7 @@ export const RecordAttemptService = {
     paramsOrWeight?:
       | {
           weightKg?: number | null;
+          weight?: number | null;
           reps?: number | null;
           notes?: string | null;
           resultType?: RecordResultType;
@@ -1024,76 +953,38 @@ export const RecordAttemptService = {
     legacyNotes?: string | null
   ): Promise<any> {
     const now = new Date().toISOString();
-    let weightKg = 0;
+    let weight = 0;
     let reps = 1;
     let notes: string | null = null;
-    let resultType: RecordResultType | undefined;
-    let elapsedSeconds: number | null | undefined;
-    let distanceKm: number | null | undefined;
-    let targetCalories: number | null | undefined;
-    let rounds: number | null | undefined;
 
     if (typeof paramsOrWeight === 'object' && paramsOrWeight !== null) {
-      weightKg = paramsOrWeight.weightKg ?? 0;
+      weight = paramsOrWeight.weight ?? paramsOrWeight.weightKg ?? 0;
       reps = paramsOrWeight.reps ?? 1;
       notes = paramsOrWeight.notes || null;
-      resultType = paramsOrWeight.resultType;
-      elapsedSeconds = paramsOrWeight.elapsedSeconds;
-      distanceKm = paramsOrWeight.distanceKm;
-      targetCalories = paramsOrWeight.targetCalories;
-      rounds = paramsOrWeight.rounds;
     } else {
-      weightKg = paramsOrWeight ?? 0;
+      weight = paramsOrWeight ?? 0;
       reps = legacyReps ?? 1;
       notes = legacyNotes || null;
     }
 
-    const fullPayload: any = {
+    const payload = {
       user_id: userId,
       exercise_id: exerciseId,
-      weight_kg: weightKg,
+      weight,
       reps,
       record_date: now,
       notes,
     };
 
-    if (resultType) fullPayload.result_type = resultType;
-    if (elapsedSeconds !== undefined && elapsedSeconds !== null) fullPayload.elapsed_seconds = elapsedSeconds;
-    if (distanceKm !== undefined && distanceKm !== null) fullPayload.distance_km = distanceKm;
-    if (targetCalories !== undefined && targetCalories !== null) fullPayload.target_calories = targetCalories;
-    if (rounds !== undefined && rounds !== null) fullPayload.rounds = rounds;
-
     try {
       const { data, error } = await supabase
         .from('personal_records')
-        .insert(fullPayload)
+        .insert(payload)
         .select('*')
         .single();
 
-      if (!error) return data;
-
-      // If database does not yet have the new columns, fallback to base columns
-      if (error && error.message && (error.message.includes('column') || error.message.includes('schema'))) {
-        console.warn('[RecordAttemptService] Retrying savePersonalRecord with base schema columns');
-        const basePayload = {
-          user_id: userId,
-          exercise_id: exerciseId,
-          weight_kg: weightKg,
-          reps,
-          record_date: now,
-          notes,
-        };
-        const { data: fallbackData, error: fallbackError } = await supabase
-          .from('personal_records')
-          .insert(basePayload)
-          .select('*')
-          .single();
-
-        if (fallbackError) throw fallbackError;
-        return fallbackData;
-      }
-
-      throw error;
+      if (error) throw error;
+      return data;
     } catch (err) {
       console.error('[RecordAttemptService] savePersonalRecord error:', err);
       throw err;

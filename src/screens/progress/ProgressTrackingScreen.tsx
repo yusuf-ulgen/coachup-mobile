@@ -462,7 +462,7 @@ export const ProgressTrackingScreen = ({ navigation }: any) => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0F172A',
+    backgroundColor: Colors.backgroundDark,
   },
   header: {
     flexDirection: 'row',
@@ -470,7 +470,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 12,
     borderBottomWidth: 1,
-    borderBottomColor: '#1E293B',
+    borderBottomColor: Colors.borderDark,
   },
   backButton: {
     padding: 4,
@@ -491,9 +491,9 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     alignItems: 'center',
     borderRadius: 8,
-    backgroundColor: '#1E293B',
+    backgroundColor: Colors.cardDark,
     borderWidth: 1,
-    borderColor: '#334155',
+    borderColor: Colors.borderDark,
   },
   activeTabButton: {
     backgroundColor: Colors.primary,
@@ -522,11 +522,11 @@ const styles = StyleSheet.create({
   },
   statCard: {
     flex: 1,
-    backgroundColor: '#1E293B',
+    backgroundColor: Colors.cardDark,
     padding: 14,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#334155',
+    borderColor: Colors.borderDark,
     alignItems: 'center',
     gap: 4,
   },
@@ -540,11 +540,11 @@ const styles = StyleSheet.create({
     color: Colors.textDark,
   },
   measurementsCard: {
-    backgroundColor: '#1E293B',
+    backgroundColor: Colors.cardDark,
     borderRadius: 14,
     padding: 16,
     borderWidth: 1,
-    borderColor: '#334155',
+    borderColor: Colors.borderDark,
   },
   cardHeader: {
     flexDirection: 'row',
@@ -576,7 +576,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingVertical: 10,
     borderBottomWidth: 1,
-    borderBottomColor: '#334155',
+    borderBottomColor: Colors.borderDark,
   },
   measurementLabel: {
     fontSize: 14,
@@ -599,11 +599,11 @@ const styles = StyleSheet.create({
   historyItem: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    backgroundColor: '#1E293B',
+    backgroundColor: Colors.cardDark,
     padding: 12,
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: '#334155',
+    borderColor: Colors.borderDark,
   },
   historyDate: {
     fontSize: 13,
@@ -624,11 +624,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
-    backgroundColor: '#1E293B',
+    backgroundColor: Colors.cardDark,
     padding: 12,
     borderRadius: 10,
     borderWidth: 1,
-    borderColor: '#334155',
+    borderColor: Colors.borderDark,
   },
   photoBtnText: {
     fontSize: 13,
@@ -642,11 +642,11 @@ const styles = StyleSheet.create({
   },
   photoCard: {
     width: '48%',
-    backgroundColor: '#1E293B',
+    backgroundColor: Colors.cardDark,
     borderRadius: 10,
     overflow: 'hidden',
     borderWidth: 1,
-    borderColor: '#334155',
+    borderColor: Colors.borderDark,
   },
   photoImg: {
     width: '100%',
@@ -698,12 +698,12 @@ const styles = StyleSheet.create({
     color: Colors.textSecondaryDark,
   },
   modalInput: {
-    backgroundColor: '#0F172A',
+    backgroundColor: Colors.backgroundDark,
     borderRadius: 8,
     padding: 10,
     color: Colors.textDark,
     borderWidth: 1,
-    borderColor: '#334155',
+    borderColor: Colors.borderDark,
     fontSize: 14,
   },
   saveButton: {

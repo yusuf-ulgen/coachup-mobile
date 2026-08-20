@@ -104,34 +104,83 @@ export const PersonalRecordsScreen: React.FC<PersonalRecordsScreenProps> = ({ na
       const streakData = await StreakService.fetchStreakData(user.id);
       setStreakCount(streakData.currentStreak);
 
-      // Fetch PRs
-      const { data: prData } = await supabase
+      // Fetch PRs with fallback if embedded exercise join fails
+      let finalPrs: any[] = [];
+      const { data: prData, error: prErr } = await supabase
         .from('personal_records')
         .select('*, exercise:exercises(name)')
         .eq('user_id', user.id)
         .order('record_date', { ascending: false });
 
-      setRecords(prData || []);
+      if (prErr) {
+        console.warn('Embedded exercise select warning on personal_records, falling back to base query:', prErr);
+        const { data: rawPrs } = await supabase
+          .from('personal_records')
+          .select('*')
+          .eq('user_id', user.id)
+          .order('record_date', { ascending: false });
+        finalPrs = rawPrs || [];
+      } else {
+        finalPrs = prData || [];
+      }
 
-      // Fetch completed workout sessions
-      const { data: sessionData } = await supabase
+      // Fetch completed record attempts to enrich Kişisel Rekorlar if personal_records table is empty or complementary
+      const { data: attemptData } = await supabase
+        .from('record_attempts')
+        .select('*, exercise:exercises(name)')
+        .eq('user_id', user.id)
+        .eq('status', 'completed')
+        .order('completed_at', { ascending: false });
+
+      const completedAttempts = attemptData || [];
+      setRecordAttempts(completedAttempts);
+
+      // If personal_records has items use it, plus merge completed attempts that aren't duplicate
+      if (finalPrs.length === 0 && completedAttempts.length > 0) {
+        const mappedAttemptsAsRecords = completedAttempts.map((att: any) => ({
+          id: att.id,
+          user_id: att.user_id,
+          exercise_id: att.exercise_id,
+          exercise: att.exercise,
+          exercise_name: att.exercise?.name,
+          record_date: att.completed_at || att.created_at,
+          weight: att.target_weight || 0,
+          weight_kg: att.target_weight || 0,
+          reps: att.target_reps || 1,
+          result_type: att.result_type,
+          elapsed_seconds: att.elapsed_seconds,
+          distance_km: att.distance_km,
+          target_calories: att.target_calories,
+          rounds: att.rounds,
+          notes: att.notes,
+        }));
+        setRecords(mappedAttemptsAsRecords);
+      } else {
+        setRecords(finalPrs);
+      }
+
+      // Fetch completed workout sessions with fallback
+      let finalSessions: any[] = [];
+      const { data: sessionData, error: sessErr } = await supabase
         .from('training_sessions')
         .select('*, program:training_programs(name)')
         .eq('user_id', user.id)
         .not('completed_at', 'is', null)
         .order('completed_at', { ascending: false });
 
-      setWorkoutSessions(sessionData || []);
+      if (sessErr) {
+        const { data: rawSessions } = await supabase
+          .from('training_sessions')
+          .select('*')
+          .eq('user_id', user.id)
+          .not('completed_at', 'is', null)
+          .order('completed_at', { ascending: false });
+        finalSessions = rawSessions || [];
+      } else {
+        finalSessions = sessionData || [];
+      }
 
-      // Fetch completed record attempts
-      const { data: attemptData } = await supabase
-        .from('record_attempts')
-        .select('*')
-        .eq('user_id', user.id)
-        .eq('status', 'completed')
-        .order('completed_at', { ascending: false });
-
-      setRecordAttempts(attemptData || []);
+      setWorkoutSessions(finalSessions);
     } catch (e) {
       console.error('Error loading activity history:', e);
     } finally {

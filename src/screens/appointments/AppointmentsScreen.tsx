@@ -8,6 +8,8 @@ import {
   ScrollView,
   TextInput,
   ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { Colors } from '../../theme/colors';
 import { feedback } from '../../services/feedbackService';
@@ -62,6 +64,7 @@ export const AppointmentsScreen: React.FC<{ navigation?: any; route?: any }> = (
   const [endTime, setEndTime] = useState<string>('11:00');
   const [notes, setNotes] = useState<string>('');
   const [showDatePicker, setShowDatePicker] = useState(false);
+  const [showTimePicker, setShowTimePicker] = useState<'start' | 'end' | 'slot' | null>(null);
 
   const initialCoachHandledRef = React.useRef(false);
 
@@ -251,6 +254,7 @@ export const AppointmentsScreen: React.FC<{ navigation?: any; route?: any }> = (
         user_id: user.id,
         coach_id: selectedCoachId || null,
         gym_id: gymId,
+        date: appointmentDate,
         appointment_date: appointmentDate,
         start_time: cleanStart,
         end_time: cleanEnd,
@@ -432,125 +436,161 @@ export const AppointmentsScreen: React.FC<{ navigation?: any; route?: any }> = (
         {/* Yeni Randevu Modal */}
         {showModal && (
           <View style={styles.modalOverlay}>
-            <View style={styles.modalCard}>
-              <Text style={styles.modalTitle}>Yeni Randevu Talebi</Text>
+            <KeyboardAvoidingView
+              behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+              style={{ width: '100%', justifyContent: 'center', alignItems: 'center' }}
+            >
+              <View style={styles.modalCard}>
+                <ScrollView 
+                  showsVerticalScrollIndicator={false} 
+                  keyboardShouldPersistTaps="handled"
+                  contentContainerStyle={{ paddingBottom: 24 }}
+                  style={{ maxHeight: 520 }}
+                >
+                  <Text style={styles.modalTitle}>Yeni Randevu Talebi</Text>
 
-              {/* Koç Seçimi */}
-              <Text style={styles.inputLabel}>Koç Seçin</Text>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.coachSelectRow}>
-                {coaches.map((c) => (
+                  {/* Koç Seçimi */}
+                  <Text style={styles.inputLabel}>Koç Seçin</Text>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.coachSelectRow}>
+                    {coaches.map((c) => (
+                      <TouchableOpacity
+                        key={c.id}
+                        onPress={() => setSelectedCoachId(c.id)}
+                        style={[
+                          styles.coachChip,
+                          selectedCoachId === c.id && styles.coachChipActive,
+                        ]}
+                      >
+                        <Text
+                          style={[
+                            styles.coachChipText,
+                            selectedCoachId === c.id && styles.coachChipTextActive,
+                          ]}
+                        >
+                          {c.name} {c.surname || ''}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </ScrollView>
+
+                  {/* Hizmet Türü */}
+                  <Text style={styles.inputLabel}>Hizmet Türü</Text>
+                  <View style={styles.serviceRow}>
+                    {SERVICE_TYPES.map((st) => (
+                      <TouchableOpacity
+                        key={st.value}
+                        onPress={() => setServiceType(st.value)}
+                        style={[
+                          styles.serviceChip,
+                          serviceType === st.value && styles.serviceChipActive,
+                        ]}
+                      >
+                        <Text
+                          style={[
+                            styles.serviceChipText,
+                            serviceType === st.value && styles.serviceChipTextActive,
+                          ]}
+                        >
+                          {st.label}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+
+                  {/* Tarih Seçimi */}
+                  <Text style={styles.inputLabel}>Tarih</Text>
                   <TouchableOpacity
-                    key={c.id}
-                    onPress={() => setSelectedCoachId(c.id)}
-                    style={[
-                      styles.coachChip,
-                      selectedCoachId === c.id && styles.coachChipActive,
-                    ]}
+                    onPress={() => setShowDatePicker(true)}
+                    style={styles.dateSelector}
                   >
-                    <Text
-                      style={[
-                        styles.coachChipText,
-                        selectedCoachId === c.id && styles.coachChipTextActive,
-                      ]}
-                    >
-                      {c.name} {c.surname || ''}
+                    <Calendar size={18} color={Colors.primary} />
+                    <Text style={{ color: appointmentDate ? Colors.textDark : Colors.textSecondaryDark }}>
+                      {appointmentDate || 'Tarih Seçin (YYYY-AA-GG)'}
                     </Text>
                   </TouchableOpacity>
-                ))}
-              </ScrollView>
 
-              {/* Hizmet Türü */}
-              <Text style={styles.inputLabel}>Hizmet Türü</Text>
-              <View style={styles.serviceRow}>
-                {SERVICE_TYPES.map((st) => (
-                  <TouchableOpacity
-                    key={st.value}
-                    onPress={() => setServiceType(st.value)}
-                    style={[
-                      styles.serviceChip,
-                      serviceType === st.value && styles.serviceChipActive,
-                    ]}
-                  >
-                    <Text
-                      style={[
-                        styles.serviceChipText,
-                        serviceType === st.value && styles.serviceChipTextActive,
-                      ]}
+                  {/* Saatler */}
+                  <View style={{ flexDirection: 'row', gap: 12 }}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.inputLabel}>Başlangıç Saati</Text>
+                      <TouchableOpacity
+                        style={styles.timeInputContainer}
+                        onPress={() => setShowTimePicker('slot')}
+                        activeOpacity={0.8}
+                      >
+                        <TextInput
+                          style={styles.timeTextInput}
+                          value={startTime}
+                          onChangeText={setStartTime}
+                          placeholder="10:00"
+                          placeholderTextColor={Colors.textSecondaryDark}
+                        />
+                        <TouchableOpacity
+                          style={styles.timeIconBtn}
+                          onPress={() => setShowTimePicker('slot')}
+                        >
+                          <Clock size={16} color={Colors.primary} />
+                        </TouchableOpacity>
+                      </TouchableOpacity>
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.inputLabel}>Bitiş Saati</Text>
+                      <TouchableOpacity
+                        style={styles.timeInputContainer}
+                        onPress={() => setShowTimePicker('slot')}
+                        activeOpacity={0.8}
+                      >
+                        <TextInput
+                          style={styles.timeTextInput}
+                          value={endTime}
+                          onChangeText={setEndTime}
+                          placeholder="11:00"
+                          placeholderTextColor={Colors.textSecondaryDark}
+                        />
+                        <TouchableOpacity
+                          style={styles.timeIconBtn}
+                          onPress={() => setShowTimePicker('slot')}
+                        >
+                          <Clock size={16} color={Colors.primary} />
+                        </TouchableOpacity>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+
+                  {/* Notlar */}
+                  <Text style={styles.inputLabel}>Notlar (İsteğe Bağlı)</Text>
+                  <TextInput
+                    style={[styles.input, { height: 60 }]}
+                    value={notes}
+                    onChangeText={setNotes}
+                    placeholder="Örn: Sırt ağrım var, dikkat edelim."
+                    placeholderTextColor={Colors.textSecondaryDark}
+                    multiline
+                  />
+
+                  <View style={styles.modalButtons}>
+                    <TouchableOpacity
+                      onPress={() => setShowModal(false)}
+                      style={styles.modalCancelBtn}
+                      disabled={submitting}
                     >
-                      {st.label}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
+                      <Text style={styles.modalCancelText}>Vazgeç</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={handleCreateAppointment}
+                      style={styles.modalSubmitBtn}
+                      disabled={submitting}
+                    >
+                      {submitting ? (
+                        <ActivityIndicator size="small" color="#FFFFFF" />
+                      ) : (
+                        <Text style={styles.modalSubmitText}>Randevu Oluştur</Text>
+                      )}
+                    </TouchableOpacity>
+                  </View>
+                </ScrollView>
               </View>
-
-              {/* Tarih Seçimi */}
-              <Text style={styles.inputLabel}>Tarih</Text>
-              <TouchableOpacity
-                onPress={() => setShowDatePicker(true)}
-                style={styles.dateSelector}
-              >
-                <Calendar size={18} color={Colors.primary} />
-                <Text style={{ color: appointmentDate ? Colors.textDark : Colors.textSecondaryDark }}>
-                  {appointmentDate || 'Tarih Seçin (YYYY-AA-GG)'}
-                </Text>
-              </TouchableOpacity>
-
-              {/* Saatler */}
-              <View style={{ flexDirection: 'row', gap: 12 }}>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.inputLabel}>Başlangıç Saati</Text>
-                  <TextInput
-                    style={styles.input}
-                    value={startTime}
-                    onChangeText={setStartTime}
-                    placeholder="10:00"
-                    placeholderTextColor={Colors.textSecondaryDark}
-                  />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.inputLabel}>Bitiş Saati</Text>
-                  <TextInput
-                    style={styles.input}
-                    value={endTime}
-                    onChangeText={setEndTime}
-                    placeholder="11:00"
-                    placeholderTextColor={Colors.textSecondaryDark}
-                  />
-                </View>
-              </View>
-
-              {/* Notlar */}
-              <Text style={styles.inputLabel}>Notlar (İsteğe Bağlı)</Text>
-              <TextInput
-                style={[styles.input, { height: 60 }]}
-                value={notes}
-                onChangeText={setNotes}
-                placeholder="Örn: Sırt ağrım var, dikkat edelim."
-                placeholderTextColor={Colors.textSecondaryDark}
-                multiline
-              />
-
-              <View style={styles.modalButtons}>
-                <TouchableOpacity
-                  onPress={() => setShowModal(false)}
-                  style={styles.modalCancelBtn}
-                  disabled={submitting}
-                >
-                  <Text style={styles.modalCancelText}>Vazgeç</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  onPress={handleCreateAppointment}
-                  style={styles.modalSubmitBtn}
-                  disabled={submitting}
-                >
-                  {submitting ? (
-                    <ActivityIndicator size="small" color="#FFFFFF" />
-                  ) : (
-                    <Text style={styles.modalSubmitText}>Randevu Oluştur</Text>
-                  )}
-                </TouchableOpacity>
-              </View>
-            </View>
+            </KeyboardAvoidingView>
           </View>
         )}
 
@@ -564,6 +604,22 @@ export const AppointmentsScreen: React.FC<{ navigation?: any; route?: any }> = (
           }}
           onCancel={() => setShowDatePicker(false)}
         />
+
+        <DateTimePickerModal
+          visible={showTimePicker !== null}
+          mode="time"
+          title="Randevu Saati Seçin"
+          initialValue={`${startTime} - ${endTime}`}
+          onConfirm={(val) => {
+            if (val && val.includes('-')) {
+              const parts = val.split('-').map((s) => s.trim());
+              if (parts[0]) setStartTime(parts[0]);
+              if (parts[1]) setEndTime(parts[1]);
+            }
+            setShowTimePicker(null);
+          }}
+          onCancel={() => setShowTimePicker(null)}
+        />
       </View>
     </ScreenContainer>
   );
@@ -572,7 +628,7 @@ export const AppointmentsScreen: React.FC<{ navigation?: any; route?: any }> = (
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0F172A',
+    backgroundColor: Colors.backgroundDark,
   },
   header: {
     flexDirection: 'row',
@@ -581,7 +637,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 12,
     borderBottomWidth: 1,
-    borderBottomColor: '#1E293B',
+    borderBottomColor: Colors.borderDark,
   },
   backBtn: {
     padding: 4,
@@ -606,11 +662,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   card: {
-    backgroundColor: '#1E293B',
+    backgroundColor: Colors.cardDark,
     borderRadius: 14,
     padding: 16,
     borderWidth: 1,
-    borderColor: '#334155',
+    borderColor: Colors.borderDark,
     gap: 10,
   },
   cardHeader: {
@@ -661,7 +717,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'flex-end',
     borderTopWidth: 1,
-    borderTopColor: '#334155',
+    borderTopColor: Colors.borderDark,
     paddingTop: 8,
   },
   cancelBtn: {
@@ -715,11 +771,11 @@ const styles = StyleSheet.create({
     zIndex: 100,
   },
   modalCard: {
-    backgroundColor: '#1E293B',
+    backgroundColor: Colors.cardDark,
     borderRadius: 16,
     padding: 20,
     borderWidth: 1,
-    borderColor: '#334155',
+    borderColor: Colors.borderDark,
     gap: 10,
   },
   modalTitle: {
@@ -739,13 +795,13 @@ const styles = StyleSheet.create({
     marginBottom: 4,
   },
   coachChip: {
-    backgroundColor: '#0F172A',
+    backgroundColor: Colors.backgroundDark,
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 8,
     marginRight: 8,
     borderWidth: 1,
-    borderColor: '#334155',
+    borderColor: Colors.borderDark,
   },
   coachChipActive: {
     borderColor: Colors.primary,
@@ -765,12 +821,12 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   serviceChip: {
-    backgroundColor: '#0F172A',
+    backgroundColor: Colors.backgroundDark,
     paddingHorizontal: 10,
     paddingVertical: 6,
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: '#334155',
+    borderColor: Colors.borderDark,
   },
   serviceChipActive: {
     borderColor: Colors.primary,
@@ -788,20 +844,42 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
-    backgroundColor: '#0F172A',
+    backgroundColor: Colors.backgroundDark,
     borderRadius: 8,
     padding: 12,
     borderWidth: 1,
-    borderColor: '#334155',
+    borderColor: Colors.borderDark,
   },
   input: {
-    backgroundColor: '#0F172A',
+    backgroundColor: Colors.backgroundDark,
     borderRadius: 8,
     padding: 10,
     color: Colors.textDark,
     borderWidth: 1,
-    borderColor: '#334155',
+    borderColor: Colors.borderDark,
     fontSize: 13,
+  },
+  timeInputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: Colors.backgroundDark,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: Colors.borderDark,
+    overflow: 'hidden',
+  },
+  timeTextInput: {
+    flex: 1,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    color: Colors.textDark,
+    fontSize: 13,
+  },
+  timeIconBtn: {
+    paddingHorizontal: 10,
+    paddingVertical: 10,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   modalButtons: {
     flexDirection: 'row',
@@ -813,8 +891,9 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: '#334155',
+    borderColor: Colors.borderDark,
     alignItems: 'center',
+    backgroundColor: Colors.backgroundDark,
   },
   modalCancelText: {
     color: Colors.textSecondaryDark,

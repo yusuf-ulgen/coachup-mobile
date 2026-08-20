@@ -247,59 +247,34 @@ export const TrainingService = {
     };
 
     if (metrics.durationSeconds !== undefined && metrics.durationSeconds !== null) {
-      updatePayload.duration_seconds = Math.round(metrics.durationSeconds);
-    }
-    if (metrics.distanceKm !== undefined && metrics.distanceKm !== null && metrics.distanceKm > 0) {
-      updatePayload.distance_km = Number(metrics.distanceKm.toFixed(3));
-    }
-    if (metrics.avgHeartRate !== undefined && metrics.avgHeartRate !== null && metrics.avgHeartRate > 0) {
-      updatePayload.avg_heart_rate = Math.round(metrics.avgHeartRate);
-    }
-    if (metrics.maxHeartRate !== undefined && metrics.maxHeartRate !== null && metrics.maxHeartRate > 0) {
-      updatePayload.max_heart_rate = Math.round(metrics.maxHeartRate);
+      updatePayload.duration_minutes = Math.max(1, Math.round(metrics.durationSeconds / 60));
     }
     if (metrics.calories !== undefined && metrics.calories !== null && metrics.calories > 0) {
-      updatePayload.calories = Math.round(metrics.calories);
-    }
-    if (metrics.avgPace !== undefined && metrics.avgPace !== null && metrics.avgPace > 0) {
-      updatePayload.avg_pace = Number(metrics.avgPace.toFixed(2));
-    }
-    if (metrics.avgSpeed !== undefined && metrics.avgSpeed !== null && metrics.avgSpeed > 0) {
-      updatePayload.avg_speed = Number(metrics.avgSpeed.toFixed(2));
-    }
-    if (metrics.altitudeGain !== undefined && metrics.altitudeGain !== null && metrics.altitudeGain > 0) {
-      updatePayload.altitude_gain = Number(metrics.altitudeGain.toFixed(1));
-    }
-    if (metrics.perceivedEffort) {
-      updatePayload.perceived_effort = metrics.perceivedEffort;
+      updatePayload.calories_burned = Math.round(metrics.calories);
     }
     if (metrics.notes) {
       updatePayload.notes = metrics.notes;
     }
 
-    // FIX 6 & FIX 7 & Phase 7 A2: Fetch workout_sets for session totals with legacy reps_count read fallback
-    const { data: sessionSets, error: setFetchErr } = await supabase
-      .from('workout_sets')
-      .select('reps, reps_count, weight, is_completed')
-      .eq('session_id', sessionId);
+    // Fetch workout_sets for session totals
+    try {
+      const { data: sessionSets, error: setFetchErr } = await supabase
+        .from('workout_sets')
+        .select('reps, reps_count, weight, is_completed')
+        .eq('session_id', sessionId);
 
-    if (setFetchErr) {
-      console.error('[TrainingService] Failed to fetch workout sets for session aggregation:', setFetchErr);
-      throw setFetchErr;
+      if (!setFetchErr && sessionSets) {
+        const getReps = (s: any) => (s.reps !== null && s.reps !== undefined) ? Number(s.reps) : Number(s.reps_count || 0);
+        const completed = sessionSets.filter((s: any) => s.is_completed);
+        updatePayload.total_sets = completed.length;
+        updatePayload.total_reps = completed.reduce((sum: number, s: any) => sum + getReps(s), 0);
+        updatePayload.total_weight = completed.reduce((sum: number, s: any) => sum + ((Number(s.weight) || 0) * getReps(s)), 0);
+      }
+    } catch (setEx) {
+      console.warn('[TrainingService] Note calculating set aggregates:', setEx);
     }
 
-    const getReps = (s: any) => (s.reps !== null && s.reps !== undefined) ? Number(s.reps) : Number(s.reps_count || 0);
-
-    const completed = (sessionSets || []).filter((s: any) => s.is_completed);
-    const totalSets = completed.length;
-    const totalReps = completed.reduce((sum: number, s: any) => sum + getReps(s), 0);
-    const totalWeight = completed.reduce((sum: number, s: any) => sum + ((Number(s.weight) || 0) * getReps(s)), 0);
-
-    // FIX 7: Always store computed aggregates even if 0
-    updatePayload.total_sets = totalSets;
-    updatePayload.total_reps = totalReps;
-    updatePayload.total_weight = totalWeight;
-
+    let finalData: any = null;
     const { data, error } = await supabase
       .from('training_sessions')
       .update(updatePayload)
@@ -308,17 +283,30 @@ export const TrainingService = {
       .single();
 
     if (error) {
-      console.error('[TrainingService] completeSession error:', error);
-      throw error;
+      console.warn('[TrainingService] completeSession select relation error, falling back to base select:', error);
+      const { data: baseData, error: baseErr } = await supabase
+        .from('training_sessions')
+        .update(updatePayload)
+        .eq('id', sessionId)
+        .select('*')
+        .single();
+
+      if (baseErr) {
+        console.error('[TrainingService] completeSession fallback error:', baseErr);
+        throw baseErr;
+      }
+      finalData = baseData;
+    } else {
+      finalData = data;
     }
 
-    if (data?.user_id) {
-      StreakService.fetchStreakData(data.user_id).catch((err: any) => {
+    if (finalData?.user_id) {
+      StreakService.fetchStreakData(finalData.user_id).catch((err: any) => {
         console.warn('[TrainingService] Streak sync background warning:', err);
       });
     }
 
-    return data;
+    return finalData;
   },
 
   async createAndCompleteSession(
@@ -339,40 +327,17 @@ export const TrainingService = {
     const insertPayload: any = {
       user_id: userId,
       gym_id: params.gymId || null,
+      program_id: params.programId || null,
       scheduled_at: startedAt,
       started_at: startedAt,
       completed_at: now,
       status: 'completed',
-      notes: params.metrics?.notes || (params.category ? `builtin:${params.category}` : params.title || null),
+      duration_minutes: duration > 0 ? Math.max(1, Math.round(duration / 60)) : null,
+      notes: params.title || params.category || params.metrics?.notes || null,
     };
 
-    if (params.programId) insertPayload.program_id = params.programId;
-    if (params.metrics?.durationSeconds !== undefined && params.metrics?.durationSeconds !== null) {
-      insertPayload.duration_seconds = Math.round(params.metrics.durationSeconds);
-    }
-    if (params.metrics?.distanceKm && params.metrics.distanceKm > 0) {
-      insertPayload.distance_km = Number(params.metrics.distanceKm.toFixed(3));
-    }
-    if (params.metrics?.avgHeartRate && params.metrics.avgHeartRate > 0) {
-      insertPayload.avg_heart_rate = Math.round(params.metrics.avgHeartRate);
-    }
-    if (params.metrics?.maxHeartRate && params.metrics.maxHeartRate > 0) {
-      insertPayload.max_heart_rate = Math.round(params.metrics.maxHeartRate);
-    }
     if (params.metrics?.calories && params.metrics.calories > 0) {
-      insertPayload.calories = Math.round(params.metrics.calories);
-    }
-    if (params.metrics?.avgPace && params.metrics.avgPace > 0) {
-      insertPayload.avg_pace = Number(params.metrics.avgPace.toFixed(2));
-    }
-    if (params.metrics?.avgSpeed && params.metrics.avgSpeed > 0) {
-      insertPayload.avg_speed = Number(params.metrics.avgSpeed.toFixed(2));
-    }
-    if (params.metrics?.altitudeGain && params.metrics.altitudeGain > 0) {
-      insertPayload.altitude_gain = Number(params.metrics.altitudeGain.toFixed(1));
-    }
-    if (params.metrics?.perceivedEffort) {
-      insertPayload.perceived_effort = params.metrics.perceivedEffort;
+      insertPayload.calories_burned = Math.round(params.metrics.calories);
     }
 
     const { data, error } = await supabase

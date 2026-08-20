@@ -247,7 +247,7 @@ export const NutritionScreen = ({ navigation }: any) => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0F172A',
+    backgroundColor: Colors.backgroundDark,
   },
   headerRow: {
     flexDirection: 'row',
@@ -255,7 +255,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 12,
     borderBottomWidth: 1,
-    borderBottomColor: '#1E293B',
+    borderBottomColor: Colors.borderDark,
     gap: 12,
   },
   backBtn: {
@@ -276,11 +276,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   planHeaderCard: {
-    backgroundColor: '#1E293B',
+    backgroundColor: Colors.cardDark,
     borderRadius: 14,
     padding: 16,
     borderWidth: 1,
-    borderColor: '#334155',
+    borderColor: Colors.borderDark,
     gap: 6,
   },
   planName: {
@@ -294,11 +294,11 @@ const styles = StyleSheet.create({
     lineHeight: 18,
   },
   calorieCard: {
-    backgroundColor: '#1E293B',
+    backgroundColor: Colors.cardDark,
     borderRadius: 14,
     padding: 16,
     borderWidth: 1,
-    borderColor: '#334155',
+    borderColor: Colors.borderDark,
     gap: 12,
   },
   cardTitle: {
@@ -355,7 +355,7 @@ const styles = StyleSheet.create({
   },
   progressBarBg: {
     height: 6,
-    backgroundColor: '#334155',
+    backgroundColor: Colors.borderDark,
     borderRadius: 3,
     overflow: 'hidden',
   },
@@ -370,10 +370,10 @@ const styles = StyleSheet.create({
     marginTop: 6,
   },
   mealCard: {
-    backgroundColor: '#1E293B',
+    backgroundColor: Colors.cardDark,
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: '#334155',
+    borderColor: Colors.borderDark,
     overflow: 'hidden',
   },
   mealHeader: {
@@ -410,7 +410,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingBottom: 14,
     borderTopWidth: 1,
-    borderTopColor: '#334155',
+    borderTopColor: Colors.borderDark,
     gap: 8,
   },
   mealDescriptionText: {

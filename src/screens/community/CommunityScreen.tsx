@@ -10,6 +10,9 @@ import {
   Image,
   ScrollView,
   Animated,
+  Dimensions,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { feedback } from '../../services/feedbackService';
 import {
@@ -793,33 +796,41 @@ export const CommunityScreen = ({ navigation }: any) => {
       )}
 
       {/* Main Content */}
-      {loading ? (
-        <View style={styles.loadingBox}>
-          <ActivityIndicator size="large" color={Colors.primary} />
-        </View>
-      ) : !canAccess ? (
-        <LockedState message={accessMessage || 'Erişim yok'} />
-      ) : posts.length === 0 ? (
-        <EmptyFeedState onCreatePress={handleOpenComposer} />
-      ) : (
-        <FlatList
-          data={posts}
-          keyExtractor={(p) => p.id}
-          contentContainerStyle={styles.listContent}
-          renderItem={({ item }) => (
-            <PostCard
-              item={item}
-              isMine={item.author_id === currentUserId}
-              currentUserId={currentUserId}
-              onLike={() => handleLike(item.id)}
-              onDelete={() => handleDelete(item.id)}
-              onVote={handleVote}
-              onCommentAction={loadFeed}
-            />
-          )}
-          ListFooterComponent={<View style={{ height: 88 }} />}
-        />
-      )}
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 88 : 0}
+      >
+        {loading ? (
+          <View style={styles.loadingBox}>
+            <ActivityIndicator size="large" color={Colors.primary} />
+          </View>
+        ) : !canAccess ? (
+          <LockedState message={accessMessage || 'Erişim yok'} />
+        ) : posts.length === 0 ? (
+          <EmptyFeedState onCreatePress={handleOpenComposer} />
+        ) : (
+          <FlatList
+            data={posts}
+            keyExtractor={(p) => p.id}
+            contentContainerStyle={[styles.listContent, { paddingBottom: 160 }]}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="on-drag"
+            renderItem={({ item }) => (
+              <PostCard
+                item={item}
+                isMine={item.author_id === currentUserId}
+                currentUserId={currentUserId}
+                onLike={() => handleLike(item.id)}
+                onDelete={() => handleDelete(item.id)}
+                onVote={handleVote}
+                onCommentAction={loadFeed}
+              />
+            )}
+            ListFooterComponent={<View style={{ height: 120 }} />}
+          />
+        )}
+      </KeyboardAvoidingView>
 
       {/* FAB */}
       {canAccess && !loading && (

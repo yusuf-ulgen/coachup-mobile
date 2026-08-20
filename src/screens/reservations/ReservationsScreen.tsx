@@ -41,7 +41,7 @@ export const ReservationsScreen = ({ navigation }: any) => {
           {
             event: '*',
             schema: 'public',
-            table: 'user_reservations',
+            table: 'area_reservations',
             filter: `user_id=eq.${user.id}`,
           },
           () => {
@@ -75,9 +75,9 @@ export const ReservationsScreen = ({ navigation }: any) => {
         setSelectedAreaId(areaData[0].id);
       }
 
-      // 2. user_reservations çek
+      // 2. area_reservations çek
       const { data: resData, error: resErr } = await supabase
-        .from('user_reservations')
+        .from('area_reservations')
         .select(`
           *,
           area:gym_areas(id, name, description)
@@ -86,9 +86,16 @@ export const ReservationsScreen = ({ navigation }: any) => {
         .order('reservation_date', { ascending: false });
 
       if (resErr) {
-        console.error('Error fetching reservations:', resErr);
+        console.warn('Error fetching reservations with area join, falling back to base select:', resErr);
+        const { data: fallbackData } = await supabase
+          .from('area_reservations')
+          .select('*')
+          .eq('user_id', user.id)
+          .order('reservation_date', { ascending: false });
+        setReservations(fallbackData || []);
+      } else {
+        setReservations(resData || []);
       }
-      setReservations(resData || []);
     } catch (e) {
       console.error('Error in loadData:', e);
     } finally {
@@ -122,7 +129,7 @@ export const ReservationsScreen = ({ navigation }: any) => {
       };
 
       const { data, error } = await supabase
-        .from('user_reservations')
+        .from('area_reservations')
         .insert(payload)
         .select(`
           *,
@@ -157,7 +164,7 @@ export const ReservationsScreen = ({ navigation }: any) => {
 
     try {
       const { error } = await supabase
-        .from('user_reservations')
+        .from('area_reservations')
         .update({ status: 'cancelled' })
         .eq('id', id);
 
@@ -379,7 +386,7 @@ export const ReservationsScreen = ({ navigation }: any) => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0F172A',
+    backgroundColor: Colors.backgroundDark,
   },
   header: {
     flexDirection: 'row',
@@ -388,7 +395,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 12,
     borderBottomWidth: 1,
-    borderBottomColor: '#1E293B',
+    borderBottomColor: Colors.borderDark,
   },
   backButton: {
     padding: 4,
@@ -418,11 +425,11 @@ const styles = StyleSheet.create({
     color: Colors.textDark,
   },
   card: {
-    backgroundColor: '#1E293B',
+    backgroundColor: Colors.cardDark,
     borderRadius: 14,
     padding: 16,
     borderWidth: 1,
-    borderColor: '#334155',
+    borderColor: Colors.borderDark,
     gap: 10,
   },
   cardHeader: {
@@ -459,7 +466,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'flex-end',
     borderTopWidth: 1,
-    borderTopColor: '#334155',
+    borderTopColor: Colors.borderDark,
     paddingTop: 8,
   },
   cancelBtn: {
@@ -518,13 +525,13 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   areaChip: {
-    backgroundColor: '#0F172A',
+    backgroundColor: Colors.backgroundDark,
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 8,
     marginRight: 8,
     borderWidth: 1,
-    borderColor: '#334155',
+    borderColor: Colors.borderDark,
   },
   areaChipActive: {
     borderColor: Colors.primary,
@@ -542,19 +549,19 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 10,
-    backgroundColor: '#0F172A',
+    backgroundColor: Colors.backgroundDark,
     borderRadius: 8,
     padding: 12,
     borderWidth: 1,
-    borderColor: '#334155',
+    borderColor: Colors.borderDark,
   },
   modalInput: {
-    backgroundColor: '#0F172A',
+    backgroundColor: Colors.backgroundDark,
     borderRadius: 8,
     padding: 10,
     color: Colors.textDark,
     borderWidth: 1,
-    borderColor: '#334155',
+    borderColor: Colors.borderDark,
     fontSize: 13,
   },
   modalButtons: {
@@ -567,7 +574,8 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: '#334155',
+    borderColor: Colors.borderDark,
+    backgroundColor: Colors.backgroundDark,
     alignItems: 'center',
   },
   modalCancelText: {
