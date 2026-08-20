@@ -176,34 +176,14 @@ function resolveDefaultRoute(screenKey?: string | null): string | null {
   return VALID_DEFAULT_SCREEN_MAP[normalized] || null;
 }
 
-const MainTabNavigator: React.FC = () => {
-  const { profile } = useAuth();
-  const [initialRoute, setInitialRoute] = useState<string>(() => {
-    const accountRoute = resolveDefaultRoute(profile?.default_screen);
-    if (accountRoute) return accountRoute;
-    return 'HomeTab';
-  });
+interface MainTabNavigatorProps {
+  initialRouteName?: string;
+}
 
-  useEffect(() => {
-    const accountRoute = resolveDefaultRoute(profile?.default_screen);
-    if (accountRoute) {
-      setInitialRoute(accountRoute);
-      AsyncStorage.setItem('@user_default_screen', profile!.default_screen!).catch(() => {});
-      return;
-    }
-
-    AsyncStorage.getItem('@user_default_screen').then((pref: string | null) => {
-      const cachedRoute = resolveDefaultRoute(pref);
-      if (cachedRoute) {
-        setInitialRoute(cachedRoute);
-      }
-    }).catch(() => {});
-  }, [profile?.default_screen]);
-
+const MainTabNavigator: React.FC<MainTabNavigatorProps> = ({ initialRouteName = 'HomeTab' }) => {
   return (
     <Tab.Navigator
-      key={initialRoute}
-      initialRouteName={initialRoute}
+      initialRouteName={initialRouteName}
       tabBar={(props) => <CustomTabBar {...props} />}
       screenOptions={{ headerShown: false }}
     >
@@ -265,6 +245,8 @@ export const AppNavigator: React.FC = () => {
   const [showSplash, setShowSplash] = useState(true);
   const [isGuardian, setIsGuardian] = useState(false);
   const [guardianChecked, setGuardianChecked] = useState(false);
+  const [initialTabReady, setInitialTabReady] = useState(false);
+  const [resolvedInitialTab, setResolvedInitialTab] = useState<string>('HomeTab');
 
   useEffect(() => {
     if (profile) {
@@ -276,6 +258,43 @@ export const AppNavigator: React.FC = () => {
       }
     }
   }, [profile, reconcileAccountTheme]);
+
+  useEffect(() => {
+    if (loading) return;
+
+    if (!session) {
+      setGuardianChecked(true);
+      setInitialTabReady(true);
+      return;
+    }
+
+    const resolveStartupTab = async () => {
+      try {
+        const accountRoute = resolveDefaultRoute(profile?.default_screen);
+        if (accountRoute) {
+          setResolvedInitialTab(accountRoute);
+          await AsyncStorage.setItem('@user_default_screen', profile!.default_screen!);
+          return;
+        }
+
+        const cachedPref = await AsyncStorage.getItem('@user_default_screen');
+        const cachedRoute = resolveDefaultRoute(cachedPref);
+        if (cachedRoute) {
+          setResolvedInitialTab(cachedRoute);
+          return;
+        }
+
+        setResolvedInitialTab('HomeTab');
+      } catch (err) {
+        console.warn('[AppNavigator] Error resolving startup route:', err);
+        setResolvedInitialTab('HomeTab');
+      } finally {
+        setInitialTabReady(true);
+      }
+    };
+
+    resolveStartupTab();
+  }, [loading, session]);
 
   useEffect(() => {
     if (!session) {
@@ -370,7 +389,7 @@ export const AppNavigator: React.FC = () => {
     SplashScreen.hideAsync().catch(() => {});
   }, []);
 
-  if (loading || showSplash || (session && !guardianChecked)) {
+  if (loading || showSplash || (session && (!guardianChecked || !initialTabReady))) {
     return <SplashView onAnimationFinish={() => setShowSplash(false)} />;
   }
 
@@ -385,7 +404,9 @@ export const AppNavigator: React.FC = () => {
           </Stack.Navigator>
         ) : (
           <Stack.Navigator screenOptions={{ headerShown: false }}>
-            <Stack.Screen name="MainTabs" component={MainTabNavigator} />
+            <Stack.Screen name="MainTabs">
+              {(props) => <MainTabNavigator {...props} initialRouteName={resolvedInitialTab} />}
+            </Stack.Screen>
           <Stack.Screen name="Profile" component={ProfileScreen} />
           <Stack.Screen name="Coaches" component={CoachListScreen} />
           <Stack.Screen name="CoachDetail" component={CoachDetailScreen} />
