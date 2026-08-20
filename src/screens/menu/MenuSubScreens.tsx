@@ -71,10 +71,10 @@ export const MembershipScreen: React.FC<ScreenProps> = ({ navigation }) => {
           membership_plans:plan_id (*)
         `)
         .eq('user_id', user.id)
-        .eq('status', 'active')
+        .eq('is_active', true)
         .order('end_date', { ascending: false })
         .limit(1)
-        .single();
+        .maybeSingle();
         
       if (membershipsData) {
         setActiveMembership(membershipsData);

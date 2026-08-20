@@ -34,8 +34,8 @@ const TURKEY_CITIES = [
 
 export const AddressSettingsScreen: React.FC<AddressScreenProps> = ({ navigation }) => {
   const insets = useSafeAreaInsets();
-  const [title, setTitle] = useState('Ev Adresi');
-  const [city, setCity] = useState('İstanbul');
+  const [title, setTitle] = useState('');
+  const [city, setCity] = useState('');
   const [district, setDistrict] = useState('');
   const [neighborhood, setNeighborhood] = useState('');
   const [street, setStreet] = useState('');
@@ -48,29 +48,65 @@ export const AddressSettingsScreen: React.FC<AddressScreenProps> = ({ navigation
   const [userId, setUserId] = useState<string | null>(null);
 
   useEffect(() => {
+    let isMounted = true;
     const loadAddress = async () => {
       try {
+        setLoading(true);
         const profile = await AuthService.getCurrentProfile();
+        if (!isMounted) return;
         if (profile) {
           setUserId(profile.id);
-          if (profile.address_title) setTitle(profile.address_title);
-          if (profile.city) setCity(profile.city);
-          if (profile.district) setDistrict(profile.district);
-          if (profile.neighborhood) setNeighborhood(profile.neighborhood);
-          if (profile.street) setStreet(profile.street);
-          if (profile.building_no) setBuildingNo(profile.building_no);
-          if (profile.door_no) setDoorNo(profile.door_no);
-          if (profile.postal_code) setPostalCode(profile.postal_code);
+          setTitle(profile.address_title || 'Ev Adresi');
+          setCity(profile.city || '');
+          setDistrict(profile.district || '');
+          setNeighborhood(profile.neighborhood || '');
+          setStreet(profile.street || '');
+          setBuildingNo(profile.building_no || '');
+          setDoorNo(profile.door_no || '');
+          setPostalCode(profile.postal_code || '');
+        } else {
+          console.error('[AddressScreen] User profile not found');
+          feedback.error({
+            title: 'Hata',
+            message: 'Kullanıcı profili yüklenemedi.',
+          });
         }
-      } catch (e) {
-        console.error('Error loading address:', e);
+      } catch (e: any) {
+        console.error('[AddressScreen] Error loading address:', e);
+        feedback.error({
+          title: 'Hata',
+          message: e,
+          fallbackMessage: 'Adres bilgileri yüklenirken bir hata oluştu.',
+        });
+      } finally {
+        if (isMounted) setLoading(false);
       }
     };
     loadAddress();
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
   const handleSaveAddress = async () => {
-    if (!city || !district || !street) {
+    if (!userId) {
+      feedback.error({
+        title: 'Hata',
+        message: 'Kullanıcı oturumu bulunamadı. Lütfen tekrar giriş yapın.',
+      });
+      return;
+    }
+
+    const cleanTitle = title.trim();
+    const cleanCity = city.trim();
+    const cleanDistrict = district.trim();
+    const cleanNeighborhood = neighborhood.trim();
+    const cleanStreet = street.trim();
+    const cleanBuildingNo = buildingNo.trim();
+    const cleanDoorNo = doorNo.trim();
+    const cleanPostalCode = postalCode.trim();
+
+    if (!cleanCity || !cleanDistrict || !cleanStreet) {
       feedback.warning({
         title: 'Hata',
         message: 'Lütfen il, ilçe ve cadde/sokak alanlarını doldurun',
@@ -80,24 +116,24 @@ export const AddressSettingsScreen: React.FC<AddressScreenProps> = ({ navigation
 
     try {
       setLoading(true);
-      if (userId) {
-        await UserService.updateUserProfile(userId, {
-          address_title: title,
-          city,
-          district,
-          neighborhood,
-          street,
-          building_no: buildingNo,
-          door_no: doorNo,
-          postal_code: postalCode,
-        });
-      }
+      await UserService.updateUserProfile(userId, {
+        address_title: cleanTitle || 'Ev Adresi',
+        city: cleanCity,
+        district: cleanDistrict,
+        neighborhood: cleanNeighborhood || null,
+        street: cleanStreet,
+        building_no: cleanBuildingNo || null,
+        door_no: cleanDoorNo || null,
+        postal_code: cleanPostalCode || null,
+      });
+
       feedback.success({
         title: 'Başarılı',
         message: 'Adres bilgileriniz kaydedildi.',
       });
       navigation.goBack();
     } catch (e: any) {
+      console.error('[AddressScreen.handleSaveAddress] error:', e);
       feedback.error({
         title: 'Hata',
         message: e,
@@ -143,7 +179,9 @@ export const AddressSettingsScreen: React.FC<AddressScreenProps> = ({ navigation
               style={styles.input}
               onPress={() => setShowCityPicker(!showCityPicker)}
             >
-              <Text style={{ color: Colors.textDark, fontSize: 15 }}>{city}</Text>
+              <Text style={{ color: city ? Colors.textDark : Colors.textSecondaryDark, fontSize: 15 }}>
+                {city || 'Şehir seçiniz'}
+              </Text>
             </TouchableOpacity>
           </View>
 

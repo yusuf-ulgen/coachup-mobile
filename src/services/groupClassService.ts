@@ -28,16 +28,22 @@ export function getDayOfWeekFromDateStr(dateStr: string): number {
 export interface GroupClass {
   id: string;
   gym_id: string;
+  coach_id?: string | null;
   name: string;
-  description?: string;
-  instructor_name?: string;
+  description?: string | null;
+  instructor_name?: string | null;
+  day_of_week?: number;
   start_time: string;
   end_time: string;
   capacity?: number;
-  date_str?: string;
-  day_of_week?: number;
-  enrolled_count?: number;
   current_participants?: number;
+  is_active?: boolean;
+  location?: string | null;
+  class_type?: string | null;
+  created_at?: string;
+  updated_at?: string;
+  date_str?: string;
+  enrolled_count?: number;
 }
 
 export interface ClassBooking {

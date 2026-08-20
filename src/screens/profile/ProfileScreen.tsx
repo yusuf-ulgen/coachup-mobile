@@ -109,27 +109,57 @@ export const ProfileScreen: React.FC<{ navigation?: any }> = ({ navigation }) =>
   };
 
   const handleSave = async () => {
-    if (!user) return;
+    if (!user) {
+      feedback.error({ title: 'Hata', message: 'Kullanıcı oturumu bulunamadı.' });
+      return;
+    }
     try {
       setLoading(true);
+      const cleanName = (name || '').trim();
+      const cleanSurname = (surname || '').trim();
+      const cleanPhone = (phone || '').trim();
       const cleanHeight = (height || '').toString().trim().replace(',', '.');
       const cleanWeight = (weight || '').toString().trim().replace(',', '.');
-      const numHeight = cleanHeight ? parseFloat(cleanHeight) : null;
-      const numWeight = cleanWeight ? parseFloat(cleanWeight) : null;
+      
+      let numHeight: number | null = null;
+      if (cleanHeight) {
+        numHeight = parseFloat(cleanHeight);
+        if (isNaN(numHeight) || !isFinite(numHeight) || numHeight < 30 || numHeight > 300) {
+          feedback.warning({
+            title: 'Geçersiz Değer',
+            message: 'Lütfen geçerli bir boy değeri giriniz (30 - 300 cm arası).',
+          });
+          setLoading(false);
+          return;
+        }
+      }
+
+      let numWeight: number | null = null;
+      if (cleanWeight) {
+        numWeight = parseFloat(cleanWeight);
+        if (isNaN(numWeight) || !isFinite(numWeight) || numWeight < 20 || numWeight > 500) {
+          feedback.warning({
+            title: 'Geçersiz Değer',
+            message: 'Lütfen geçerli bir kilo değeri giriniz (20 - 500 kg arası).',
+          });
+          setLoading(false);
+          return;
+        }
+      }
 
       await UserService.updateUserProfile(user.id, {
-        name,
-        surname,
-        phone,
+        name: cleanName,
+        surname: cleanSurname,
+        phone: cleanPhone,
         gender,
-        height_cm: numHeight !== null && !isNaN(numHeight) ? numHeight : undefined,
-        weight_kg: numWeight !== null && !isNaN(numWeight) ? numWeight : undefined,
-        birth_date: birthDate || undefined,
+        height: numHeight,
+        weight: numWeight,
+        birth_date: birthDate || null,
       });
       await refreshProfile();
       feedback.success({ title: 'Başarılı', message: 'Değişiklikler kaydedildi.' });
     } catch (error) {
-      console.error(error);
+      console.error('[ProfileScreen.handleSave] error:', error);
       feedback.error({ title: 'Hata', message: error, fallbackMessage: 'Profil güncellenirken bir hata oluştu.' });
     } finally {
       setLoading(false);

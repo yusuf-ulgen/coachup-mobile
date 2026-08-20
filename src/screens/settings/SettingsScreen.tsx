@@ -85,33 +85,66 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ navigation }) =>
     loadSettings();
   }, []);
 
-  const saveSetting = async (key: string, value: any) => {
-    setUserProfile((prev: any) => ({ ...prev, [key]: value }));
+  const saveSetting = async (key: string, value: any, previousValue?: any) => {
+    // Persist to local storage cache
     try {
       await AsyncStorage.setItem(`@app_setting_${key}`, JSON.stringify(value));
       if (key === 'default_screen') {
         await AsyncStorage.setItem('@user_default_screen', value);
       }
-    } catch {}
+    } catch (storageErr) {
+      console.error(`[SettingsScreen] Error saving ${key} to AsyncStorage:`, storageErr);
+    }
 
-    try {
-      if (userProfile?.id) {
+    // Sync to Supabase DB if user is authenticated
+    if (userProfile?.id) {
+      try {
         await UserService.updateUserProfile(userProfile.id, { [key]: value });
+        setUserProfile((prev: any) => ({ ...prev, [key]: value }));
+      } catch (dbErr: any) {
+        console.error(`[SettingsScreen] DB sync failed for ${key}:`, dbErr);
+        // Rollback state if previous value was provided
+        if (previousValue !== undefined) {
+          if (key === 'default_screen') setDefaultScreen(previousValue);
+          else if (key === 'notifications_enabled') setNotificationsEnabled(previousValue);
+          else if (key === 'biometrics_enabled') setBiometricsEnabled(previousValue);
+          else if (key === 'weight_unit') setWeightUnit(previousValue);
+          try {
+            await AsyncStorage.setItem(`@app_setting_${key}`, JSON.stringify(previousValue));
+            if (key === 'default_screen') {
+              await AsyncStorage.setItem('@user_default_screen', previousValue);
+            }
+          } catch {}
+        }
+        feedback.error({
+          title: 'Hata',
+          message: dbErr,
+          fallbackMessage: 'Ayar sunucuya kaydedilemedi.',
+        });
+        throw dbErr;
       }
-    } catch (e: any) {
-      console.log(`Note: ${key} DB sync skipped or column missing in schema cache.`);
     }
   };
 
-  const handleDefaultScreenChange = (screen: string) => {
+  const handleDefaultScreenChange = async (screen: string) => {
+    const prev = defaultScreen;
     setDefaultScreen(screen);
-    saveSetting('default_screen', screen);
-    feedback.toast('Varsayılan başlangıç ekranı güncellendi.', 'success');
+    try {
+      await saveSetting('default_screen', screen, prev);
+      feedback.toast('Varsayılan başlangıç ekranı güncellendi.', 'success');
+    } catch {}
   };
 
-  const handleNotificationsToggle = (val: boolean) => {
+  const handleNotificationsToggle = async (val: boolean) => {
+    const prev = notificationsEnabled;
     setNotificationsEnabled(val);
-    saveSetting('notifications_enabled', val);
+    try {
+      await saveSetting('notifications_enabled', val, prev);
+      if (val) {
+        await PermissionPreferenceService.requestNotificationSystemPermission();
+      }
+      feedback.toast(val ? 'Bildirimler açıldı.' : 'Bildirimler kapatıldı.', 'success');
+    } catch {}
   };
 
   const handleBiometricsToggle = async (val: boolean) => {
@@ -137,7 +170,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ navigation }) =>
 
         if (result.success) {
           setBiometricsEnabled(true);
-          await saveSetting('biometrics_enabled', true);
+          await saveSetting('biometrics_enabled', true, false);
           feedback.toast('Biyometrik giriş başarıyla aktif edildi.', 'success');
         } else {
           setBiometricsEnabled(false);
@@ -157,14 +190,20 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({ navigation }) =>
       }
     } else {
       setBiometricsEnabled(false);
-      await saveSetting('biometrics_enabled', false);
-      feedback.toast('Biyometrik giriş kapatıldı.', 'info');
+      try {
+        await saveSetting('biometrics_enabled', false, true);
+        feedback.toast('Biyometrik giriş kapatıldı.', 'info');
+      } catch {}
     }
   };
 
-  const handleWeightUnitToggle = (unit: 'kg' | 'lbs') => {
+  const handleWeightUnitToggle = async (unit: 'kg' | 'lbs') => {
+    const prev = weightUnit;
     setWeightUnit(unit);
-    saveSetting('weight_unit', unit);
+    try {
+      await saveSetting('weight_unit', unit, prev);
+      feedback.toast(`Ağırlık birimi ${unit.toUpperCase()} olarak güncellendi.`, 'success');
+    } catch {}
   };
 
   const handleBlePrefChange = async (pref: BluetoothPermissionPreference) => {
